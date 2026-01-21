@@ -1,0 +1,15 @@
+*.xlsx
+*.syso
+/dist
+/tmp
+
+/files
+/tools/*/context
+/tools/*/files
+/tools/*/output
+/tools/*/master/*.*
+internal/route/dist
+
+build/*
+
+assets/**
