@@ -43,6 +43,10 @@ func buildArgs(opts ExtractOptions, pdfPath string) []string {
 	if opts.Layout {
 		args = append(args, "-layout")
 	}
+
+	if opts.Table {
+		args = append(args, "-table")
+	}
 	if opts.NoPgBrk {
 		args = append(args, "-nopgbrk")
 	}

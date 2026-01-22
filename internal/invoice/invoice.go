@@ -2,6 +2,7 @@ package invoice
 
 import "time"
 
+// DEFAULT INVOICE
 type Invoice struct {
 	InvoiceNo   *string
 	InvoiceDate *time.Time
