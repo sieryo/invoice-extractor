@@ -13,3 +13,4 @@ internal/route/dist
 build/*
 
 assets/**
+data/**
