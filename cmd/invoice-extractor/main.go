@@ -8,18 +8,17 @@ import (
 	"github.com/sieryo/invoice-extractor/internal/app"
 	"github.com/sieryo/invoice-extractor/internal/database"
 	"github.com/sieryo/invoice-extractor/internal/pkg/logger"
+	"github.com/sieryo/invoice-extractor/internal/transport/http"
 )
 
 func main() {
 	configDir, err := os.UserConfigDir()
 	if err != nil {
-		log.Fatalf("Failed to get user config directory: %v", err)
+		log.Fatal(err)
 	}
 
 	appDir := filepath.Join(configDir, "invoice-extractor")
-	if err := os.MkdirAll(appDir, 0755); err != nil {
-		log.Fatalf("Failed to create app directory: %v", err)
-	}
+	_ = os.MkdirAll(appDir, 0755)
 
 	dbPath := filepath.Join(appDir, "app.db")
 	logPath := filepath.Join(appDir, "app.log")
@@ -29,17 +28,24 @@ func main() {
 		env = "dev"
 	}
 
-	slogger := logger.Setup(env, logPath)
-
-	slogger.Info("Starting Invoice Extractor", "env", env, "db_path", dbPath, "log_path", logPath)
+	logger := logger.Setup(env, logPath)
 
 	db := database.NewSQLite(dbPath)
-	defer db.Close()
 
-	if err := database.RunMigration(db, "migrations/001_init.sql"); err != nil {
-		slogger.Error("Failed to run migrations", "error", err)
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+
+	defer database.CloseSQLite(db)
+
+	if err := database.RunMigrations(db, "migrations"); err != nil {
+		logger.Error("migration failed", "error", err)
 		log.Fatal(err)
 	}
 
-	_ = app.New(db, slogger)
+	appContainer := app.New(db, logger)
+
+	server := http.NewServer(appContainer)
+	logger.Info("HTTP server starting", "addr", ":8080")
+
+	log.Fatal(server.Listen(":8080"))
 }

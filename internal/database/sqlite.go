@@ -39,3 +39,8 @@ func NewSQLite(path string) *sql.DB {
 
 	return db
 }
+
+func CloseSQLite(db *sql.DB) {
+	_, _ = db.Exec("PRAGMA wal_checkpoint(TRUNCATE);")
+	_ = db.Close()
+}
