@@ -1,4 +1,4 @@
-package services_test
+package service_test
 
 import (
 	"errors"
@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/sieryo/invoice-extractor/internal/models"
-	"github.com/sieryo/invoice-extractor/internal/services"
+	"github.com/sieryo/invoice-extractor/internal/model"
+	"github.com/sieryo/invoice-extractor/internal/service"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"golang.org/x/crypto/bcrypt"
@@ -18,42 +18,42 @@ type MockUserRepository struct {
 	mock.Mock
 }
 
-func (m *MockUserRepository) Create(u *models.User) error {
+func (m *MockUserRepository) Create(u *model.User) error {
 	args := m.Called(u)
 	return args.Error(0)
 }
 
-func (m *MockUserRepository) GetByUsername(username string) (*models.User, error) {
+func (m *MockUserRepository) GetByUsername(username string) (*model.User, error) {
 	args := m.Called(username)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*models.User), args.Error(1)
+	return args.Get(0).(*model.User), args.Error(1)
 }
 
-func (m *MockUserRepository) GetByID(id string) (*models.User, error) {
+func (m *MockUserRepository) GetByID(id string) (*model.User, error) {
 	args := m.Called(id)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*models.User), args.Error(1)
+	return args.Get(0).(*model.User), args.Error(1)
 }
 
 type MockSessionRepository struct {
 	mock.Mock
 }
 
-func (m *MockSessionRepository) Create(s *models.Session) error {
+func (m *MockSessionRepository) Create(s *model.Session) error {
 	args := m.Called(s)
 	return args.Error(0)
 }
 
-func (m *MockSessionRepository) GetByID(id string) (*models.Session, error) {
+func (m *MockSessionRepository) GetByID(id string) (*model.Session, error) {
 	args := m.Called(id)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*models.Session), args.Error(1)
+	return args.Get(0).(*model.Session), args.Error(1)
 }
 
 func (m *MockSessionRepository) Delete(id string) error {
@@ -65,14 +65,14 @@ func TestRegister(t *testing.T) {
 	mockUserRepo := new(MockUserRepository)
 	mockSessionRepo := new(MockSessionRepository)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	authService := services.NewAuth(mockUserRepo, mockSessionRepo, logger)
+	authService := service.NewAuth(mockUserRepo, mockSessionRepo, logger)
 
 	t.Run("Success", func(t *testing.T) {
 		username := "testuser"
 		password := "password123"
 
 		mockUserRepo.On("GetByUsername", username).Return(nil, errors.New("record not found"))
-		mockUserRepo.On("Create", mock.AnythingOfType("*models.User")).Return(nil)
+		mockUserRepo.On("Create", mock.AnythingOfType("*model.User")).Return(nil)
 
 		err := authService.Register(username, password)
 		assert.NoError(t, err)
@@ -83,7 +83,7 @@ func TestRegister(t *testing.T) {
 		username := "existinguser"
 		password := "password123"
 
-		existingUser := &models.User{Username: username}
+		existingUser := &model.User{Username: username}
 		mockUserRepo.On("GetByUsername", username).Return(existingUser, nil)
 
 		err := authService.Register(username, password)
@@ -97,21 +97,21 @@ func TestLogin(t *testing.T) {
 	mockUserRepo := new(MockUserRepository)
 	mockSessionRepo := new(MockSessionRepository)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	authService := services.NewAuth(mockUserRepo, mockSessionRepo, logger)
+	authService := service.NewAuth(mockUserRepo, mockSessionRepo, logger)
 
 	t.Run("Success", func(t *testing.T) {
 		username := "testuser"
 		password := "password123"
 		hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 
-		user := &models.User{
+		user := &model.User{
 			ID:           uuid.New().String(),
 			Username:     username,
 			PasswordHash: string(hashedPassword),
 		}
 
 		mockUserRepo.On("GetByUsername", username).Return(user, nil)
-		mockSessionRepo.On("Create", mock.AnythingOfType("*models.Session")).Return(nil)
+		mockSessionRepo.On("Create", mock.AnythingOfType("*model.Session")).Return(nil)
 
 		sessionID, err := authService.Login(username, password)
 		assert.NoError(t, err)
@@ -125,7 +125,7 @@ func TestLogin(t *testing.T) {
 		password := "wrongpassword"
 		hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("correctpassword"), bcrypt.DefaultCost)
 
-		user := &models.User{
+		user := &model.User{
 			Username:     username,
 			PasswordHash: string(hashedPassword),
 		}
@@ -155,7 +155,7 @@ func TestLogout(t *testing.T) {
 	mockUserRepo := new(MockUserRepository)
 	mockSessionRepo := new(MockSessionRepository)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	authService := services.NewAuth(mockUserRepo, mockSessionRepo, logger)
+	authService := service.NewAuth(mockUserRepo, mockSessionRepo, logger)
 
 	t.Run("Success", func(t *testing.T) {
 		sessionID := "session-id-123"

@@ -3,7 +3,7 @@ package repository
 import (
 	"database/sql"
 
-	"github.com/sieryo/invoice-extractor/internal/models"
+	"github.com/sieryo/invoice-extractor/internal/model"
 )
 
 type UserRepository struct {
@@ -14,7 +14,7 @@ func NewUserRepository(db *sql.DB) *UserRepository {
 	return &UserRepository{db: db}
 }
 
-func (r *UserRepository) Create(u *models.User) error {
+func (r *UserRepository) Create(u *model.User) error {
 	_, err := r.db.Exec(`
 		INSERT INTO users (id, username, password_hash)
 		VALUES (?, ?, ?)
@@ -23,35 +23,35 @@ func (r *UserRepository) Create(u *models.User) error {
 	return err
 }
 
-func (r *UserRepository) GetByID(id string) (*models.User, error) {
+func (r *UserRepository) GetByID(id string) (*model.User, error) {
 	row := r.db.QueryRow(`
 		SELECT id, username, password_hash, created_at
 		FROM users
 		WHERE id = ?
 	`, id)
 
-	var u models.User
+	var u model.User
 	if err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.CreatedAt); err != nil {
 		return nil, err
 	}
 	return &u, nil
 }
 
-func (r *UserRepository) GetByUsername(username string) (*models.User, error) {
+func (r *UserRepository) GetByUsername(username string) (*model.User, error) {
 	row := r.db.QueryRow(`
 		SELECT id, username, password_hash, created_at
 		FROM users
 		WHERE username = ?
 	`, username)
 
-	var u models.User
+	var u model.User
 	if err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.CreatedAt); err != nil {
 		return nil, err
 	}
 	return &u, nil
 }
 
-func (r *UserRepository) List() ([]models.User, error) {
+func (r *UserRepository) List() ([]model.User, error) {
 	rows, err := r.db.Query(`
 		SELECT id, username, password_hash, created_at
 		FROM users
@@ -62,9 +62,9 @@ func (r *UserRepository) List() ([]models.User, error) {
 	}
 	defer rows.Close()
 
-	var users []models.User
+	var users []model.User
 	for rows.Next() {
-		var u models.User
+		var u model.User
 		if err := rows.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.CreatedAt); err != nil {
 			return nil, err
 		}

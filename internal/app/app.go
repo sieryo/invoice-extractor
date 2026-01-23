@@ -5,11 +5,11 @@ import (
 	"log/slog"
 
 	"github.com/sieryo/invoice-extractor/internal/repository"
-	"github.com/sieryo/invoice-extractor/internal/services"
+	"github.com/sieryo/invoice-extractor/internal/service"
 )
 
 type App struct {
-	AuthService *services.AuthService
+	AuthService *service.AuthService
 	Logger      *slog.Logger
 }
 
@@ -19,7 +19,7 @@ func New(db *sql.DB, logger *slog.Logger) *App {
 	sessionRepo := repository.NewSessionRepository(db)
 
 	// services
-	authService := services.NewAuth(userRepo, sessionRepo, logger)
+	authService := service.NewAuth(userRepo, sessionRepo, logger)
 
 	return &App{
 		AuthService: authService,

@@ -1,4 +1,4 @@
-package services
+package service
 
 import (
 	"errors"
@@ -6,19 +6,19 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/sieryo/invoice-extractor/internal/models"
+	"github.com/sieryo/invoice-extractor/internal/model"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type UserRepository interface {
-	Create(u *models.User) error
-	GetByUsername(username string) (*models.User, error)
-	GetByID(id string) (*models.User, error)
+	Create(u *model.User) error
+	GetByUsername(username string) (*model.User, error)
+	GetByID(id string) (*model.User, error)
 }
 
 type SessionRepository interface {
-	Create(s *models.Session) error
-	GetByID(id string) (*models.Session, error)
+	Create(s *model.Session) error
+	GetByID(id string) (*model.Session, error)
 	Delete(id string) error
 }
 
@@ -53,7 +53,7 @@ func (s *AuthService) Register(username, password string) error {
 		return err
 	}
 
-	user := &models.User{
+	user := &model.User{
 		ID:           uuid.New().String(),
 		Username:     username,
 		PasswordHash: string(hashedPassword),
@@ -81,7 +81,7 @@ func (s *AuthService) Login(username, password string) (string, error) {
 	}
 
 	sessionID := uuid.New().String()
-	session := &models.Session{
+	session := &model.Session{
 		ID:        sessionID,
 		UserID:    user.ID,
 		ExpiresAt: time.Now().Add(24 * time.Hour * 30),
