@@ -4,12 +4,12 @@ import (
 	"database/sql"
 	"log/slog"
 
-	"github.com/sieryo/invoice-extractor/internal/repository"
-	"github.com/sieryo/invoice-extractor/internal/service"
+	"github.com/sieryo/invoice-extractor/internal/app/auth"
+	repository "github.com/sieryo/invoice-extractor/internal/infra/persistence/sqlite"
 )
 
 type App struct {
-	AuthService *service.AuthService
+	AuthService *auth.AuthService
 	Logger      *slog.Logger
 }
 
@@ -19,7 +19,7 @@ func New(db *sql.DB, logger *slog.Logger) *App {
 	sessionRepo := repository.NewSessionRepository(db)
 
 	// services
-	authService := service.NewAuth(userRepo, sessionRepo, logger)
+	authService := auth.NewService(userRepo, sessionRepo, logger)
 
 	return &App{
 		AuthService: authService,

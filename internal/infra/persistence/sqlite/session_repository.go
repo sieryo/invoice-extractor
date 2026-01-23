@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/sieryo/invoice-extractor/internal/model"
+	"github.com/sieryo/invoice-extractor/internal/app/session"
 )
 
 type SessionRepository struct {
@@ -15,7 +15,7 @@ func NewSessionRepository(db *sql.DB) *SessionRepository {
 	return &SessionRepository{db: db}
 }
 
-func (r *SessionRepository) Create(s *model.Session) error {
+func (r *SessionRepository) Create(s *session.Session) error {
 	_, err := r.db.Exec(`
 		INSERT INTO sessions (id, user_id, expires_at)
 		VALUES (?, ?, ?)
@@ -23,14 +23,14 @@ func (r *SessionRepository) Create(s *model.Session) error {
 	return err
 }
 
-func (r *SessionRepository) GetByID(id string) (*model.Session, error) {
+func (r *SessionRepository) GetByID(id string) (*session.Session, error) {
 	row := r.db.QueryRow(`
 		SELECT id, user_id, expires_at
 		FROM sessions
 		WHERE id = ?
 	`, id)
 
-	var s model.Session
+	var s session.Session
 	if err := row.Scan(&s.ID, &s.UserID, &s.ExpiresAt); err != nil {
 		return nil, err
 	}

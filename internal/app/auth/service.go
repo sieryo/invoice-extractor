@@ -1,4 +1,4 @@
-package service
+package auth
 
 import (
 	"errors"
@@ -6,29 +6,18 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/sieryo/invoice-extractor/internal/model"
+	"github.com/sieryo/invoice-extractor/internal/app/session"
+	"github.com/sieryo/invoice-extractor/internal/app/user"
 	"golang.org/x/crypto/bcrypt"
 )
 
-type UserRepository interface {
-	Create(u *model.User) error
-	GetByUsername(username string) (*model.User, error)
-	GetByID(id string) (*model.User, error)
-}
-
-type SessionRepository interface {
-	Create(s *model.Session) error
-	GetByID(id string) (*model.Session, error)
-	Delete(id string) error
-}
-
 type AuthService struct {
-	userRepo    UserRepository
-	sessionRepo SessionRepository
+	userRepo    user.UserRepository
+	sessionRepo session.SessionRepository
 	logger      *slog.Logger
 }
 
-func NewAuth(userRepo UserRepository, sessionRepo SessionRepository, logger *slog.Logger) *AuthService {
+func NewService(userRepo user.UserRepository, sessionRepo session.SessionRepository, logger *slog.Logger) *AuthService {
 	return &AuthService{
 		userRepo:    userRepo,
 		sessionRepo: sessionRepo,
@@ -53,7 +42,7 @@ func (s *AuthService) Register(username, password string) error {
 		return err
 	}
 
-	user := &model.User{
+	user := &user.User{
 		ID:           uuid.New().String(),
 		Username:     username,
 		PasswordHash: string(hashedPassword),
@@ -81,7 +70,7 @@ func (s *AuthService) Login(username, password string) (string, error) {
 	}
 
 	sessionID := uuid.New().String()
-	session := &model.Session{
+	session := &session.Session{
 		ID:        sessionID,
 		UserID:    user.ID,
 		ExpiresAt: time.Now().Add(24 * time.Hour * 30),
