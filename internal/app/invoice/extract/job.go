@@ -24,5 +24,18 @@ func (h *InvoiceExtractJob) Handle(ctx context.Context, job *job.Job) error {
 	}
 
 	err := h.extractor.ExtractBatch(ctx, payload.PDFPaths)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Stub: set dummy output payload
+	dummyOutput := map[string]interface{}{
+		"invoice_number": "INV-12345",
+		"total_amount":   150000,
+		"extracted_at":   "2023-01-01T12:00:00Z",
+	}
+	outputBytes, _ := json.Marshal(dummyOutput)
+	job.OutputPayload = outputBytes
+
+	return nil
 }

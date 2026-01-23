@@ -14,7 +14,7 @@ CREATE TABLE sessions (
 
 CREATE TABLE jobs (
 	id TEXT PRIMARY KEY,
-	user_id TEXT NOT NULL,
+	user_id TEXT,
 	type VARCHAR(100) NOT NULL,
 	status VARCHAR(100) NOT NULL,
 	progress INTEGER NOT NULL,

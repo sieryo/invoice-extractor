@@ -42,7 +42,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	appContainer := app.New(db, logger)
+	appContainer := app.New(db, logger, appDir)
 
 	server := http.NewServer(appContainer)
 	logger.Info("HTTP server starting", "addr", ":8080")

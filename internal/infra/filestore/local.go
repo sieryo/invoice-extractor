@@ -2,9 +2,12 @@ package filestore
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type LocalFileStore struct {
@@ -79,6 +82,22 @@ func (l *LocalFileStore) Save(
 	}
 
 	return finalPath, nil
+}
+
+func (l *LocalFileStore) Delete(path string) error {
+	cleanBase := filepath.Clean(l.baseDir)
+	cleanPath := filepath.Clean(path)
+
+	if !strings.HasPrefix(cleanPath, cleanBase) {
+		return fmt.Errorf("invalid path outside baseDir")
+	}
+
+	err := os.Remove(cleanPath)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+
+	return nil
 }
 
 func NewLocalFileStore(baseDir string) *LocalFileStore {

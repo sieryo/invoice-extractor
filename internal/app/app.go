@@ -4,10 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"log/slog"
+	"path/filepath"
 
 	"github.com/sieryo/invoice-extractor/internal/app/auth"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/extract"
 	"github.com/sieryo/invoice-extractor/internal/app/job"
+	"github.com/sieryo/invoice-extractor/internal/infra/filestore"
 	"github.com/sieryo/invoice-extractor/internal/infra/jobrunner"
 	repository "github.com/sieryo/invoice-extractor/internal/infra/persistence/sqlite"
 )
@@ -16,11 +18,15 @@ type App struct {
 	AuthService *auth.AuthService
 	JobService  *job.JobService
 	Logger      *slog.Logger
+	FileStore   filestore.FileStore
 
 	JobRunner *jobrunner.JobQueueRunner
 }
 
-func New(db *sql.DB, logger *slog.Logger) *App {
+func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
+	// infra
+	fs := filestore.NewLocalFileStore(filepath.Join(rootDir, "storage"))
+
 	// repositories
 	userRepo := repository.NewUserRepository(db)
 	sessionRepo := repository.NewSessionRepository(db)
@@ -47,6 +53,7 @@ func New(db *sql.DB, logger *slog.Logger) *App {
 		AuthService: authService,
 		JobService:  jobService,
 		Logger:      logger,
+		FileStore:   fs,
 		JobRunner:   jobRunner,
 	}
 }
