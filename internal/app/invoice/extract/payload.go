@@ -1,5 +1,5 @@
 package extract
 
-type InvoiceExtractPayload struct {
+type Payload struct {
 	PDFPaths []string
 }

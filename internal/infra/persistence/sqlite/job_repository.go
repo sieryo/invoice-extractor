@@ -1,0 +1,126 @@
+package repository
+
+import (
+	"context"
+	"database/sql"
+
+	"github.com/sieryo/invoice-extractor/internal/app/job"
+)
+
+type JobRepository struct {
+	db *sql.DB
+}
+
+func NewJobRepository(db *sql.DB) *JobRepository {
+	return &JobRepository{db: db}
+}
+
+func (r *JobRepository) Create(ctx context.Context, j *job.Job) error {
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO jobs (
+			id, user_id, type, status, progress, input_payload,
+			output_payload, error_message, created_at, started_at,
+			finished_at, expired_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		j.ID,
+		j.UserID,
+		j.Type,
+		j.Status,
+		j.Progress,
+		j.InputPayload,
+		j.OutputPayload,
+		j.ErrorMessage,
+		j.CreatedAt,
+		j.StartedAt,
+		j.FinishedAt,
+		j.ExpiredAt,
+	)
+	return err
+}
+
+func (r *JobRepository) FindByID(ctx context.Context, id string) (*job.Job, error) {
+	row := r.db.QueryRowContext(ctx, `
+		SELECT id, user_id, type, status, progress, input_payload,
+		       output_payload, error_message, created_at, started_at,
+		       finished_at, expired_at
+		FROM jobs
+		WHERE id = ?
+	`, id)
+
+	var j job.Job
+	var userID, errMsg sql.NullString
+	var startedAt, finishedAt, expiredAt sql.NullTime
+
+	if err := row.Scan(
+		&j.ID,
+		&userID,
+		&j.Type,
+		&j.Status,
+		&j.Progress,
+		&j.InputPayload,
+		&j.OutputPayload,
+		&errMsg,
+		&j.CreatedAt,
+		&startedAt,
+		&finishedAt,
+		&expiredAt,
+	); err != nil {
+		return nil, err
+	}
+
+	if userID.Valid {
+		j.UserID = &userID.String
+	}
+	if errMsg.Valid {
+		j.ErrorMessage = &errMsg.String
+	}
+	if startedAt.Valid {
+		j.StartedAt = &startedAt.Time
+	}
+	if finishedAt.Valid {
+		j.FinishedAt = &finishedAt.Time
+	}
+	if expiredAt.Valid {
+		j.ExpiredAt = &expiredAt.Time
+	}
+
+	return &j, nil
+}
+
+func (r *JobRepository) Update(ctx context.Context, j *job.Job) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE jobs SET
+			user_id = ?, type = ?, status = ?, progress = ?,
+			input_payload = ?, output_payload = ?, error_message = ?,
+			started_at = ?, finished_at = ?, expired_at = ?
+		WHERE id = ?
+	`,
+		j.UserID,
+		j.Type,
+		j.Status,
+		j.Progress,
+		j.InputPayload,
+		j.OutputPayload,
+		j.ErrorMessage,
+		j.StartedAt,
+		j.FinishedAt,
+		j.ExpiredAt,
+		j.ID,
+	)
+	return err
+}
+
+func (r *JobRepository) UpdateStatus(ctx context.Context, id string, status job.JobStatus) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE jobs SET status = ? WHERE id = ?
+	`, status, id)
+	return err
+}
+
+func (r *JobRepository) UpdateProgress(ctx context.Context, id string, progress int) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE jobs SET progress = ? WHERE id = ?
+	`, progress, id)
+	return err
+}

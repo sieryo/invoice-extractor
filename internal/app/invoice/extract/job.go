@@ -18,7 +18,7 @@ func NewInvoiceExtractJob(extractor *InvoiceExtractorService) *InvoiceExtractJob
 }
 
 func (h *InvoiceExtractJob) Handle(ctx context.Context, job *job.Job) error {
-	var payload InvoiceExtractPayload
+	var payload Payload
 	if err := json.Unmarshal(job.InputPayload, &payload); err != nil {
 		return err
 	}

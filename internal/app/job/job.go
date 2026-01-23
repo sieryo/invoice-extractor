@@ -7,11 +7,11 @@ import (
 type JobStatus string
 
 const (
-	JobPending  JobStatus = "pending"
-	JobRunning  JobStatus = "running"
-	JobSuccess  JobStatus = "success"
-	JobFailed   JobStatus = "failed"
-	JobCanceled JobStatus = "canceled"
+	JobPending  JobStatus = "PENDING"
+	JobRunning  JobStatus = "RUNNING"
+	JobSuccess  JobStatus = "SUCCESS"
+	JobFailed   JobStatus = "FAILED"
+	JobCanceled JobStatus = "CANCELED"
 )
 
 type Job struct {
