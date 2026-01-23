@@ -3,10 +3,12 @@ package invoiceextract
 import (
 	"context"
 	"encoding/json"
+
+	"github.com/sieryo/invoice-extractor/internal/service"
 )
 
 type InvoiceExtractJob struct {
-	extractor *InvoiceExtractorService
+	extractor *service.InvoiceExtractorService
 	jobRepo   JobRepository
 }
 

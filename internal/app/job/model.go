@@ -1,4 +1,4 @@
-package model
+package job
 
 import (
 	"context"
