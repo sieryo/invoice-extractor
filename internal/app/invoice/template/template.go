@@ -1,6 +1,6 @@
 package template
 
-import "github.com/sieryo/invoice-extractor/internal/domain/invoice"
+import "github.com/sieryo/invoice-extractor/internal/app/invoice"
 
 type Template interface {
 	Name() string
