@@ -1,1 +1,1 @@
-package registries
+package registry
