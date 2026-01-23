@@ -2,6 +2,8 @@ package services_test
 
 import (
 	"errors"
+	"io"
+	"log/slog"
 	"testing"
 
 	"github.com/google/uuid"
@@ -62,7 +64,8 @@ func (m *MockSessionRepository) Delete(id string) error {
 func TestRegister(t *testing.T) {
 	mockUserRepo := new(MockUserRepository)
 	mockSessionRepo := new(MockSessionRepository)
-	authService := services.NewAuth(mockUserRepo, mockSessionRepo)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	authService := services.NewAuth(mockUserRepo, mockSessionRepo, logger)
 
 	t.Run("Success", func(t *testing.T) {
 		username := "testuser"
@@ -93,7 +96,8 @@ func TestRegister(t *testing.T) {
 func TestLogin(t *testing.T) {
 	mockUserRepo := new(MockUserRepository)
 	mockSessionRepo := new(MockSessionRepository)
-	authService := services.NewAuth(mockUserRepo, mockSessionRepo)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	authService := services.NewAuth(mockUserRepo, mockSessionRepo, logger)
 
 	t.Run("Success", func(t *testing.T) {
 		username := "testuser"
@@ -150,7 +154,8 @@ func TestLogin(t *testing.T) {
 func TestLogout(t *testing.T) {
 	mockUserRepo := new(MockUserRepository)
 	mockSessionRepo := new(MockSessionRepository)
-	authService := services.NewAuth(mockUserRepo, mockSessionRepo)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	authService := services.NewAuth(mockUserRepo, mockSessionRepo, logger)
 
 	t.Run("Success", func(t *testing.T) {
 		sessionID := "session-id-123"
