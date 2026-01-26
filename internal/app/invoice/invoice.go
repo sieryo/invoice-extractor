@@ -13,9 +13,13 @@ type Invoice struct {
 	InvoiceDate *time.Time
 	PONumber    *string
 	Address     *string
-	Items       []Item
-	Total       *Money
-	Metadata    *InvoiceMetadata
+
+	Items    []Item
+	Subtotal *Money
+	VAT      *Money
+	Total    *Money
+
+	Metadata *InvoiceMetadata
 }
 
 type InvoiceMetadata struct {

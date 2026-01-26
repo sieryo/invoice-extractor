@@ -46,15 +46,19 @@ func (h *InvoiceExtractJob) Handle(ctx context.Context, j *job.Job) error {
 			fmt.Sprintf("invoice_%d.json", i),
 			data,
 		)
+
 		if err != nil {
-			h.fileStore.CleanupTemp(ctx, j.ID)
 			return err
 		}
 
 		if _, err := h.fileStore.Commit(ctx, tempObj); err != nil {
-			h.fileStore.CleanupTemp(ctx, j.ID)
 			return err
 		}
+	}
+
+	if err := h.fileStore.CleanupTemp(ctx, j.ID); err != nil {
+		return err
+
 	}
 
 	return nil

@@ -3,6 +3,7 @@ package http
 import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/sieryo/invoice-extractor/internal/app"
+	"github.com/sieryo/invoice-extractor/internal/pkg/logger"
 )
 
 type Server struct {
@@ -11,7 +12,10 @@ type Server struct {
 }
 
 func NewServer(appCtx *app.App) *Server {
-	f := fiber.New()
+	f := fiber.New(fiber.Config{
+		BodyLimit:    50 * 1024 * 1024,
+		ErrorHandler: logger.ErrorHandler(appCtx.Logger),
+	})
 
 	s := &Server{
 		app:    f,

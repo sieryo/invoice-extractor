@@ -12,7 +12,13 @@ import (
 )
 
 var itemRegex = regexp.MustCompile(
-	`^\d+\s+[\w-]+\s+(?P<name>.+?)\s{2,}(?P<qty>\d+)\s+(?P<unit>[\d.,]+)\s+(?P<total>[\d.,]+)$`,
+	`^\d+\s+[\w-]+\s+(?P<name>.+?)\s{2,}(?P<qty>[\d.]+)\s+(?P<unit>[\d.,]+)\s+(?P<total>[\d.,]+)$`,
+)
+
+var (
+	subtotalRegex = regexp.MustCompile(`Subtotal\s+(?P<amount>[\d.,]+)`)
+	vatRegex      = regexp.MustCompile(`^VAT\s+(?P<amount>[\d.,]+)`)
+	totalRegex    = regexp.MustCompile(`^TOTAL\s+(?P<amount>[\d.,]+)`)
 )
 
 /*
@@ -23,6 +29,7 @@ MAIN PARSER
 
 func (t *SeaMakeupTemplate) Parse(raw string) (*invoice.Invoice, error) {
 	norm := t.Normalize(raw)
+
 	lines := strings.Split(norm, "\n")
 
 	inv := &invoice.Invoice{}
@@ -32,15 +39,14 @@ func (t *SeaMakeupTemplate) Parse(raw string) (*invoice.Invoice, error) {
 
 	for _, line := range lines {
 
-		// Stop header parsing when table starts
+		// detect table header
 		if isTableHeader(line) {
 			inTable = true
 			continue
 		}
 
+		// ===== HEADER =====
 		if !inTable {
-
-			// HEADER FIELDS WITH POSSIBLE ADDRESS
 			switch {
 			case strings.HasPrefix(line, "Invoice No"):
 				val, addr := extractValueAndAddress(line)
@@ -73,18 +79,43 @@ func (t *SeaMakeupTemplate) Parse(raw string) (*invoice.Invoice, error) {
 			continue
 		}
 
-		// TABLE ITEMS
+		// ===== TABLE & SUMMARY =====
+
+		// items
 		if item, err := parseItem(line); err == nil {
 			inv.Items = append(inv.Items, *item)
+			continue
+		}
+
+		// subtotal
+		if inv.Subtotal == nil {
+			if m, ok := parseSummaryMoney(subtotalRegex, line); ok {
+				inv.Subtotal = m
+				continue
+			}
+		}
+
+		// VAT
+		if inv.VAT == nil {
+			if m, ok := parseSummaryMoney(vatRegex, line); ok {
+				inv.VAT = m
+				continue
+			}
+		}
+
+		// TOTAL
+		if inv.Total == nil {
+			if m, ok := parseSummaryMoney(totalRegex, line); ok {
+				inv.Total = m
+				continue
+			}
 		}
 	}
 
+	// ===== ADDRESS =====
 	if len(addressParts) > 0 {
 		addr := strings.Join(addressParts, ", ")
-
-		// cleanup ringan label yang kebawa
 		addr = cleanAddress(addr)
-
 		inv.Address = &addr
 	}
 
@@ -124,6 +155,47 @@ func extractValueAndAddress(line string) (*string, string) {
 	}
 
 	return &val, ""
+}
+
+func matchGroup(
+	re *regexp.Regexp,
+	match []string,
+	name string,
+) string {
+
+	if re == nil || match == nil {
+		return ""
+	}
+
+	idx := re.SubexpIndex(name)
+	if idx < 0 || idx >= len(match) {
+		return ""
+	}
+
+	return strings.TrimSpace(match[idx])
+}
+
+func parseSummaryMoney(
+	re *regexp.Regexp,
+	line string,
+) (*invoice.Money, bool) {
+
+	m := re.FindStringSubmatch(line)
+	if m == nil {
+		return nil, false
+	}
+
+	amount := matchGroup(re, m, "amount")
+	if amount == "" {
+		return nil, false
+	}
+
+	money, err := parseMoney(amount)
+	if err != nil {
+		return nil, false
+	}
+
+	return money, true
 }
 
 func cleanAddress(addr string) string {
@@ -183,25 +255,25 @@ func parseItem(line string) (*invoice.Item, error) {
 		return nil, errors.New("not an item line")
 	}
 
-	name := strings.TrimSpace(m[itemRegex.SubexpIndex("name")])
-	qtyStr := m[itemRegex.SubexpIndex("qty")]
-	unitStr := m[itemRegex.SubexpIndex("unit")]
-	totalStr := m[itemRegex.SubexpIndex("total")]
-
-	qty, err := strconv.Atoi(qtyStr)
+	qtyRaw := matchGroup(itemRegex, m, "qty")
+	qty, err := parseQty(qtyRaw)
 	if err != nil {
 		return nil, err
 	}
 
-	unit, err := parseMoney(unitStr)
+	unitRaw := matchGroup(itemRegex, m, "unit")
+	unit, err := parseMoney(unitRaw)
 	if err != nil {
 		return nil, err
 	}
 
-	total, err := parseMoney(totalStr)
+	totalRaw := matchGroup(itemRegex, m, "total")
+	total, err := parseMoney(totalRaw)
 	if err != nil {
 		return nil, err
 	}
+
+	name := matchGroup(itemRegex, m, "name")
 
 	return &invoice.Item{
 		Name:        name,
@@ -209,4 +281,9 @@ func parseItem(line string) (*invoice.Item, error) {
 		UnitPrice:   unit,
 		TotalAmount: total,
 	}, nil
+}
+
+func parseQty(raw string) (int, error) {
+	clean := strings.ReplaceAll(raw, ".", "")
+	return strconv.Atoi(clean)
 }
