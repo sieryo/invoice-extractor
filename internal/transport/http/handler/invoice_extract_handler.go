@@ -9,15 +9,15 @@ import (
 	"github.com/google/uuid"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/extract"
 	"github.com/sieryo/invoice-extractor/internal/app/job"
-	"github.com/sieryo/invoice-extractor/internal/infra/filestore"
+	"github.com/sieryo/invoice-extractor/internal/app/shared"
 )
 
 type InvoiceExtractHandler struct {
 	jobService *job.JobService
-	fileStore  filestore.FileStore
+	fileStore  shared.FileStore
 }
 
-func NewInvoiceExtractHandler(jobService *job.JobService, fileStore filestore.FileStore) *InvoiceExtractHandler {
+func NewInvoiceExtractHandler(jobService *job.JobService, fileStore shared.FileStore) *InvoiceExtractHandler {
 	return &InvoiceExtractHandler{
 		jobService: jobService,
 		fileStore:  fileStore,

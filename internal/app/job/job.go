@@ -1,8 +1,6 @@
 package job
 
-import (
-	"time"
-)
+import "time"
 
 type JobType string
 
@@ -19,6 +17,19 @@ func (t JobType) IsValid() bool {
 	}
 }
 
+type OutputManifest struct {
+	Version int       `json:"version"`
+	JobType JobType   `json:"job_type"`
+	Summary Summary   `json:"summary"`
+	Files   []JobFile `json:"files"`
+}
+
+type Summary struct {
+	TotalFiles int `json:"total_files"`
+	Ready      int `json:"ready"`
+	Failed     int `json:"failed"`
+}
+
 type JobStatus string
 
 const (
@@ -30,32 +41,32 @@ const (
 )
 
 type Job struct {
-	ID            string
-	UserID        *string
-	Type          JobType
-	Status        JobStatus
-	Progress      int
-	InputPayload  []byte // JSON
-	OutputPayload []byte // JSON
-	ErrorMessage  *string
+	ID             string          `json:"id"`
+	UserID         *string         `json:"user_id,omitempty"`
+	Type           JobType         `json:"type"`
+	Status         JobStatus       `json:"status"`
+	Progress       int             `json:"progress"`
+	InputPayload   []byte          `json:"input_payload,omitempty"`
+	OutputManifest *OutputManifest `json:"output_manifest,omitempty"`
+	ErrorMessage   *string         `json:"error_message,omitempty"`
 
-	CreatedAt  time.Time
-	StartedAt  *time.Time
-	FinishedAt *time.Time
-	ExpiredAt  *time.Time
+	CreatedAt  time.Time  `json:"created_at"`
+	StartedAt  *time.Time `json:"started_at,omitempty"`
+	FinishedAt *time.Time `json:"finished_at,omitempty"`
+	ExpiredAt  *time.Time `json:"expired_at,omitempty"`
 }
 
 type JobFileStatus string
 
 const (
-	JobFilePending JobFileStatus = "pending" // uploaded
-	JobFileReady   JobFileStatus = "ready"   // extracted
+	JobFilePending JobFileStatus = "pending"
+	JobFileReady   JobFileStatus = "ready"
 	JobFileFailed  JobFileStatus = "failed"
 )
 
 type JobFile struct {
-	ID     string
-	Name   string
-	URI    string
-	Status JobFileStatus
+	ID     string        `json:"id"`
+	Name   string        `json:"name"`
+	URI    string        `json:"uri"`
+	Status JobFileStatus `json:"status"`
 }

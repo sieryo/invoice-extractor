@@ -42,13 +42,13 @@ func (i *InvoiceExtractorService) ExtractBatch(
 			defer wg.Done()
 
 			if _, err := os.Stat(p); err != nil {
-				errChan <- BatchExtractError{File: p, Err: err}
+				errChan <- BatchExtractError{FileID: file.ID, FileName: file.Name, Err: err}
 				return
 			}
 
 			text, err := pdftool.ExtractText(ctx, p, pdftool.DefaultOptions())
 			if err != nil {
-				errChan <- BatchExtractError{File: p, Err: err}
+				errChan <- BatchExtractError{FileID: file.ID, FileName: file.Name, Err: err}
 				return
 			}
 
@@ -58,8 +58,9 @@ func (i *InvoiceExtractorService) ExtractBatch(
 				t, ok := i.templateRegistry.GetByIdentifier(*templateID)
 				if !ok {
 					errChan <- BatchExtractError{
-						File: p,
-						Err:  fmt.Errorf("unknown template: %s", *templateID),
+						FileID:   file.ID,
+						FileName: file.Name,
+						Err:      fmt.Errorf("unknown template: %s", *templateID),
 					}
 					return
 				}
@@ -68,8 +69,9 @@ func (i *InvoiceExtractorService) ExtractBatch(
 				t, err := i.templateRegistry.Detect(text)
 				if err != nil {
 					errChan <- BatchExtractError{
-						File: p,
-						Err:  fmt.Errorf("no template matched"),
+						FileID:   file.ID,
+						FileName: file.Name,
+						Err:      fmt.Errorf("no template matched"),
 					}
 					return
 				}
@@ -78,7 +80,8 @@ func (i *InvoiceExtractorService) ExtractBatch(
 
 			inv, err := tpl.Parse(text)
 			if err != nil {
-				errChan <- BatchExtractError{File: p, Err: err}
+				errChan <- BatchExtractError{FileID: file.ID,
+					FileName: file.Name, Err: err}
 				return
 			}
 

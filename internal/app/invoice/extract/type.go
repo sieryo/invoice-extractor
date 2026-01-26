@@ -3,8 +3,9 @@ package extract
 import "github.com/sieryo/invoice-extractor/internal/app/invoice"
 
 type BatchExtractError struct {
-	File string
-	Err  error
+	FileID   string
+	FileName string
+	Err      error
 }
 
 type BatchExtractResult struct {

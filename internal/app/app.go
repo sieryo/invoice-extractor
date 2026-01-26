@@ -11,6 +11,7 @@ import (
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/template"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/template/seamakeup"
 	"github.com/sieryo/invoice-extractor/internal/app/job"
+	"github.com/sieryo/invoice-extractor/internal/app/shared"
 	"github.com/sieryo/invoice-extractor/internal/infra/filestore"
 	"github.com/sieryo/invoice-extractor/internal/infra/jobrunner"
 	repository "github.com/sieryo/invoice-extractor/internal/infra/persistence/sqlite"
@@ -20,7 +21,7 @@ type App struct {
 	AuthService *auth.AuthService
 	JobService  *job.JobService
 	Logger      *slog.Logger
-	FileStore   filestore.FileStore
+	FileStore   shared.FileStore
 
 	JobRunner *jobrunner.JobQueueRunner
 }

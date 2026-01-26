@@ -1,4 +1,4 @@
-package filestore
+package shared
 
 import (
 	"context"
@@ -12,6 +12,7 @@ type TempObject struct {
 }
 
 type FinalObject struct {
+	ID   string
 	Name string
 	Path string
 }
@@ -28,6 +29,12 @@ type FileStore interface {
 		ctx context.Context,
 		obj TempObject,
 	) (FinalObject, error)
+
+	Read(
+		ctx context.Context,
+		jobID string,
+		name string,
+	) ([]byte, error)
 
 	CleanupTemp(ctx context.Context, jobID string) error
 }

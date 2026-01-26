@@ -49,3 +49,11 @@ func (s *JobService) FinishJob(ctx context.Context, j *Job, success bool, errMsg
 	}
 	return s.repo.Update(ctx, j)
 }
+
+func (s *JobService) GetJobByID(ctx context.Context, id string) (*Job, error) {
+	return s.repo.FindByID(ctx, id)
+}
+
+func (s *JobService) ListJobs(ctx context.Context) ([]*Job, error) {
+	return s.repo.List(ctx)
+}

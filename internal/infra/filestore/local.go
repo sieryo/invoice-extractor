@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/google/uuid"
+	"github.com/sieryo/invoice-extractor/internal/app/shared"
 )
 
 type LocalFileStore struct {
@@ -18,7 +19,7 @@ func (l *LocalFileStore) SaveTemp(
 	tempDirID string,
 	name string,
 	data []byte,
-) (TempObject, error) {
+) (shared.TempObject, error) {
 
 	fileID := uuid.New().String()
 	safeName := fmt.Sprintf("%s_%s", fileID, name)
@@ -27,20 +28,20 @@ func (l *LocalFileStore) SaveTemp(
 	tempPath := filepath.Join(tempDir, safeName)
 
 	if err := os.MkdirAll(tempDir, 0755); err != nil {
-		return TempObject{}, err
+		return shared.TempObject{}, err
 	}
 
 	select {
 	case <-ctx.Done():
-		return TempObject{}, ctx.Err()
+		return shared.TempObject{}, ctx.Err()
 	default:
 	}
 
 	if err := os.WriteFile(tempPath, data, 0644); err != nil {
-		return TempObject{}, err
+		return shared.TempObject{}, err
 	}
 
-	return TempObject{
+	return shared.TempObject{
 		ID:        fileID,
 		TempDirID: tempDirID,
 		Name:      name,
@@ -50,27 +51,28 @@ func (l *LocalFileStore) SaveTemp(
 
 func (l *LocalFileStore) Commit(
 	ctx context.Context,
-	obj TempObject,
-) (FinalObject, error) {
+	obj shared.TempObject,
+) (shared.FinalObject, error) {
 
 	finalDir := filepath.Join(l.baseDir, "jobs", obj.TempDirID)
 	finalPath := filepath.Join(finalDir, obj.Name)
 
 	select {
 	case <-ctx.Done():
-		return FinalObject{}, ctx.Err()
+		return shared.FinalObject{}, ctx.Err()
 	default:
 	}
 
 	if err := os.MkdirAll(finalDir, 0755); err != nil {
-		return FinalObject{}, err
+		return shared.FinalObject{}, err
 	}
 
 	if err := os.Rename(obj.Path, finalPath); err != nil {
-		return FinalObject{}, err
+		return shared.FinalObject{}, err
 	}
 
-	return FinalObject{
+	return shared.FinalObject{
+		ID:   obj.ID,
 		Name: obj.Name,
 		Path: finalPath,
 	}, nil
@@ -89,6 +91,22 @@ func (l *LocalFileStore) CleanupTemp(
 
 	tempDir := filepath.Join(l.baseDir, "temp", jobID)
 	return os.RemoveAll(tempDir)
+}
+
+func (l *LocalFileStore) Read(
+	ctx context.Context,
+	jobID string,
+	name string,
+) ([]byte, error) {
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	path := filepath.Join(l.baseDir, "jobs", jobID, name)
+	return os.ReadFile(path)
 }
 
 func NewLocalFileStore(baseDir string) *LocalFileStore {
