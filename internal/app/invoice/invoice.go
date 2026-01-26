@@ -9,10 +9,10 @@ type FileRef struct {
 }
 
 type Invoice struct {
-	InvoiceNo   *string
+	InvoiceNo   string
 	InvoiceDate *time.Time
-	PONumber    *string
-	Address     *string
+	PONumber    string
+	Address     string
 
 	Items    []Item
 	Subtotal *Money

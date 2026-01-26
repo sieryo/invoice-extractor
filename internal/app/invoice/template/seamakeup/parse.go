@@ -50,9 +50,10 @@ func (t *SeaMakeupTemplate) Parse(raw string) (*invoice.Invoice, error) {
 			switch {
 			case strings.HasPrefix(line, "Invoice No"):
 				val, addr := extractValueAndAddress(line)
-				inv.InvoiceNo = val
+				invoiceNo := cleanString(val)
+				inv.InvoiceNo = invoiceNo
 				if addr != "" {
-					addressParts = append(addressParts, addr)
+					addressParts = append(addressParts, cleanString(addr))
 				}
 
 			case strings.HasPrefix(line, "Invoice Date"):
@@ -64,7 +65,7 @@ func (t *SeaMakeupTemplate) Parse(raw string) (*invoice.Invoice, error) {
 
 			case strings.HasPrefix(line, "Po. Number"):
 				val, addr := extractValueAndAddress(line)
-				inv.PONumber = val
+				inv.PONumber = cleanString(val)
 				if addr != "" {
 					addressParts = append(addressParts, addr)
 				}
@@ -116,7 +117,8 @@ func (t *SeaMakeupTemplate) Parse(raw string) (*invoice.Invoice, error) {
 	if len(addressParts) > 0 {
 		addr := strings.Join(addressParts, ", ")
 		addr = cleanAddress(addr)
-		inv.Address = &addr
+		addr = cleanString(addr)
+		inv.Address = addr
 	}
 
 	return inv, nil
@@ -132,29 +134,34 @@ HELPERS
 // Example:
 // "Invoice No  :  SMB2025  Kota Jakarta"
 // => "SMB2025", "Kota Jakarta"
-func extractValueAndAddress(line string) (*string, string) {
+func extractValueAndAddress(line string) (string, string) {
 	idx := strings.Index(line, ":")
 	if idx == -1 {
-		return nil, ""
+		return "", ""
 	}
 
 	rest := strings.TrimSpace(line[idx+1:])
 	if rest == "" {
-		return nil, ""
+		return "", ""
 	}
 
 	parts := regexp.MustCompile(`\s{2,}`).Split(rest, 2)
 
 	val := strings.TrimSpace(parts[0])
 	if val == "" {
-		return nil, ""
+		return "", ""
 	}
 
 	if len(parts) == 2 {
-		return &val, strings.TrimSpace(parts[1])
+		return val, strings.TrimSpace(parts[1])
 	}
 
-	return &val, ""
+	return val, ""
+}
+
+func cleanString(raw string) string {
+
+	return helper.CleanString(raw)
 }
 
 func matchGroup(
@@ -212,12 +219,12 @@ func cleanAddress(addr string) string {
 	return addr
 }
 
-func parseDateValue(val *string) *time.Time {
-	if val == nil {
+func parseDateValue(val string) *time.Time {
+	if val == "" {
 		return nil
 	}
 
-	t, err := helper.ParseDateValue(*val)
+	t, err := helper.ParseDateValue(val)
 	if err != nil {
 		return nil
 	}
@@ -273,7 +280,7 @@ func parseItem(line string) (*invoice.Item, error) {
 		return nil, err
 	}
 
-	name := matchGroup(itemRegex, m, "name")
+	name := cleanString(matchGroup(itemRegex, m, "name"))
 
 	return &invoice.Item{
 		Name:        name,
