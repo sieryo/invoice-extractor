@@ -3,39 +3,58 @@ package extract
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/sieryo/invoice-extractor/internal/app/job"
+	"github.com/sieryo/invoice-extractor/internal/infra/filestore"
 )
 
+// INI HANDLER
 type InvoiceExtractJob struct {
 	extractor *InvoiceExtractorService
+	fileStore filestore.FileStore
 }
 
-func NewInvoiceExtractJob(extractor *InvoiceExtractorService) *InvoiceExtractJob {
+func NewInvoiceExtractJob(extractor *InvoiceExtractorService, fileStore filestore.FileStore) *InvoiceExtractJob {
 	return &InvoiceExtractJob{
+		fileStore: fileStore,
 		extractor: extractor,
 	}
 }
 
-func (h *InvoiceExtractJob) Handle(ctx context.Context, job *job.Job) error {
+func (h *InvoiceExtractJob) Handle(ctx context.Context, j *job.Job) error {
 	var payload Payload
-	if err := json.Unmarshal(job.InputPayload, &payload); err != nil {
+	if err := json.Unmarshal(j.InputPayload, &payload); err != nil {
 		return err
 	}
 
-	err := h.extractor.ExtractBatch(ctx, payload.PDFPaths)
+	result, err := h.extractor.ExtractBatch(ctx, payload.PDFPaths, payload.Template)
 	if err != nil {
+		// h.fileStore.CleanupTemp(ctx, j.ID)
 		return err
 	}
 
-	// Stub: set dummy output payload
-	dummyOutput := map[string]interface{}{
-		"invoice_number": "INV-12345",
-		"total_amount":   150000,
-		"extracted_at":   "2023-01-01T12:00:00Z",
+	invoices := result.Invoices
+
+	for i, inv := range invoices {
+		data, _ := json.Marshal(inv)
+
+		tempObj, err := h.fileStore.SaveTemp(
+			ctx,
+			j.ID,
+			fmt.Sprintf("invoice_%d.json", i),
+			data,
+		)
+		if err != nil {
+			h.fileStore.CleanupTemp(ctx, j.ID)
+			return err
+		}
+
+		if _, err := h.fileStore.Commit(ctx, tempObj); err != nil {
+			h.fileStore.CleanupTemp(ctx, j.ID)
+			return err
+		}
 	}
-	outputBytes, _ := json.Marshal(dummyOutput)
-	job.OutputPayload = outputBytes
 
 	return nil
 }

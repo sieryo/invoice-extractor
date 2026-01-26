@@ -73,6 +73,8 @@ func (r *JobQueueRunner) executeJob(ctx context.Context, j *job.Job) {
 			ErrorMessage: &errMsg,
 			FinishedAt:   ptrTimeNow(),
 		})
+
+		fmt.Printf("Err : %s", errMsg)
 	} else {
 		_ = r.repo.Update(ctx, &job.Job{
 			ID:         j.ID,

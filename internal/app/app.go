@@ -8,6 +8,8 @@ import (
 
 	"github.com/sieryo/invoice-extractor/internal/app/auth"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/extract"
+	"github.com/sieryo/invoice-extractor/internal/app/invoice/template"
+	"github.com/sieryo/invoice-extractor/internal/app/invoice/template/seamakeup"
 	"github.com/sieryo/invoice-extractor/internal/app/job"
 	"github.com/sieryo/invoice-extractor/internal/infra/filestore"
 	"github.com/sieryo/invoice-extractor/internal/infra/jobrunner"
@@ -24,6 +26,10 @@ type App struct {
 }
 
 func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
+	// Registry
+	templateRegistry := template.NewRegistry()
+	templateRegistry.Register(seamakeup.NewSeaMakeupTemplate())
+
 	// infra
 	fs := filestore.NewLocalFileStore(filepath.Join(rootDir, "storage"))
 
@@ -34,15 +40,15 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 
 	// services
 	authService := auth.NewService(userRepo, sessionRepo, logger)
-	invoiceExtractService := extract.NewInvoiceExtractService()
+	invoiceExtractService := extract.NewInvoiceExtractService(templateRegistry)
 
 	// dispatcher & handler
 	dispatcher := jobrunner.NewDispatcher()
-	invoiceHandler := extract.NewInvoiceExtractJob(invoiceExtractService)
+	invoiceHandler := extract.NewInvoiceExtractJob(invoiceExtractService, fs)
 
 	dispatcher.Register("INVOICE_EXTRACT", invoiceHandler)
 
-	jobRunner := jobrunner.NewJobQueueRunner(jobRepo, dispatcher, 5)
+	jobRunner := jobrunner.NewJobQueueRunner(jobRepo, dispatcher, 2)
 	ctx := context.Background()
 	jobRunner.StartPool(ctx)
 

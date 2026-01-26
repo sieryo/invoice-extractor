@@ -1,13 +1,13 @@
 package handler
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
-	"path/filepath"
+	"io"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"github.com/sieryo/invoice-extractor/internal/app/invoice/extract"
 	"github.com/sieryo/invoice-extractor/internal/app/job"
 	"github.com/sieryo/invoice-extractor/internal/infra/filestore"
 )
@@ -36,48 +36,56 @@ func (h *InvoiceExtractHandler) Handle(c *fiber.Ctx) error {
 	}
 
 	jobID := uuid.New().String()
-	jobDir := filepath.Join("jobs", jobID, "input")
 
-	var savedPaths []string
+	ctx := c.Context()
+
+	var tempPaths []string
 
 	for _, file := range files {
 		src, err := file.Open()
 		if err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to open uploaded file"})
+			return c.Status(500).JSON(fiber.Map{"error": "failed to open file"})
 		}
 		defer src.Close()
 
-		savedPath, err := h.fileStore.Save(c.Context(), filepath.Join(jobDir, file.Filename), src)
+		data, err := io.ReadAll(src)
 		if err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to save file"})
+			return c.Status(500).JSON(fiber.Map{"error": "failed to read file"})
 		}
-		savedPaths = append(savedPaths, savedPath)
+
+		tmp, err := h.fileStore.SaveTemp(ctx, jobID, file.Filename, data)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "failed to save file"})
+		}
+
+		tempPaths = append(tempPaths, tmp.Path)
 	}
 
-	payload := map[string]interface{}{
-		"pdf_paths": savedPaths,
+	payloadStruct := extract.Payload{
+		PDFPaths: tempPaths,
 	}
-	payloadBytes, _ := json.Marshal(payload)
+
+	payloadBytes, err := json.Marshal(payloadStruct)
+	if err != nil {
+		return err
+	}
 
 	newJob := &job.Job{
 		ID:           jobID,
-		Type:         "INVOICE_EXTRACT",
+		Type:         job.JobTypeInvoiceExtract,
 		InputPayload: payloadBytes,
 	}
 
-	if err := h.jobService.CreateJob(c.Context(), newJob); err != nil {
+	if err := h.jobService.CreateJob(ctx, newJob); err != nil {
 		fmt.Printf("%s", err.Error())
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create job"})
 	}
 
-	go func() {
-
-		_ = h.jobService.StartJob(context.Background(), newJob)
-	}()
+	// Ini harusnya async
+	_ = h.jobService.StartJob(ctx, newJob)
 
 	return c.Status(fiber.StatusAccepted).JSON(fiber.Map{
 		"job_id":  jobID,
 		"message": "job submitted successfully",
-		"files":   len(savedPaths),
 	})
 }

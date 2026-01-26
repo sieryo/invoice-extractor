@@ -2,102 +2,93 @@ package filestore
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
-	"strings"
+
+	"github.com/google/uuid"
 )
 
 type LocalFileStore struct {
 	baseDir string
 }
 
-func (l *LocalFileStore) Save(
+func (l *LocalFileStore) SaveTemp(
 	ctx context.Context,
+	jobID string,
 	name string,
-	r io.Reader,
-) (string, error) {
+	data []byte,
+) (TempObject, error) {
 
-	finalPath := filepath.Join(l.baseDir, name)
-	tmpPath := finalPath + ".tmp"
+	fileID := uuid.New().String()
+	safeName := fmt.Sprintf("%s_%s", fileID, name)
 
-	if err := os.MkdirAll(filepath.Dir(finalPath), 0755); err != nil {
-		return "", err
+	tempDir := filepath.Join(l.baseDir, "temp", jobID)
+	tempPath := filepath.Join(tempDir, safeName)
+
+	if err := os.MkdirAll(tempDir, 0755); err != nil {
+		return TempObject{}, err
 	}
 
-	f, err := os.Create(tmpPath)
-	if err != nil {
-		return "", err
+	select {
+	case <-ctx.Done():
+		return TempObject{}, ctx.Err()
+	default:
 	}
 
-	writeErr := error(nil)
-
-	defer func() {
-		if writeErr != nil {
-			_ = f.Close()
-			_ = os.Remove(tmpPath)
-		}
-	}()
-
-	buf := make([]byte, 32*1024)
-
-	for {
-		if err := ctx.Err(); err != nil {
-			writeErr = err
-			return "", err
-		}
-
-		n, readErr := r.Read(buf)
-		if n > 0 {
-			if _, err := f.Write(buf[:n]); err != nil {
-				writeErr = err
-				return "", err
-			}
-		}
-
-		if readErr != nil {
-			if readErr == io.EOF {
-				break
-			}
-			writeErr = readErr
-			return "", readErr
-		}
+	if err := os.WriteFile(tempPath, data, 0644); err != nil {
+		return TempObject{}, err
 	}
 
-	if err = f.Sync(); err != nil {
-		writeErr = err
-		return "", err
-	}
-
-	if err = f.Close(); err != nil {
-		writeErr = err
-		return "", err
-	}
-
-	if err = os.Rename(tmpPath, finalPath); err != nil {
-		writeErr = err
-		return "", err
-	}
-
-	return finalPath, nil
+	return TempObject{
+		ID:    fileID,
+		JobID: jobID,
+		Name:  name,
+		Path:  tempPath,
+	}, nil
 }
 
-func (l *LocalFileStore) Delete(path string) error {
-	cleanBase := filepath.Clean(l.baseDir)
-	cleanPath := filepath.Clean(path)
+func (l *LocalFileStore) Commit(
+	ctx context.Context,
+	obj TempObject,
+) (FinalObject, error) {
 
-	if !strings.HasPrefix(cleanPath, cleanBase) {
-		return fmt.Errorf("invalid path outside baseDir")
+	finalDir := filepath.Join(l.baseDir, "jobs", obj.JobID)
+	finalPath := filepath.Join(finalDir, obj.Name)
+
+	select {
+	case <-ctx.Done():
+		return FinalObject{}, ctx.Err()
+	default:
 	}
 
-	err := os.Remove(cleanPath)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
+	if err := os.MkdirAll(finalDir, 0755); err != nil {
+		return FinalObject{}, err
 	}
 
-	return nil
+	if err := os.Rename(obj.Path, finalPath); err != nil {
+		return FinalObject{}, err
+	}
+
+	return FinalObject{
+		Name: obj.Name,
+		Path: finalPath,
+	}, nil
+}
+
+func (l *LocalFileStore) CleanupTemp(
+	ctx context.Context,
+	jobID string,
+) error {
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	tempDir := filepath.Join(l.baseDir, "temp", jobID)
+	return os.RemoveAll(tempDir)
 }
 
 func NewLocalFileStore(baseDir string) *LocalFileStore {

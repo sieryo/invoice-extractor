@@ -4,6 +4,21 @@ import (
 	"time"
 )
 
+type JobType string
+
+const (
+	JobTypeInvoiceExtract JobType = "INVOICE_EXTRACT"
+)
+
+func (t JobType) IsValid() bool {
+	switch t {
+	case JobTypeInvoiceExtract:
+		return true
+	default:
+		return false
+	}
+}
+
 type JobStatus string
 
 const (
@@ -17,7 +32,7 @@ const (
 type Job struct {
 	ID            string
 	UserID        *string
-	Type          string
+	Type          JobType
 	Status        JobStatus
 	Progress      int
 	InputPayload  []byte // JSON

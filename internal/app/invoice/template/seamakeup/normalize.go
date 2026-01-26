@@ -5,71 +5,28 @@ import (
 	"strings"
 )
 
-var (
-	itemStartRe  = regexp.MustCompile(`^\d+\s+\d{4,}`)
-	numberLineRe = regexp.MustCompile(`\d+[,\.]\d+`)
-)
-
-func normalizeSeaMakeup(raw string) string {
+func (t *SeaMakeupTemplate) Normalize(raw string) string {
+	// 1. Normalisasi newline
 	raw = strings.ReplaceAll(raw, "\r\n", "\n")
+	raw = strings.ReplaceAll(raw, "\r", "\n")
 
 	lines := strings.Split(raw, "\n")
-	tmp := make([]string, 0, len(lines))
+	var cleaned []string
 
-	// --- PASS 1: normalize header rows ---
-	for i := 0; i < len(lines); i++ {
-		line := strings.TrimSpace(lines[i])
+	for _, line := range lines {
+		// 2. Trim kiri kanan
+		line = strings.TrimSpace(line)
+
+		// 3. Skip baris kosong total
 		if line == "" {
 			continue
 		}
 
-		// gabung "(Excl. VAT)" ke baris sebelumnya
-		if line == "(Excl. VAT)" && len(tmp) > 0 {
-			tmp[len(tmp)-1] += " (Excl. VAT)"
-			continue
-		}
+		line = regexp.MustCompile(`\s{2,}`).ReplaceAllString(line, "  ")
 
-		tmp = append(tmp, line)
+		cleaned = append(cleaned, line)
 	}
 
-	// --- PASS 2: normalize item rows ---
-	out := make([]string, 0, len(tmp))
-
-	var buf string
-	inItems := false
-
-	for _, line := range tmp {
-
-		if strings.HasPrefix(line, "No  SKU") {
-			inItems = true
-			out = append(out, line)
-			continue
-		}
-
-		if !inItems {
-			out = append(out, line)
-			continue
-		}
-
-		if itemStartRe.MatchString(line) {
-			if buf != "" {
-				out = append(out, buf)
-			}
-			buf = line
-			continue
-		}
-
-		if buf != "" {
-			buf += " " + line
-			continue
-		}
-
-		out = append(out, line)
-	}
-
-	if buf != "" {
-		out = append(out, buf)
-	}
-
-	return strings.Join(out, "\n")
+	// 5. Gabungkan kembali
+	return strings.Join(cleaned, "\n")
 }

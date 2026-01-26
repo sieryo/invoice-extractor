@@ -2,13 +2,26 @@ package invoice
 
 import "time"
 
-// DEFAULT INVOICE
+type FileRef struct {
+	ID    string
+	Name  string
+	Store string
+}
+
 type Invoice struct {
 	InvoiceNo   *string
 	InvoiceDate *time.Time
 	PONumber    *string
+	Address     *string
 	Items       []Item
 	Total       *Money
+	Metadata    *InvoiceMetadata
+}
+
+type InvoiceMetadata struct {
+	SourceFile  FileRef
+	TemplateID  string
+	ExtractedAt time.Time
 }
 
 // SEMENTARA

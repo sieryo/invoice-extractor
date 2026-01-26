@@ -8,16 +8,16 @@ import (
 )
 
 type Dispatcher struct {
-	handlers map[string]job.JobHandler
+	handlers map[job.JobType]job.JobHandler
 }
 
 func NewDispatcher() *Dispatcher {
 	return &Dispatcher{
-		handlers: make(map[string]job.JobHandler),
+		handlers: make(map[job.JobType]job.JobHandler),
 	}
 }
 
-func (d *Dispatcher) Register(jobType string, handler job.JobHandler) {
+func (d *Dispatcher) Register(jobType job.JobType, handler job.JobHandler) {
 	d.handlers[jobType] = handler
 }
 

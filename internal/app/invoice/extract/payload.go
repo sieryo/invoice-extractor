@@ -1,5 +1,6 @@
 package extract
 
 type Payload struct {
-	PDFPaths []string
+	PDFPaths []string `json:"pdf_paths"`
+	Template *string  `json:"template,omitempty"`
 }
