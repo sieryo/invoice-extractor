@@ -39,7 +39,7 @@ func (h *InvoiceExtractHandler) Handle(c *fiber.Ctx) error {
 
 	ctx := c.Context()
 
-	var tempPaths []string
+	var jobFiles []job.JobFile
 
 	for _, file := range files {
 		src, err := file.Open()
@@ -58,11 +58,18 @@ func (h *InvoiceExtractHandler) Handle(c *fiber.Ctx) error {
 			return c.Status(500).JSON(fiber.Map{"error": "failed to save file"})
 		}
 
-		tempPaths = append(tempPaths, tmp.Path)
+		jobFile := job.JobFile{
+			ID:     tmp.ID,
+			Name:   tmp.Name,
+			URI:    tmp.Path,
+			Status: job.JobFilePending,
+		}
+
+		jobFiles = append(jobFiles, jobFile)
 	}
 
 	payloadStruct := extract.Payload{
-		PDFPaths: tempPaths,
+		JobFiles: jobFiles,
 	}
 
 	payloadBytes, err := json.Marshal(payloadStruct)

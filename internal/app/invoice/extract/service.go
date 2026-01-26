@@ -9,6 +9,7 @@ import (
 
 	"github.com/sieryo/invoice-extractor/internal/app/invoice"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/template"
+	"github.com/sieryo/invoice-extractor/internal/app/job"
 	"github.com/sieryo/invoice-extractor/internal/infra/adapter/pdftool"
 )
 
@@ -24,17 +25,17 @@ func NewInvoiceExtractService(r *template.Registry) *InvoiceExtractorService {
 
 func (i *InvoiceExtractorService) ExtractBatch(
 	ctx context.Context,
-	pdfPaths []string,
+	jobFiles []job.JobFile,
 	templateID *string,
 ) (*BatchExtractResult, error) {
 
 	var wg sync.WaitGroup
 
-	errChan := make(chan BatchExtractError, len(pdfPaths))
-	invoiceChan := make(chan *invoice.Invoice, len(pdfPaths))
+	errChan := make(chan BatchExtractError, len(jobFiles))
+	invoiceChan := make(chan *invoice.Invoice, len(jobFiles))
 
-	for _, path := range pdfPaths {
-		p := path
+	for _, file := range jobFiles {
+		p := file.URI
 		wg.Add(1)
 
 		go func() {
@@ -81,9 +82,13 @@ func (i *InvoiceExtractorService) ExtractBatch(
 				return
 			}
 
-			// metadata injection
+			// Inject metadata
 			inv.Metadata = &invoice.InvoiceMetadata{
-				SourceFile:  invoice.FileRef{},
+				SourceFile: invoice.FileRef{
+					ID:    file.ID,
+					Name:  file.Name,
+					Store: "Local", // Untuk sementara local dulu
+				},
 				TemplateID:  tpl.Identifier(),
 				ExtractedAt: time.Now(),
 			}

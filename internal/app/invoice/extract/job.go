@@ -28,7 +28,7 @@ func (h *InvoiceExtractJob) Handle(ctx context.Context, j *job.Job) error {
 		return err
 	}
 
-	result, err := h.extractor.ExtractBatch(ctx, payload.PDFPaths, payload.Template)
+	result, err := h.extractor.ExtractBatch(ctx, payload.JobFiles, payload.Template)
 	if err != nil {
 		// h.fileStore.CleanupTemp(ctx, j.ID)
 		return err
@@ -37,6 +37,7 @@ func (h *InvoiceExtractJob) Handle(ctx context.Context, j *job.Job) error {
 	invoices := result.Invoices
 
 	for i, inv := range invoices {
+
 		data, _ := json.Marshal(inv)
 
 		tempObj, err := h.fileStore.SaveTemp(

@@ -1,6 +1,8 @@
 package extract
 
+import "github.com/sieryo/invoice-extractor/internal/app/job"
+
 type Payload struct {
-	PDFPaths []string `json:"pdf_paths"`
-	Template *string  `json:"template,omitempty"`
+	JobFiles []job.JobFile `json:"job_files"`
+	Template *string       `json:"template,omitempty"`
 }

@@ -15,7 +15,7 @@ type LocalFileStore struct {
 
 func (l *LocalFileStore) SaveTemp(
 	ctx context.Context,
-	jobID string,
+	tempDirID string,
 	name string,
 	data []byte,
 ) (TempObject, error) {
@@ -23,7 +23,7 @@ func (l *LocalFileStore) SaveTemp(
 	fileID := uuid.New().String()
 	safeName := fmt.Sprintf("%s_%s", fileID, name)
 
-	tempDir := filepath.Join(l.baseDir, "temp", jobID)
+	tempDir := filepath.Join(l.baseDir, "temp", tempDirID)
 	tempPath := filepath.Join(tempDir, safeName)
 
 	if err := os.MkdirAll(tempDir, 0755); err != nil {
@@ -41,10 +41,10 @@ func (l *LocalFileStore) SaveTemp(
 	}
 
 	return TempObject{
-		ID:    fileID,
-		JobID: jobID,
-		Name:  name,
-		Path:  tempPath,
+		ID:        fileID,
+		TempDirID: tempDirID,
+		Name:      name,
+		Path:      tempPath,
 	}, nil
 }
 
@@ -53,7 +53,7 @@ func (l *LocalFileStore) Commit(
 	obj TempObject,
 ) (FinalObject, error) {
 
-	finalDir := filepath.Join(l.baseDir, "jobs", obj.JobID)
+	finalDir := filepath.Join(l.baseDir, "jobs", obj.TempDirID)
 	finalPath := filepath.Join(finalDir, obj.Name)
 
 	select {

@@ -44,3 +44,18 @@ type Job struct {
 	FinishedAt *time.Time
 	ExpiredAt  *time.Time
 }
+
+type JobFileStatus string
+
+const (
+	JobFilePending JobFileStatus = "pending" // uploaded
+	JobFileReady   JobFileStatus = "ready"   // extracted
+	JobFileFailed  JobFileStatus = "failed"
+)
+
+type JobFile struct {
+	ID     string
+	Name   string
+	URI    string
+	Status JobFileStatus
+}

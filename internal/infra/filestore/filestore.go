@@ -5,10 +5,10 @@ import (
 )
 
 type TempObject struct {
-	ID    string
-	JobID string
-	Name  string
-	Path  string
+	ID        string
+	TempDirID string
+	Name      string
+	Path      string
 }
 
 type FinalObject struct {
