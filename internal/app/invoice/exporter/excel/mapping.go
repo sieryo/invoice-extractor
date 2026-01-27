@@ -1,28 +1,51 @@
 package excel
 
 const (
-	SheetInvoice       = "Faktur"
+	SheetInvoice = "Faktur"
+
+	ColSpecialNPWP = "C" // NPWP PENJUAL
+
+	InvoiceHeaderRow = 3
+	InvoiceStartRow  = 4
+
+	ColInvRow              = "A"
+	ColInvDate             = "B"
+	ColInvType             = "C"
+	ColInvTransactionCode  = "D"
+	ColInvAdditionalInfo   = "E"
+	ColInvSupportDoc       = "F"
+	ColInvSupportDocPeriod = "G"
+	ColInvReference        = "H"
+	ColInvFacilityCap      = "I"
+	ColInvSellerTKU        = "J"
+	ColInvBuyerID          = "K"
+	ColInvBuyerIDType      = "L"
+	ColInvBuyerCountry     = "M"
+	ColInvBuyerDocNumber   = "N"
+	ColInvBuyerName        = "O"
+	ColInvBuyerAddress     = "P"
+	ColInvBuyerEmail       = "Q"
+	ColInvBuyerTKU         = "R"
+)
+
+const (
 	SheetInvoiceDetail = "DetailFaktur"
 
-	// SPESIAL: NPWP PENJUAL
-	CellSpesialNpwpPenjual = "C1"
+	DetailHeaderRow = 1
+	DetailStartRow  = 2
 
-	// Header
-	CellInvoiceNumber = "B2"
-	CellInvoiceDate   = "B3"
-	CellCustomerName  = "B4"
-
-	// Table
-	TableStartRow = 10
-
-	ColItemNo     = "A"
-	ColItemName   = "B"
-	ColItemQty    = "C"
-	ColItemPrice  = "D"
-	ColItemAmount = "E"
-
-	// Summary
-	CellSubTotal = "E20"
-	CellTax      = "E21"
-	CellTotal    = "E22"
+	ColDetRow          = "A"
+	ColDetType         = "B"
+	ColDetCode         = "C"
+	ColDetName         = "D"
+	ColDetUnit         = "E"
+	ColDetUnitPrice    = "F"
+	ColDetQty          = "G"
+	ColDetDiscount     = "H"
+	ColDetDPP          = "I"
+	ColDetDPPAlt       = "J"
+	ColDetTaxRate      = "K"
+	ColDetTaxAmount    = "L"
+	ColDetLuxuryRate   = "M"
+	ColDetLuxuryAmount = "N"
 )

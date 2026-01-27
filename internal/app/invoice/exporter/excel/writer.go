@@ -13,88 +13,76 @@ func writeInvoices(
 	invoices []*invoice.Invoice,
 ) error {
 
-	for i, inv := range invoices {
-		sheet := SheetInvoice
+	if len(invoices) == 0 {
+		return fmt.Errorf("Empty Invoices")
+	}
 
-		// kalau mau 1 invoice = 1 sheet
-		if i > 0 {
-			newSheet := fmt.Sprintf("%s_%d", SheetInvoice, i+1)
-			f.NewSheet(newSheet)
-			sheetIndex, err := f.GetSheetIndex(sheet)
+	invoiceSheet := SheetInvoice
+	detailSheet := SheetInvoiceDetail
 
-			if err != nil {
-				return err
+	invoiceRow := InvoiceStartRow
+	detailRow := DetailStartRow
+	baris := 1
+
+	// Anggap semua invoice itu sellernya sama
+	sellerNPWP := invoices[0].Seller.TaxID
+
+	f.SetCellValue(invoiceSheet, cell(ColSpecialNPWP, 1), *sellerNPWP)
+
+	for _, inv := range invoices {
+
+		f.SetCellValue(invoiceSheet, cell(ColInvRow, invoiceRow), baris)
+
+		if inv.Date != nil {
+			f.SetCellValue(
+				invoiceSheet,
+				cell(ColInvDate, invoiceRow),
+				inv.Date.Format("2006-01-02"),
+			)
+		}
+
+		f.SetCellValue(invoiceSheet, cell(ColInvReference, invoiceRow), inv.Number)
+
+		if inv.Buyer != nil {
+			f.SetCellValue(invoiceSheet, cell(ColInvBuyerName, invoiceRow), inv.Buyer.Name)
+
+			if inv.Buyer.Address != nil {
+				f.SetCellValue(invoiceSheet, cell(ColInvBuyerAddress, invoiceRow), *inv.Buyer.Address)
 			}
 
-			newSheetIndex, err := f.GetSheetIndex(newSheet)
+			if inv.Buyer.TaxID != nil {
+				f.SetCellValue(invoiceSheet, cell(ColInvBuyerID, invoiceRow), *inv.Buyer.TaxID)
+			}
+		}
 
-			if err != nil {
-				return err
+		for _, item := range inv.Items {
+
+			f.SetCellValue(detailSheet, cell(ColDetRow, detailRow), baris)
+			f.SetCellValue(detailSheet, cell(ColDetType, detailRow), "Barang")
+			f.SetCellValue(detailSheet, cell(ColDetName, detailRow), item.Name)
+
+			if item.UnitPrice != nil {
+				f.SetCellValue(detailSheet, cell(ColDetUnitPrice, detailRow), item.UnitPrice.Amount)
 			}
 
-			f.CopySheet(sheetIndex, newSheetIndex)
-			sheet = newSheet
+			f.SetCellValue(detailSheet, cell(ColDetQty, detailRow), item.Quantity)
+
+			if item.TotalAmount != nil {
+				f.SetCellValue(detailSheet, cell(ColDetDPP, detailRow), item.TotalAmount.Amount)
+			}
+
+			f.SetCellValue(detailSheet, cell(ColDetTaxRate, detailRow), 11)
+
+			detailRow++
 		}
 
-		if err := writeHeader(f, sheet, inv); err != nil {
-			return err
-		}
-
-		if err := writeItems(f, sheet, inv); err != nil {
-			return err
-		}
-
-		if err := writeSummary(f, sheet, inv); err != nil {
-			return err
-		}
+		invoiceRow++
+		baris++
 	}
 
 	return nil
 }
 
-func writeHeader(
-	f *excelize.File,
-	sheet string,
-	inv *invoice.Invoice,
-) error {
-
-	f.SetCellValue(sheet, CellInvoiceNumber, inv.Number)
-	f.SetCellValue(sheet, CellInvoiceDate, inv.Date)
-	f.SetCellValue(sheet, CellCustomerName, inv.Buyer.Name)
-
-	return nil
-}
-
-func writeItems(
-	f *excelize.File,
-	sheet string,
-	inv *invoice.Invoice,
-) error {
-
-	row := TableStartRow
-
-	for i, item := range inv.Items {
-		f.SetCellValue(sheet, fmt.Sprintf("%s%d", ColItemNo, row), i+1)
-		f.SetCellValue(sheet, fmt.Sprintf("%s%d", ColItemName, row), item.Name)
-		f.SetCellValue(sheet, fmt.Sprintf("%s%d", ColItemQty, row), item.Quantity)
-		f.SetCellValue(sheet, fmt.Sprintf("%s%d", ColItemPrice, row), item.UnitPrice.Amount)
-		f.SetCellValue(sheet, fmt.Sprintf("%s%d", ColItemAmount, row), item.TotalAmount.Amount)
-
-		row++
-	}
-
-	return nil
-}
-
-func writeSummary(
-	f *excelize.File,
-	sheet string,
-	inv *invoice.Invoice,
-) error {
-
-	f.SetCellValue(sheet, CellSubTotal, inv.Subtotal.Amount)
-	f.SetCellValue(sheet, CellTax, inv.VAT.Amount)
-	f.SetCellValue(sheet, CellTotal, inv.Total)
-
-	return nil
+func cell(col string, row int) string {
+	return fmt.Sprintf("%s%d", col, row)
 }
