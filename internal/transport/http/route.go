@@ -25,4 +25,7 @@ func (s *Server) registerRoutes() {
 	buyerHandler := handler.NewBuyerUploadHandler(s.appCtx.BuyerRegistry, s.appCtx.BuyerStore, s.appCtx.RootDir)
 	protected.Get("/buyer/isloaded", buyerHandler.IsLoaded)
 	protected.Post("/buyer/upload", buyerHandler.Handle)
+
+	invoiceHandler := handler.NewInvoiceHandler(s.appCtx.InvoiceService, s.appCtx.FileStore, s.appCtx.JobService)
+	protected.Post("/invoice/export", invoiceHandler.ExportInvoices)
 }

@@ -9,6 +9,8 @@ import (
 
 	"github.com/sieryo/invoice-extractor/internal/app/auth"
 	"github.com/sieryo/invoice-extractor/internal/app/buyer"
+	"github.com/sieryo/invoice-extractor/internal/app/invoice"
+	"github.com/sieryo/invoice-extractor/internal/app/invoice/exporter/excel"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/extract"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/template"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/template/goodsaletech"
@@ -25,10 +27,12 @@ import (
 type App struct {
 	RootDir string
 
-	AuthService *auth.AuthService
-	JobService  *job.JobService
-	Logger      *slog.Logger
-	FileStore   shared.FileStore
+	AuthService    *auth.AuthService
+	JobService     *job.JobService
+	InvoiceService *invoice.InvoiceService
+
+	Logger    *slog.Logger
+	FileStore shared.FileStore
 
 	BuyerRegistry *buyer.Registry
 	BuyerStore    *storage.BuyerCSVStore
@@ -62,6 +66,8 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 		}
 	}()
 
+	invoiceExporter := excel.NewExcelExporter()
+
 	// repositories
 	userRepo := repository.NewUserRepository(db)
 	sessionRepo := repository.NewSessionRepository(db)
@@ -70,7 +76,7 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 	// services
 	authService := auth.NewService(userRepo, sessionRepo, logger)
 	invoiceExtractService := extract.NewInvoiceExtractService(templateRegistry, buyerRegistry)
-
+	invoiceService := invoice.NewInvoiceService(invoiceExporter, fs)
 	// dispatcher & handler
 	dispatcher := jobrunner.NewDispatcher()
 	invoiceHandler := extract.NewInvoiceExtractJob(invoiceExtractService, fs)
@@ -85,13 +91,14 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 	jobService := job.NewJobService(jobRepo, jobRunner)
 
 	return &App{
-		RootDir:       rootDir,
-		AuthService:   authService,
-		JobService:    jobService,
-		Logger:        logger,
-		FileStore:     fs,
-		JobRunner:     jobRunner,
-		BuyerRegistry: buyerRegistry,
-		BuyerStore:    buyerStore,
+		RootDir:        rootDir,
+		AuthService:    authService,
+		JobService:     jobService,
+		InvoiceService: invoiceService,
+		Logger:         logger,
+		FileStore:      fs,
+		JobRunner:      jobRunner,
+		BuyerRegistry:  buyerRegistry,
+		BuyerStore:     buyerStore,
 	}
 }
