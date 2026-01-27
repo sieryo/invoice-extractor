@@ -11,6 +11,7 @@ import (
 	"github.com/sieryo/invoice-extractor/internal/app/buyer"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/extract"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/template"
+	"github.com/sieryo/invoice-extractor/internal/app/invoice/template/goodsaletech"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/template/seamakeup"
 	"github.com/sieryo/invoice-extractor/internal/app/job"
 	"github.com/sieryo/invoice-extractor/internal/app/shared"
@@ -42,6 +43,7 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 	// Registry
 	templateRegistry := template.NewRegistry()
 	templateRegistry.Register(seamakeup.NewSeaMakeupTemplate())
+	templateRegistry.Register(goodsaletech.NewGoodSaleTechTemplate())
 	buyerRegistry := buyer.NewRegistry()
 
 	// infra

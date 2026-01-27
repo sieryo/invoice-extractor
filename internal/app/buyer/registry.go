@@ -21,7 +21,26 @@ func NewRegistry() *Registry {
 }
 
 func normalizeName(name string) string {
-	return strings.ToLower(strings.TrimSpace(name))
+	blacklist := []string{
+		"perseroan terbatas",
+		"perseroan",
+		"terbatas",
+		"badan",
+		"pt.",
+		"cv.",
+		"pt",
+		"cv",
+		"-",
+		".",
+	}
+
+	s := strings.ToLower(name)
+
+	for _, w := range blacklist {
+		s = strings.ReplaceAll(s, w, "")
+	}
+
+	return strings.Join(strings.Fields(s), " ")
 }
 
 func (r *Registry) IsLoaded() bool {

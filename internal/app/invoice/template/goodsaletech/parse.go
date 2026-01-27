@@ -1,4 +1,4 @@
-package seamakeup
+package goodsaletech
 
 import (
 	"strings"
@@ -13,7 +13,7 @@ MAIN PARSER
 ========================
 */
 
-func (t *SeaMakeupTemplate) Parse(raw string) (*invoice.Invoice, error) {
+func (t *GoodSaleTechTemplate) Parse(raw string) (*invoice.Invoice, error) {
 	norm := t.Normalize(raw)
 
 	lines := strings.Split(norm, "\n")
