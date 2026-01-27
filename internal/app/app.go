@@ -3,10 +3,12 @@ package app
 import (
 	"context"
 	"database/sql"
+	"log"
 	"log/slog"
 	"path/filepath"
 
 	"github.com/sieryo/invoice-extractor/internal/app/auth"
+	"github.com/sieryo/invoice-extractor/internal/app/buyer"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/extract"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/template"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/template/seamakeup"
@@ -15,24 +17,48 @@ import (
 	"github.com/sieryo/invoice-extractor/internal/infra/filestore"
 	"github.com/sieryo/invoice-extractor/internal/infra/jobrunner"
 	repository "github.com/sieryo/invoice-extractor/internal/infra/persistence/sqlite"
+	"github.com/sieryo/invoice-extractor/internal/infra/storage"
+	"github.com/sieryo/invoice-extractor/internal/infra/watcher"
 )
 
 type App struct {
+	RootDir string
+
 	AuthService *auth.AuthService
 	JobService  *job.JobService
 	Logger      *slog.Logger
 	FileStore   shared.FileStore
 
+	BuyerRegistry *buyer.Registry
+	BuyerStore    *storage.BuyerCSVStore
+
 	JobRunner *jobrunner.JobQueueRunner
 }
 
 func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
+	// Path
+	csvPath := filepath.Join(rootDir, "buyers.csv")
+
 	// Registry
 	templateRegistry := template.NewRegistry()
 	templateRegistry.Register(seamakeup.NewSeaMakeupTemplate())
+	buyerRegistry := buyer.NewRegistry()
 
 	// infra
 	fs := filestore.NewLocalFileStore(filepath.Join(rootDir, "storage"))
+	buyerStore := storage.NewBuyerCSVStore(csvPath)
+
+	watcher := watcher.NewCSVWatcher(
+		buyerRegistry,
+		buyerStore,
+		csvPath,
+	)
+
+	go func() {
+		if err := watcher.Run(context.Background()); err != nil {
+			log.Fatal(err)
+		}
+	}()
 
 	// repositories
 	userRepo := repository.NewUserRepository(db)
@@ -41,7 +67,7 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 
 	// services
 	authService := auth.NewService(userRepo, sessionRepo, logger)
-	invoiceExtractService := extract.NewInvoiceExtractService(templateRegistry)
+	invoiceExtractService := extract.NewInvoiceExtractService(templateRegistry, buyerRegistry)
 
 	// dispatcher & handler
 	dispatcher := jobrunner.NewDispatcher()
@@ -57,10 +83,13 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 	jobService := job.NewJobService(jobRepo, jobRunner)
 
 	return &App{
-		AuthService: authService,
-		JobService:  jobService,
-		Logger:      logger,
-		FileStore:   fs,
-		JobRunner:   jobRunner,
+		RootDir:       rootDir,
+		AuthService:   authService,
+		JobService:    jobService,
+		Logger:        logger,
+		FileStore:     fs,
+		JobRunner:     jobRunner,
+		BuyerRegistry: buyerRegistry,
+		BuyerStore:    buyerStore,
 	}
 }

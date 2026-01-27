@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/sieryo/invoice-extractor/internal/app/buyer"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/template"
 	"github.com/sieryo/invoice-extractor/internal/app/job"
@@ -14,12 +15,14 @@ import (
 )
 
 type InvoiceExtractorService struct {
+	buyerRegistry    *buyer.Registry
 	templateRegistry *template.Registry
 }
 
-func NewInvoiceExtractService(r *template.Registry) *InvoiceExtractorService {
+func NewInvoiceExtractService(t *template.Registry, b *buyer.Registry) *InvoiceExtractorService {
 	return &InvoiceExtractorService{
-		templateRegistry: r,
+		buyerRegistry:    b,
+		templateRegistry: t,
 	}
 }
 
@@ -94,6 +97,13 @@ func (i *InvoiceExtractorService) ExtractBatch(
 				},
 				TemplateID:  tpl.Identifier(),
 				ExtractedAt: time.Now(),
+			}
+
+			if inv.Buyer != nil && inv.Buyer.Name != "" {
+				if b, ok := i.buyerRegistry.GetByName(inv.Buyer.Name); ok {
+					taxID := b.PrimaryTaxID()
+					inv.Buyer.TaxID = &taxID
+				}
 			}
 
 			invoiceChan <- inv

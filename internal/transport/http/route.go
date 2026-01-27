@@ -21,4 +21,8 @@ func (s *Server) registerRoutes() {
 	jobHandler := handler.NewJobHandler(s.appCtx.JobService)
 	protected.Get("/job/list", jobHandler.ListJobs)
 	protected.Get("/job/:id", jobHandler.GetJobByID)
+
+	buyerHandler := handler.NewBuyerUploadHandler(s.appCtx.BuyerRegistry, s.appCtx.BuyerStore, s.appCtx.RootDir)
+	protected.Get("/buyer/isloaded", buyerHandler.IsLoaded)
+	protected.Post("/buyer/upload", buyerHandler.Handle)
 }
