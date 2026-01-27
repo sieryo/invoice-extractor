@@ -21,10 +21,10 @@ func (d *Dispatcher) Register(jobType job.JobType, handler job.JobHandler) {
 	d.handlers[jobType] = handler
 }
 
-func (d *Dispatcher) Dispatch(ctx context.Context, j *job.Job) error {
+func (d *Dispatcher) Dispatch(ctx context.Context, j *job.Job) (*job.OutputManifest, error) {
 	handler, ok := d.handlers[j.Type]
 	if !ok {
-		return fmt.Errorf("no handler registered for job type %s", j.Type)
+		return nil, fmt.Errorf("no handler registered for job type %s", j.Type)
 	}
 	return handler.Handle(ctx, j)
 }

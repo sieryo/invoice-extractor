@@ -63,7 +63,7 @@ func (r *JobQueueRunner) worker(ctx context.Context, id int) {
 func (r *JobQueueRunner) executeJob(ctx context.Context, j *job.Job) {
 	_ = r.repo.UpdateStatus(ctx, j.ID, job.JobRunning)
 
-	err := r.dispatcher.Dispatch(ctx, j)
+	outputManifest, err := r.dispatcher.Dispatch(ctx, j)
 
 	if err != nil {
 		errMsg := err.Error()
@@ -77,9 +77,10 @@ func (r *JobQueueRunner) executeJob(ctx context.Context, j *job.Job) {
 		fmt.Printf("Err : %s", errMsg)
 	} else {
 		_ = r.repo.Update(ctx, &job.Job{
-			ID:         j.ID,
-			Status:     job.JobSuccess,
-			FinishedAt: ptrTimeNow(),
+			ID:             j.ID,
+			Status:         job.JobSuccess,
+			FinishedAt:     ptrTimeNow(),
+			OutputManifest: outputManifest,
 		})
 	}
 }

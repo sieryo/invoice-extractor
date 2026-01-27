@@ -22,15 +22,15 @@ func NewInvoiceExtractJob(extractor *InvoiceExtractorService, fileStore shared.F
 	}
 }
 
-func (h *InvoiceExtractJob) Handle(ctx context.Context, j *job.Job) error {
+func (h *InvoiceExtractJob) Handle(ctx context.Context, j *job.Job) (*job.OutputManifest, error) {
 	var payload Payload
 	if err := json.Unmarshal(j.InputPayload, &payload); err != nil {
-		return err
+		return nil, err
 	}
 
 	result, err := h.extractor.ExtractBatch(ctx, payload.JobFiles, payload.Template)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	var files []job.JobFile
@@ -43,12 +43,12 @@ func (h *InvoiceExtractJob) Handle(ctx context.Context, j *job.Job) error {
 
 		tempObj, err := h.fileStore.SaveTemp(ctx, j.ID, name, data)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		finalObj, err := h.fileStore.Commit(ctx, tempObj)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		files = append(files, job.JobFile{
@@ -69,10 +69,10 @@ func (h *InvoiceExtractJob) Handle(ctx context.Context, j *job.Job) error {
 	}
 
 	if err := h.fileStore.CleanupTemp(ctx, j.ID); err != nil {
-		return err
+		return nil, err
 	}
 
-	j.OutputManifest = &job.OutputManifest{
+	outputManifest := job.OutputManifest{
 		Version: 1,
 		JobType: job.JobTypeInvoiceExtract,
 		Summary: job.Summary{
@@ -83,5 +83,5 @@ func (h *InvoiceExtractJob) Handle(ctx context.Context, j *job.Job) error {
 		Files: files,
 	}
 
-	return nil
+	return &outputManifest, nil
 }
