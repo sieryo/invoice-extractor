@@ -8,11 +8,20 @@ type FileRef struct {
 	Store string
 }
 
+type Party struct {
+	Name    string
+	TaxID   *string // NPWP / NIK
+	Address *string
+}
+
 type Invoice struct {
-	InvoiceNo   string
-	InvoiceDate *time.Time
+	Number      string
+	Date        *time.Time
+	OrderNumber string
 	PONumber    string
-	Address     string
+
+	Buyer  *Party
+	Seller *Party
 
 	Items    []Item
 	Subtotal *Money

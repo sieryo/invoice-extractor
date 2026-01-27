@@ -31,8 +31,14 @@ func (t *SeaMakeupTemplate) Parse(raw string) (*invoice.Invoice, error) {
 	norm := t.Normalize(raw)
 
 	lines := strings.Split(norm, "\n")
-
-	inv := &invoice.Invoice{}
+	taxID := t.TaxID()
+	inv := &invoice.Invoice{
+		Buyer: &invoice.Party{},
+		Seller: &invoice.Party{
+			Name:  t.Name(),
+			TaxID: &taxID,
+		},
+	}
 	var addressParts []string
 
 	inTable := false
@@ -48,17 +54,21 @@ func (t *SeaMakeupTemplate) Parse(raw string) (*invoice.Invoice, error) {
 		// ===== HEADER =====
 		if !inTable {
 			switch {
+			case strings.HasPrefix(line, "Customer Name"):
+				val := extractValue(line)
+				inv.Buyer.Name = cleanString(val)
+
 			case strings.HasPrefix(line, "Invoice No"):
 				val, addr := extractValueAndAddress(line)
 				invoiceNo := cleanString(val)
-				inv.InvoiceNo = invoiceNo
+				inv.Number = invoiceNo
 				if addr != "" {
 					addressParts = append(addressParts, cleanString(addr))
 				}
 
 			case strings.HasPrefix(line, "Invoice Date"):
 				val, addr := extractValueAndAddress(line)
-				inv.InvoiceDate = parseDateValue(val)
+				inv.Date = parseDateValue(val)
 				if addr != "" {
 					addressParts = append(addressParts, addr)
 				}
@@ -71,7 +81,8 @@ func (t *SeaMakeupTemplate) Parse(raw string) (*invoice.Invoice, error) {
 				}
 
 			case strings.HasPrefix(line, "No. Order"):
-				_, addr := extractValueAndAddress(line)
+				val, addr := extractValueAndAddress(line)
+				inv.OrderNumber = cleanString(val)
 				if addr != "" {
 					addressParts = append(addressParts, addr)
 				}
@@ -118,7 +129,7 @@ func (t *SeaMakeupTemplate) Parse(raw string) (*invoice.Invoice, error) {
 		addr := strings.Join(addressParts, ", ")
 		addr = cleanAddress(addr)
 		addr = cleanString(addr)
-		inv.Address = addr
+		inv.Buyer.Address = &addr
 	}
 
 	return inv, nil
@@ -157,6 +168,16 @@ func extractValueAndAddress(line string) (string, string) {
 	}
 
 	return val, ""
+}
+
+func extractValue(line string) string {
+	idx := strings.Index(line, ":")
+	if idx == -1 {
+		return ""
+	}
+
+	val := strings.TrimSpace(line[idx+1:])
+	return val
 }
 
 func cleanString(raw string) string {
