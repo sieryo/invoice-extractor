@@ -77,8 +77,11 @@ func (h *InvoiceExtractHandler) Handle(c *fiber.Ctx) error {
 		return err
 	}
 
+	userID := c.Locals("userId").(string)
+
 	newJob := &job.Job{
 		ID:           jobID,
+		UserID:       &userID,
 		Type:         job.JobTypeInvoiceExtract,
 		InputPayload: payloadBytes,
 	}

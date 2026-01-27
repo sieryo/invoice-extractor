@@ -3,6 +3,7 @@ package jobrunner
 import (
 	"context"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -61,27 +62,24 @@ func (r *JobQueueRunner) worker(ctx context.Context, id int) {
 }
 
 func (r *JobQueueRunner) executeJob(ctx context.Context, j *job.Job) {
-	_ = r.repo.UpdateStatus(ctx, j.ID, job.JobRunning)
-
 	outputManifest, err := r.dispatcher.Dispatch(ctx, j)
 
 	if err != nil {
 		errMsg := err.Error()
-		_ = r.repo.Update(ctx, &job.Job{
-			ID:           j.ID,
-			Status:       job.JobFailed,
-			ErrorMessage: &errMsg,
-			FinishedAt:   ptrTimeNow(),
-		})
+		j.Status = job.JobFailed
+		j.ErrorMessage = &errMsg
+		_ = r.repo.Update(ctx, j)
 
 		fmt.Printf("Err : %s", errMsg)
 	} else {
-		_ = r.repo.Update(ctx, &job.Job{
-			ID:             j.ID,
-			Status:         job.JobSuccess,
-			FinishedAt:     ptrTimeNow(),
-			OutputManifest: outputManifest,
-		})
+		j.Status = job.JobSuccess
+		j.FinishedAt = ptrTimeNow()
+		j.OutputManifest = outputManifest
+
+		if err := r.repo.Update(ctx, j); err != nil {
+			log.Printf("failed to update job %s: %v", j.ID, err)
+		}
+
 	}
 }
 

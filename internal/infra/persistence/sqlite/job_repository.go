@@ -131,16 +131,33 @@ func (r *JobRepository) List(ctx context.Context) ([]*job.Job, error) {
 
 func (r *JobRepository) FindByID(ctx context.Context, id string) (*job.Job, error) {
 	row := r.db.QueryRowContext(ctx, `
-		SELECT id, user_id, type, status, progress, input_payload,
-		       output_manifest, error_message, created_at, started_at,
-		       finished_at, expired_at
+		SELECT
+			id,
+			user_id,
+			type,
+			status,
+			progress,
+			input_payload,
+			output_manifest,
+			error_message,
+			created_at,
+			started_at,
+			finished_at,
+			expired_at
 		FROM jobs
 		WHERE id = ?
 	`, id)
 
 	var j job.Job
-	var userID, errMsg sql.NullString
-	var startedAt, finishedAt, expiredAt sql.NullTime
+
+	var (
+		userID         sql.NullString
+		errorMessage   sql.NullString
+		startedAt      sql.NullTime
+		finishedAt     sql.NullTime
+		expiredAt      sql.NullTime
+		outputManifest []byte
+	)
 
 	if err := row.Scan(
 		&j.ID,
@@ -149,8 +166,8 @@ func (r *JobRepository) FindByID(ctx context.Context, id string) (*job.Job, erro
 		&j.Status,
 		&j.Progress,
 		&j.InputPayload,
-		&j.OutputManifest,
-		&errMsg,
+		&outputManifest,
+		&errorMessage,
 		&j.CreatedAt,
 		&startedAt,
 		&finishedAt,
@@ -162,9 +179,19 @@ func (r *JobRepository) FindByID(ctx context.Context, id string) (*job.Job, erro
 	if userID.Valid {
 		j.UserID = &userID.String
 	}
-	if errMsg.Valid {
-		j.ErrorMessage = &errMsg.String
+
+	if len(outputManifest) > 0 {
+		var manifest job.OutputManifest
+		if err := json.Unmarshal(outputManifest, &manifest); err != nil {
+			return nil, err
+		}
+		j.OutputManifest = &manifest
 	}
+
+	if errorMessage.Valid {
+		j.ErrorMessage = &errorMessage.String
+	}
+
 	if startedAt.Valid {
 		j.StartedAt = &startedAt.Time
 	}
@@ -179,7 +206,17 @@ func (r *JobRepository) FindByID(ctx context.Context, id string) (*job.Job, erro
 }
 
 func (r *JobRepository) Update(ctx context.Context, j *job.Job) error {
-	_, err := r.db.ExecContext(ctx, `
+	var outputManifest []byte
+	var err error
+
+	if j.OutputManifest != nil {
+		outputManifest, err = json.Marshal(j.OutputManifest)
+		if err != nil {
+			return err
+		}
+	}
+
+	_, err = r.db.ExecContext(ctx, `
 		UPDATE jobs SET
 			user_id = ?, type = ?, status = ?, progress = ?,
 			input_payload = ?, output_manifest = ?, error_message = ?,
@@ -191,13 +228,14 @@ func (r *JobRepository) Update(ctx context.Context, j *job.Job) error {
 		j.Status,
 		j.Progress,
 		j.InputPayload,
-		j.OutputManifest,
+		outputManifest,
 		j.ErrorMessage,
 		j.StartedAt,
 		j.FinishedAt,
 		j.ExpiredAt,
 		j.ID,
 	)
+
 	return err
 }
 

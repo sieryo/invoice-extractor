@@ -86,3 +86,7 @@ func (s *AuthService) Login(username, password string) (string, error) {
 func (s *AuthService) Logout(sessionID string) error {
 	return s.sessionRepo.Delete(sessionID)
 }
+
+func (s *AuthService) GetSession(sessionID string) (*session.Session, error) {
+	return s.sessionRepo.GetByID(sessionID)
+}
