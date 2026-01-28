@@ -17,6 +17,10 @@ func (t *SeaMakeupTemplate) Identifier() string {
 	return "SeaMakeup"
 }
 
+func (t *SeaMakeupTemplate) Alias() string {
+	return "SMB"
+}
+
 func (t *SeaMakeupTemplate) Name() string {
 	return "PT Sea Makeup Beauty"
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/sieryo/invoice-extractor/internal/app/invoice"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/template"
 	"github.com/sieryo/invoice-extractor/internal/app/job"
+	"github.com/sieryo/invoice-extractor/internal/domain/shared"
 	"github.com/sieryo/invoice-extractor/internal/infra/adapter/pdftool"
 )
 
@@ -35,7 +36,7 @@ func (i *InvoiceExtractorService) ExtractBatch(
 
 	var wg sync.WaitGroup
 
-	errChan := make(chan BatchExtractError, len(inputFiles))
+	errChan := make(chan shared.FileResultError, len(inputFiles))
 	invoiceChan := make(chan *invoice.Invoice, len(inputFiles))
 
 	reporter := job.GetProgressReporter(ctx)
@@ -66,13 +67,13 @@ func (i *InvoiceExtractorService) ExtractBatch(
 			}()
 
 			if _, err := os.Stat(p); err != nil {
-				errChan <- BatchExtractError{FileID: file.ID, FileName: file.Name, Err: err}
+				errChan <- shared.FileResultError{FileID: file.ID, FileName: file.Name, Err: err}
 				return
 			}
 
 			text, err := pdftool.ExtractText(ctx2, p, pdftool.DefaultOptions())
 			if err != nil {
-				errChan <- BatchExtractError{FileID: file.ID, FileName: file.Name, Err: err}
+				errChan <- shared.FileResultError{FileID: file.ID, FileName: file.Name, Err: err}
 				return
 			}
 
@@ -80,7 +81,7 @@ func (i *InvoiceExtractorService) ExtractBatch(
 			if templateID != nil {
 				t, ok := i.templateRegistry.GetByIdentifier(*templateID)
 				if !ok {
-					errChan <- BatchExtractError{
+					errChan <- shared.FileResultError{
 						FileID:   file.ID,
 						FileName: file.Name,
 						Err:      fmt.Errorf("unknown template: %s", *templateID),
@@ -91,7 +92,7 @@ func (i *InvoiceExtractorService) ExtractBatch(
 			} else {
 				t, err := i.templateRegistry.Detect(text)
 				if err != nil {
-					errChan <- BatchExtractError{
+					errChan <- shared.FileResultError{
 						FileID:   file.ID,
 						FileName: file.Name,
 						Err:      fmt.Errorf("no template matched"),
@@ -103,7 +104,7 @@ func (i *InvoiceExtractorService) ExtractBatch(
 
 			inv, err := tpl.Parse(text)
 			if err != nil {
-				errChan <- BatchExtractError{
+				errChan <- shared.FileResultError{
 					FileID:   file.ID,
 					FileName: file.Name,
 					Err:      err,

@@ -5,6 +5,7 @@ import "github.com/sieryo/invoice-extractor/internal/app/invoice"
 type Template interface {
 	Identifier() string
 	Name() string
+	Alias() string
 
 	Match(raw string) bool
 	Seller() *invoice.Party

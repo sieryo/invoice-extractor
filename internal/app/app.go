@@ -11,7 +11,9 @@ import (
 	"github.com/sieryo/invoice-extractor/internal/app/buyer"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/exporter/excel"
-	"github.com/sieryo/invoice-extractor/internal/app/invoice/extract"
+	invoiceextract "github.com/sieryo/invoice-extractor/internal/app/invoice/extract"
+	"github.com/sieryo/invoice-extractor/internal/app/invoice/tax/extract"
+	"github.com/sieryo/invoice-extractor/internal/app/invoice/tax/rename"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/template"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/template/goodsaletech"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/template/seamakeup"
@@ -75,13 +77,19 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 
 	// services
 	authService := auth.NewService(userRepo, sessionRepo, logger)
-	invoiceExtractService := extract.NewInvoiceExtractService(templateRegistry, buyerRegistry)
+	invoiceExtractService := invoiceextract.NewInvoiceExtractService(templateRegistry, buyerRegistry)
 	invoiceService := invoice.NewInvoiceService(invoiceExporter, fs)
+	taxInvoiceExtractService := extract.NewTaxInvoiceExtractService()
+	renameTaxInvoiceService := rename.NewTaxInvoiceRenameService(taxInvoiceExtractService)
+
 	// dispatcher & handler
 	dispatcher := jobrunner.NewDispatcher()
-	invoiceHandler := extract.NewInvoiceExtractJob(invoiceExtractService, fs)
+	invoiceHandler := invoiceextract.NewInvoiceExtractJob(invoiceExtractService, fs)
 
-	dispatcher.Register(job.JobTypeInvoiceExtract, invoiceHandler)
+	renameTaxInvoiceHandler := rename.NewTaxInvoiceRenameJob(renameTaxInvoiceService, fs)
+
+	dispatcher.Register(job.JobTypeExtractInvoice, invoiceHandler)
+	dispatcher.Register(job.JobTypeRenameTaxInvoice, renameTaxInvoiceHandler)
 
 	jobRunner := jobrunner.NewJobQueueRunner(jobRepo, dispatcher, 2)
 	ctx := context.Background()

@@ -21,6 +21,10 @@ func (t *GoodSaleTechTemplate) Name() string {
 	return "PT Good Sale Tech"
 }
 
+func (t *GoodSaleTechTemplate) Alias() string {
+	return "GST"
+}
+
 func (t *GoodSaleTechTemplate) Seller() *invoice.Party {
 	return &invoice.Party{
 		Name:  t.Name(),

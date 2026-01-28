@@ -8,12 +8,15 @@ import (
 type JobType string
 
 const (
-	JobTypeInvoiceExtract JobType = "invoice_extract"
+	JobTypeExtractInvoice   JobType = "extract_invoice"
+	JobTypeRenameTaxInvoice JobType = "rename_tax_invoice"
 )
 
 func (t JobType) IsValid() bool {
 	switch t {
-	case JobTypeInvoiceExtract:
+	case JobTypeExtractInvoice:
+		return true
+	case JobTypeRenameTaxInvoice:
 		return true
 	default:
 		return false
@@ -74,8 +77,9 @@ const (
 type OutputFileType string
 
 const (
-	OutputFileTypeInvoice OutputFileType = "invoice_json"
-	OutputFileTypeRaw     OutputFileType = "raw"
+	OutputFileTypeInvoice    OutputFileType = "invoice_json"
+	OutputFileTypeTaxInvoice OutputFileType = "tax_invoice"
+	OutputFileTypeRaw        OutputFileType = "raw"
 )
 
 type OutputFile struct {

@@ -12,19 +12,19 @@ import (
 	"github.com/sieryo/invoice-extractor/internal/app/shared"
 )
 
-type InvoiceExtractHandler struct {
+type TaxInvoiceRenameHandler struct {
 	jobService *job.JobService
 	fileStore  shared.FileStore
 }
 
-func NewInvoiceExtractHandler(jobService *job.JobService, fileStore shared.FileStore) *InvoiceExtractHandler {
-	return &InvoiceExtractHandler{
+func NewTaxInvoiceRenameHandler(jobService *job.JobService, fileStore shared.FileStore) *TaxInvoiceRenameHandler {
+	return &TaxInvoiceRenameHandler{
 		jobService: jobService,
 		fileStore:  fileStore,
 	}
 }
 
-func (h *InvoiceExtractHandler) Handle(c *fiber.Ctx) error {
+func (h *TaxInvoiceRenameHandler) Handle(c *fiber.Ctx) error {
 	form, err := c.MultipartForm()
 	if err != nil {
 		return SendError(c, fiber.StatusBadRequest, "failed to parse multipart form")
@@ -78,7 +78,7 @@ func (h *InvoiceExtractHandler) Handle(c *fiber.Ctx) error {
 
 	userID := c.Locals("userId").(string)
 
-	newJob := job.NewJob(jobID, &userID, job.JobTypeExtractInvoice, payloadBytes)
+	newJob := job.NewJob(jobID, &userID, job.JobTypeRenameTaxInvoice, payloadBytes)
 
 	if err := h.jobService.CreateJob(ctx, newJob); err != nil {
 		fmt.Printf("%s", err.Error())
