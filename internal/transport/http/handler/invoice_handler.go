@@ -30,7 +30,7 @@ func NewInvoiceHandler(
 func (h *InvoiceHandler) LoadInvoice(
 	ctx context.Context,
 	jobID string,
-	file job.JobFile,
+	file job.InputFile,
 ) (*invoice.Invoice, error) {
 
 	return h.invoiceService.LoadInvoice(ctx, jobID, file.Name)
@@ -60,8 +60,9 @@ func (h *InvoiceHandler) ExportInvoices(c *fiber.Ctx) error {
 
 	invoices := make([]*invoice.Invoice, 0, len(manifest.Files))
 
+	ready := job.OutputFileReady
 	for _, f := range manifest.Files {
-		if f.Status != job.JobFileReady {
+		if f.Status != ready {
 			stat.Failed++
 			continue
 		}

@@ -14,16 +14,26 @@ CREATE TABLE sessions (
 
 CREATE TABLE jobs (
 	id TEXT PRIMARY KEY,
+
 	user_id TEXT,
-	type VARCHAR(100) NOT NULL,
-	status VARCHAR(100) NOT NULL,
+
+	type TEXT NOT NULL,
+	status TEXT NOT NULL,
 	progress INTEGER NOT NULL,
-	input_payload    TEXT NOT NULL,
-	output_manifest  TEXT,
+
+	-- opaque, job-type specific
+	input_payload TEXT NOT NULL,
+
+	-- structured JSON
+	output_manifest TEXT,
+
 	error_message TEXT,
-	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+	created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	started_at DATETIME,
 	finished_at DATETIME,
 	expired_at DATETIME,
+
 	FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+

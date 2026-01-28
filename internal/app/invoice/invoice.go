@@ -7,9 +7,10 @@ import (
 )
 
 type FileRef struct {
-	ID    string
-	Name  string
-	Store string
+	ID          string
+	Name        string
+	Store       string
+	Persistence bool
 }
 
 type Party struct {

@@ -39,7 +39,7 @@ func (h *InvoiceExtractHandler) Handle(c *fiber.Ctx) error {
 
 	ctx := c.Context()
 
-	var jobFiles []job.JobFile
+	var inputFiles []job.InputFile
 
 	for _, file := range files {
 		src, err := file.Open()
@@ -58,18 +58,17 @@ func (h *InvoiceExtractHandler) Handle(c *fiber.Ctx) error {
 			return SendError(c, fiber.StatusInternalServerError, "failed to save file")
 		}
 
-		jobFile := job.JobFile{
-			ID:     tmp.ID,
-			Name:   tmp.Name,
-			URI:    tmp.Path,
-			Status: job.JobFilePending,
+		inputFile := job.InputFile{
+			ID:   tmp.ID,
+			Name: tmp.Name,
+			URI:  tmp.Path,
 		}
 
-		jobFiles = append(jobFiles, jobFile)
+		inputFiles = append(inputFiles, inputFile)
 	}
 
 	payloadStruct := extract.Payload{
-		JobFiles: jobFiles,
+		InputFiles: inputFiles,
 	}
 
 	payloadBytes, err := json.Marshal(payloadStruct)
@@ -79,12 +78,7 @@ func (h *InvoiceExtractHandler) Handle(c *fiber.Ctx) error {
 
 	userID := c.Locals("userId").(string)
 
-	newJob := &job.Job{
-		ID:           jobID,
-		UserID:       &userID,
-		Type:         job.JobTypeInvoiceExtract,
-		InputPayload: payloadBytes,
-	}
+	newJob := job.NewJob(jobID, &userID, job.JobTypeInvoiceExtract, payloadBytes)
 
 	if err := h.jobService.CreateJob(ctx, newJob); err != nil {
 		fmt.Printf("%s", err.Error())
@@ -92,7 +86,7 @@ func (h *InvoiceExtractHandler) Handle(c *fiber.Ctx) error {
 	}
 
 	// Ini harusnya async
-	_ = h.jobService.StartJob(ctx, newJob)
+	// _ = h.jobService.StartJob(ctx, newJob)
 
 	return SendSuccess(c, fiber.StatusAccepted, fiber.Map{
 		"job_id": jobID,

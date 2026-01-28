@@ -28,16 +28,20 @@ func (h *InvoiceExtractJob) Handle(ctx context.Context, j *job.Job) (*job.Output
 		return nil, err
 	}
 
-	result, err := h.extractor.ExtractBatch(ctx, payload.JobFiles, payload.Template)
+	result, err := h.extractor.ExtractBatch(ctx, payload.InputFiles, payload.Template)
 	if err != nil {
 		return nil, err
 	}
 
-	var files []job.JobFile
+	var files []job.OutputFile
 
 	// SUCCESS invoices
 	for i, inv := range result.Invoices {
-		name := fmt.Sprintf("invoice_%d.json", i)
+		count := i + 1
+		name := fmt.Sprintf("invoice_%d.json", count)
+
+		// Langsung hapus data inputnya
+		inv.Metadata.SourceFile.Persistence = false
 
 		data, _ := json.Marshal(inv)
 
@@ -50,21 +54,22 @@ func (h *InvoiceExtractJob) Handle(ctx context.Context, j *job.Job) (*job.Output
 		if err != nil {
 			return nil, err
 		}
-
-		files = append(files, job.JobFile{
+		files = append(files, job.OutputFile{
 			ID:     finalObj.ID,
 			Name:   name,
+			Type:   job.OutputFileTypeInvoice,
 			URI:    finalObj.Path,
-			Status: job.JobFileReady,
+			Status: job.OutputFileReady,
 		})
 	}
 
 	for _, e := range result.Errors {
-		files = append(files, job.JobFile{
+		files = append(files, job.OutputFile{
 			ID:     e.FileID,
 			Name:   e.FileName,
 			URI:    "",
-			Status: job.JobFileFailed,
+			Status: job.OutputFileFailed,
+			Type:   job.OutputFileTypeInvoice,
 		})
 	}
 
@@ -74,7 +79,6 @@ func (h *InvoiceExtractJob) Handle(ctx context.Context, j *job.Job) (*job.Output
 
 	outputManifest := job.OutputManifest{
 		Version: 1,
-		JobType: job.JobTypeInvoiceExtract,
 		Summary: job.Summary{
 			TotalFiles: len(result.Invoices) + len(result.Errors),
 			Ready:      len(result.Invoices),

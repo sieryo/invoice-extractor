@@ -70,11 +70,14 @@ func (r *JobQueueRunner) executeJob(ctx context.Context, j *job.Job) {
 		j.ErrorMessage = &errMsg
 		_ = r.repo.Update(ctx, j)
 
+		// Diemin aja progressnya.
+
 		fmt.Printf("Err : %s", errMsg)
 	} else {
 		j.Status = job.JobSuccess
 		j.FinishedAt = ptrTimeNow()
 		j.OutputManifest = outputManifest
+		j.Progress = 100
 
 		if err := r.repo.Update(ctx, j); err != nil {
 			log.Printf("failed to update job %s: %v", j.ID, err)

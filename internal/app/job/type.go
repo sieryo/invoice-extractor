@@ -1,6 +1,6 @@
 package job
 
 type JobResult struct {
-	Files   []JobFile
+	Files   []InputFile
 	Summary Summary
 }

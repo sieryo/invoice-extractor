@@ -28,16 +28,16 @@ func NewInvoiceExtractService(t *template.Registry, b *buyer.Registry) *InvoiceE
 
 func (i *InvoiceExtractorService) ExtractBatch(
 	ctx context.Context,
-	jobFiles []job.JobFile,
+	inputFiles []job.InputFile,
 	templateID *string,
 ) (*BatchExtractResult, error) {
 
 	var wg sync.WaitGroup
 
-	errChan := make(chan BatchExtractError, len(jobFiles))
-	invoiceChan := make(chan *invoice.Invoice, len(jobFiles))
+	errChan := make(chan BatchExtractError, len(inputFiles))
+	invoiceChan := make(chan *invoice.Invoice, len(inputFiles))
 
-	for _, file := range jobFiles {
+	for _, file := range inputFiles {
 		p := file.URI
 		wg.Add(1)
 
