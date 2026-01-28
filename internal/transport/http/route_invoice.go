@@ -10,7 +10,7 @@ func (s *Server) registerInvoiceRoutes(protected fiber.Router) {
 		s.appCtx.JobService,
 		s.appCtx.FileStore,
 	)
-	protected.Post("/extract_invoice", invoiceExtractHandler.Handle)
+	protected.Post("/invoice/extract", invoiceExtractHandler.Handle)
 
 	invoiceHandler := handler.NewInvoiceHandler(
 		s.appCtx.InvoiceService,
@@ -18,4 +18,6 @@ func (s *Server) registerInvoiceRoutes(protected fiber.Router) {
 		s.appCtx.JobService,
 	)
 	protected.Post("/invoice/export", invoiceHandler.ExportInvoices)
+	protected.Post("/invoice/load", invoiceHandler.LoadInvoice)
+	protected.Get("/invoice/list/:job_id", invoiceHandler.ListInvoices)
 }

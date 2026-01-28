@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/sieryo/invoice-extractor/internal/app/job"
 	"github.com/sieryo/invoice-extractor/internal/app/shared"
 )
 
@@ -49,4 +50,37 @@ func (s *InvoiceService) Export(
 	invoices []*Invoice,
 ) ([]byte, error) {
 	return s.exporter.Export(ctx, invoices)
+}
+
+func (s *InvoiceService) LoadInvoicesByJob(
+	ctx context.Context,
+	j *job.Job,
+) ([]*Invoice, ExportStat, error) {
+
+	var stat ExportStat
+	var invoices []*Invoice
+
+	if j.OutputManifest == nil || len(j.OutputManifest.Files) == 0 {
+		return nil, stat, nil
+	}
+
+	stat.Total = len(j.OutputManifest.Files)
+
+	for _, f := range j.OutputManifest.Files {
+		if f.Status != job.OutputFileReady {
+			stat.Failed++
+			continue
+		}
+
+		inv, err := s.LoadInvoice(ctx, j.ID, f.Name)
+		if err != nil {
+			stat.Failed++
+			continue
+		}
+
+		invoices = append(invoices, inv)
+		stat.Success++
+	}
+
+	return invoices, stat, nil
 }

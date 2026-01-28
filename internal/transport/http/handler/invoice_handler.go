@@ -1,8 +1,6 @@
 package handler
 
 import (
-	"context"
-
 	"github.com/gofiber/fiber/v2"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice"
 	"github.com/sieryo/invoice-extractor/internal/app/job"
@@ -27,13 +25,25 @@ func NewInvoiceHandler(
 	}
 }
 
-func (h *InvoiceHandler) LoadInvoice(
-	ctx context.Context,
-	jobID string,
-	file job.InputFile,
-) (*invoice.Invoice, error) {
+func (h *InvoiceHandler) LoadInvoice(c *fiber.Ctx) error {
+	ctx := c.Context()
 
-	return h.invoiceService.LoadInvoice(ctx, jobID, file.Name)
+	jobID := c.FormValue("job_id")
+	if jobID == "" {
+		return SendError(c, fiber.StatusBadRequest, "job_id is required")
+	}
+
+	name := c.FormValue("name")
+	if name == "" {
+		return SendError(c, fiber.StatusBadRequest, "name is required")
+	}
+
+	inv, err := h.invoiceService.LoadInvoice(ctx, jobID, name)
+	if err != nil {
+		return SendError(c, fiber.StatusNotFound, "invoice not found")
+	}
+
+	return SendSuccess(c, fiber.StatusOK, inv, "invoice loaded successfully")
 }
 
 func (h *InvoiceHandler) ExportInvoices(c *fiber.Ctx) error {
@@ -46,39 +56,16 @@ func (h *InvoiceHandler) ExportInvoices(c *fiber.Ctx) error {
 
 	j, err := h.jobService.GetJobByID(ctx, jobID)
 	if err != nil {
+		return SendError(c, fiber.StatusNotFound, "job not found")
+	}
+
+	invoices, stat, err := h.invoiceService.LoadInvoicesByJob(ctx, j)
+	if err != nil {
 		return err
 	}
 
-	manifest := j.OutputManifest
-	if manifest == nil || len(manifest.Files) == 0 {
-		return SendError(c, fiber.StatusNotFound, "no output files")
-	}
-
-	stat := invoice.ExportStat{
-		Total: len(manifest.Files),
-	}
-
-	invoices := make([]*invoice.Invoice, 0, len(manifest.Files))
-
-	ready := job.OutputFileReady
-	for _, f := range manifest.Files {
-		if f.Status != ready {
-			stat.Failed++
-			continue
-		}
-
-		inv, err := h.invoiceService.LoadInvoice(ctx, jobID, f.Name)
-		if err != nil {
-			stat.Failed++
-			continue
-		}
-
-		invoices = append(invoices, inv)
-		stat.Success++
-	}
-
 	if len(invoices) == 0 {
-		return c.Status(404).JSON(stat)
+		return c.Status(fiber.StatusNotFound).JSON(stat)
 	}
 
 	data, err := h.invoiceService.Export(ctx, invoices)
@@ -105,4 +92,28 @@ func (h *InvoiceHandler) ExportInvoices(c *fiber.Ctx) error {
 			"uri":  finalObj.Path,
 		},
 	}, "invoices exported successfully")
+}
+
+func (h *InvoiceHandler) ListInvoices(c *fiber.Ctx) error {
+	ctx := c.Context()
+
+	jobID := c.Params("job_id")
+	if jobID == "" {
+		return SendError(c, fiber.StatusBadRequest, "job_id is required")
+	}
+
+	j, err := h.jobService.GetJobByID(ctx, jobID)
+	if err != nil {
+		return SendError(c, fiber.StatusNotFound, "job not found")
+	}
+
+	invoices, stat, err := h.invoiceService.LoadInvoicesByJob(ctx, j)
+	if err != nil {
+		return err
+	}
+
+	return SendSuccess(c, fiber.StatusOK, fiber.Map{
+		"stat":     stat,
+		"invoices": invoices,
+	}, "invoices loaded successfully")
 }
