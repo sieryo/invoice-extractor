@@ -6,12 +6,14 @@ import (
 	"github.com/xuri/excelize/v2"
 
 	"github.com/sieryo/invoice-extractor/internal/app/invoice"
+	"github.com/sieryo/invoice-extractor/internal/app/invoice/template"
 	"github.com/sieryo/invoice-extractor/pkg/helper"
 )
 
 func writeInvoices(
 	f *excelize.File,
 	invoices []*invoice.Invoice,
+	templateRegistry *template.Registry,
 ) error {
 
 	if len(invoices) == 0 {
@@ -41,6 +43,16 @@ func writeInvoices(
 
 	for _, inv := range invoices {
 
+		tmpl, ok := templateRegistry.GetByIdentifier(inv.Metadata.TemplateID)
+
+		var invoiceNumber string
+		if !ok {
+			// Ini anggep aja pake invoice number langsung.
+			invoiceNumber = inv.Number
+		} else {
+			invoiceNumber = tmpl.FormatInvoiceNumber(inv)
+		}
+
 		f.SetCellValue(invoiceSheet, cell(ColInvRow, invoiceRow), baris)
 
 		dateStr := helper.FormatDateDDMMYYYY(inv.Date)
@@ -55,7 +67,7 @@ func writeInvoices(
 		f.SetCellValue(invoiceSheet, cell(ColInvType, invoiceRow), "Normal")
 		f.SetCellValue(invoiceSheet, cell(ColInvTransactionCode, invoiceRow), "04")
 
-		f.SetCellValue(invoiceSheet, cell(ColInvReference, invoiceRow), inv.Number)
+		f.SetCellValue(invoiceSheet, cell(ColInvReference, invoiceRow), invoiceNumber)
 
 		if inv.Seller != nil {
 

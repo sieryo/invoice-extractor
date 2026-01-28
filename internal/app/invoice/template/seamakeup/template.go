@@ -33,3 +33,10 @@ func (t *SeaMakeupTemplate) Match(raw string) bool {
 	return strings.Contains(raw, "PT Sea Makeup Beauty") &&
 		strings.Contains(raw, "INVOICE")
 }
+
+func (t *SeaMakeupTemplate) FormatInvoiceNumber(inv *invoice.Invoice) string {
+	if inv.Number == "" {
+		return ""
+	}
+	return "Invoice No : " + inv.Number
+}

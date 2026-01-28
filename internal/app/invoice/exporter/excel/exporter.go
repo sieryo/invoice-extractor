@@ -7,15 +7,18 @@ import (
 	"github.com/xuri/excelize/v2"
 
 	"github.com/sieryo/invoice-extractor/internal/app/invoice"
+	"github.com/sieryo/invoice-extractor/internal/app/invoice/template"
 )
 
 type ExcelExporter struct {
-	template []byte
+	templateRegistry *template.Registry
+	template         []byte
 }
 
-func NewExcelExporter() *ExcelExporter {
+func NewExcelExporter(templateRegistry *template.Registry) *ExcelExporter {
 	return &ExcelExporter{
-		template: invoiceTemplate,
+		templateRegistry: templateRegistry,
+		template:         invoiceTemplate,
 	}
 }
 
@@ -30,7 +33,7 @@ func (e *ExcelExporter) Export(
 	}
 
 	// isi excel
-	if err := writeInvoices(f, invoices); err != nil {
+	if err := writeInvoices(f, invoices, e.templateRegistry); err != nil {
 		return nil, err
 	}
 

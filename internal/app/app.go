@@ -66,7 +66,7 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 		}
 	}()
 
-	invoiceExporter := excel.NewExcelExporter()
+	invoiceExporter := excel.NewExcelExporter(templateRegistry)
 
 	// repositories
 	userRepo := repository.NewUserRepository(db)

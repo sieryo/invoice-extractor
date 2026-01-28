@@ -33,3 +33,7 @@ func (t *GoodSaleTechTemplate) Match(raw string) bool {
 	return strings.Contains(raw, "PT Good Sale Tech") &&
 		strings.Contains(raw, "INVOICE")
 }
+
+func (t *GoodSaleTechTemplate) FormatInvoiceNumber(inv *invoice.Invoice) string {
+	return inv.Number
+}
