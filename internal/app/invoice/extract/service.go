@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/sieryo/invoice-extractor/internal/app/buyer"
@@ -37,26 +38,45 @@ func (i *InvoiceExtractorService) ExtractBatch(
 	errChan := make(chan BatchExtractError, len(inputFiles))
 	invoiceChan := make(chan *invoice.Invoice, len(inputFiles))
 
-	for _, file := range inputFiles {
-		p := file.URI
-		wg.Add(1)
+	reporter := job.GetProgressReporter(ctx)
 
-		go func() {
+	var done int32
+	total := int32(len(inputFiles))
+
+	for _, f := range inputFiles {
+		file := f
+		p := file.URI
+
+		wg.Add(1)
+		go func(file job.InputFile) {
 			defer wg.Done()
+
+			// context turunan, bukan overwrite
+			ctx2 := ctx
+			if reporter != nil {
+				ctx2 = job.WithProgressReporter(ctx, reporter)
+			}
+
+			defer func() {
+				if reporter != nil {
+					current := atomic.AddInt32(&done, 1)
+					progress := int(float64(current) / float64(total) * 100)
+					reporter.Report(progress)
+				}
+			}()
 
 			if _, err := os.Stat(p); err != nil {
 				errChan <- BatchExtractError{FileID: file.ID, FileName: file.Name, Err: err}
 				return
 			}
 
-			text, err := pdftool.ExtractText(ctx, p, pdftool.DefaultOptions())
+			text, err := pdftool.ExtractText(ctx2, p, pdftool.DefaultOptions())
 			if err != nil {
 				errChan <- BatchExtractError{FileID: file.ID, FileName: file.Name, Err: err}
 				return
 			}
 
 			var tpl template.Template
-
 			if templateID != nil {
 				t, ok := i.templateRegistry.GetByIdentifier(*templateID)
 				if !ok {
@@ -83,8 +103,11 @@ func (i *InvoiceExtractorService) ExtractBatch(
 
 			inv, err := tpl.Parse(text)
 			if err != nil {
-				errChan <- BatchExtractError{FileID: file.ID,
-					FileName: file.Name, Err: err}
+				errChan <- BatchExtractError{
+					FileID:   file.ID,
+					FileName: file.Name,
+					Err:      err,
+				}
 				return
 			}
 
@@ -93,13 +116,13 @@ func (i *InvoiceExtractorService) ExtractBatch(
 				SourceFile: invoice.FileRef{
 					ID:    file.ID,
 					Name:  file.Name,
-					Store: "Local", // Untuk sementara local dulu
+					Store: "Local",
 				},
 				TemplateID:  tpl.Identifier(),
 				ExtractedAt: time.Now(),
 			}
 
-			// Inject TaxID & TKU for Buyer
+			// buyer enrichment
 			if inv.Buyer != nil && inv.Buyer.Name != "" {
 				if b, ok := i.buyerRegistry.GetByName(inv.Buyer.Name); ok {
 					taxID := b.PrimaryTaxID()
@@ -110,7 +133,7 @@ func (i *InvoiceExtractorService) ExtractBatch(
 			}
 
 			invoiceChan <- inv
-		}()
+		}(file)
 	}
 
 	go func() {

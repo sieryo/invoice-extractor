@@ -81,7 +81,7 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 	dispatcher := jobrunner.NewDispatcher()
 	invoiceHandler := extract.NewInvoiceExtractJob(invoiceExtractService, fs)
 
-	dispatcher.Register("INVOICE_EXTRACT", invoiceHandler)
+	dispatcher.Register(job.JobTypeInvoiceExtract, invoiceHandler)
 
 	jobRunner := jobrunner.NewJobQueueRunner(jobRepo, dispatcher, 2)
 	ctx := context.Background()

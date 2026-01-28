@@ -86,7 +86,7 @@ func (h *InvoiceExtractHandler) Handle(c *fiber.Ctx) error {
 	}
 
 	// Ini harusnya async
-	// _ = h.jobService.StartJob(ctx, newJob)
+	_ = h.jobService.StartJob(ctx, newJob)
 
 	return SendSuccess(c, fiber.StatusAccepted, fiber.Map{
 		"job_id": jobID,

@@ -18,6 +18,14 @@ type JobQueueRunner struct {
 	workers    int
 }
 
+type funcProgressReporter struct {
+	fn func(int)
+}
+
+func (f funcProgressReporter) Report(p int) {
+	f.fn(p)
+}
+
 func NewJobQueueRunner(repo job.JobRepository, dispatcher *Dispatcher, workers int) *JobQueueRunner {
 	return &JobQueueRunner{
 		dispatcher: dispatcher,
@@ -63,6 +71,14 @@ func (r *JobQueueRunner) worker(ctx context.Context, id int) {
 
 func (r *JobQueueRunner) executeJob(ctx context.Context, j *job.Job) {
 	outputManifest, err := r.dispatcher.Dispatch(ctx, j)
+
+	reporter := funcProgressReporter{
+		fn: func(p int) {
+			_ = r.repo.UpdateProgress(ctx, j.ID, p)
+		},
+	}
+
+	ctx = job.WithProgressReporter(ctx, reporter)
 
 	if err != nil {
 		errMsg := err.Error()
