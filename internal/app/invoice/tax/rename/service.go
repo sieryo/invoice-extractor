@@ -40,7 +40,7 @@ func (s *TaxInvoiceRenameService) RenameBatch(
 			continue
 		}
 
-		newName := fmt.Sprintf("%s - %s", info.Number, info.Buyer.Name)
+		newName := fmt.Sprintf("%s - %s.pdf", info.Number, info.Buyer.Name)
 
 		results = append(results, RenamedFile{
 			FileID:    f.ID,
