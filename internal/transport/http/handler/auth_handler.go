@@ -28,70 +28,49 @@ type LoginRequest struct {
 func (h *AuthHandler) Register(c *fiber.Ctx) error {
 	var req RegisterRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "invalid request body",
-		})
+		return SendError(c, fiber.StatusBadRequest, "invalid request body")
 	}
 
 	if req.Username == "" || req.Password == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "username and password are required",
-		})
+		return SendError(c, fiber.StatusBadRequest, "username and password are required")
 	}
 
 	if err := h.authService.Register(req.Username, req.Password); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return SendError(c, fiber.StatusBadRequest, err.Error())
 	}
 
-	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
-		"message": "user registered successfully",
-	})
+	return SendSuccess(c, fiber.StatusCreated, nil, "user registered successfully")
 }
 
 func (h *AuthHandler) Login(c *fiber.Ctx) error {
 	var req LoginRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "invalid request body",
-		})
+		return SendError(c, fiber.StatusBadRequest, "invalid request body")
 	}
 
 	if req.Username == "" || req.Password == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "username and password are required",
-		})
+		return SendError(c, fiber.StatusBadRequest, "username and password are required")
 	}
 
 	sessionID, err := h.authService.Login(req.Username, req.Password)
 	if err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"error": "invalid credentials",
-		})
+		return SendError(c, fiber.StatusUnauthorized, "invalid credentials")
 	}
 
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+	return SendSuccess(c, fiber.StatusOK, fiber.Map{
 		"session_id": sessionID,
-		"message":    "login successful",
-	})
+	}, "login successful")
 }
 
 func (h *AuthHandler) Logout(c *fiber.Ctx) error {
 	sessionID := c.Locals("sessionID")
 	if sessionID == nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"error": "unauthorized",
-		})
+		return SendError(c, fiber.StatusUnauthorized, "unauthorized")
 	}
 
 	if err := h.authService.Logout(sessionID.(string)); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "failed to logout",
-		})
+		return SendError(c, fiber.StatusInternalServerError, "failed to logout")
 	}
 
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"message": "logout successful",
-	})
+	return SendSuccess(c, fiber.StatusOK, nil, "logout successful")
 }

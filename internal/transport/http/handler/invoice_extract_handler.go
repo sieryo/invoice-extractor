@@ -27,12 +27,12 @@ func NewInvoiceExtractHandler(jobService *job.JobService, fileStore shared.FileS
 func (h *InvoiceExtractHandler) Handle(c *fiber.Ctx) error {
 	form, err := c.MultipartForm()
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "failed to parse multipart form"})
+		return SendError(c, fiber.StatusBadRequest, "failed to parse multipart form")
 	}
 
 	files := form.File["files"]
 	if len(files) == 0 {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "no files uploaded"})
+		return SendError(c, fiber.StatusBadRequest, "no files uploaded")
 	}
 
 	jobID := uuid.New().String()
@@ -44,18 +44,18 @@ func (h *InvoiceExtractHandler) Handle(c *fiber.Ctx) error {
 	for _, file := range files {
 		src, err := file.Open()
 		if err != nil {
-			return c.Status(500).JSON(fiber.Map{"error": "failed to open file"})
+			return SendError(c, fiber.StatusInternalServerError, "failed to open file")
 		}
 		defer src.Close()
 
 		data, err := io.ReadAll(src)
 		if err != nil {
-			return c.Status(500).JSON(fiber.Map{"error": "failed to read file"})
+			return SendError(c, fiber.StatusInternalServerError, "failed to read file")
 		}
 
 		tmp, err := h.fileStore.SaveTemp(ctx, jobID, file.Filename, data)
 		if err != nil {
-			return c.Status(500).JSON(fiber.Map{"error": "failed to save file"})
+			return SendError(c, fiber.StatusInternalServerError, "failed to save file")
 		}
 
 		jobFile := job.JobFile{
@@ -88,14 +88,13 @@ func (h *InvoiceExtractHandler) Handle(c *fiber.Ctx) error {
 
 	if err := h.jobService.CreateJob(ctx, newJob); err != nil {
 		fmt.Printf("%s", err.Error())
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create job"})
+		return SendError(c, fiber.StatusInternalServerError, "failed to create job")
 	}
 
 	// Ini harusnya async
 	_ = h.jobService.StartJob(ctx, newJob)
 
-	return c.Status(fiber.StatusAccepted).JSON(fiber.Map{
-		"job_id":  jobID,
-		"message": "job submitted successfully",
-	})
+	return SendSuccess(c, fiber.StatusAccepted, fiber.Map{
+		"job_id": jobID,
+	}, "job submitted successfully")
 }

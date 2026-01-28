@@ -31,15 +31,15 @@ func NewBuyerUploadHandler(
 }
 
 func (h *BuyerUploadHandler) IsLoaded(c *fiber.Ctx) error {
-	return c.JSON(fiber.Map{
+	return SendSuccess(c, fiber.StatusOK, fiber.Map{
 		"loaded": h.registry.IsLoaded(),
-	})
+	}, "buyer data status retrieved")
 }
 
 func (h *BuyerUploadHandler) Handle(c *fiber.Ctx) error {
 	file, err := c.FormFile("file")
 	if err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "file required"})
+		return SendError(c, fiber.StatusBadRequest, "file required")
 	}
 
 	tmpPath := filepath.Join(h.dataDir, "buyer_upload.xlsx")
@@ -49,15 +49,14 @@ func (h *BuyerUploadHandler) Handle(c *fiber.Ctx) error {
 
 	buyers, err := h.parser.Parse(tmpPath)
 	if err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+		return SendError(c, fiber.StatusBadRequest, err.Error())
 	}
 
 	if err := h.store.Save(buyers); err != nil {
 		return err
 	}
 
-	return c.JSON(fiber.Map{
-		"status": "ok",
-		"count":  len(buyers),
-	})
+	return SendSuccess(c, fiber.StatusOK, fiber.Map{
+		"count": len(buyers),
+	}, "buyer data uploaded successfully")
 }

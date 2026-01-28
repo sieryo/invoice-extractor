@@ -20,14 +20,12 @@ func (h *JobHandler) ListJobs(c *fiber.Ctx) error {
 
 	jobs, err := h.jobService.ListJobs(ctx)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "failed to retrieve jobs",
-		})
+		return SendError(c, fiber.StatusInternalServerError, "failed to retrieve jobs")
 	}
 
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+	return SendSuccess(c, fiber.StatusOK, fiber.Map{
 		"jobs": jobs,
-	})
+	}, "jobs retrieved successfully")
 }
 
 func (h *JobHandler) GetJobByID(c *fiber.Ctx) error {
@@ -35,17 +33,13 @@ func (h *JobHandler) GetJobByID(c *fiber.Ctx) error {
 	jobID := c.Params("id")
 
 	if jobID == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "job ID is required",
-		})
+		return SendError(c, fiber.StatusBadRequest, "job ID is required")
 	}
 
 	job, err := h.jobService.GetJobByID(ctx, jobID)
 	if err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "job not found",
-		})
+		return SendError(c, fiber.StatusNotFound, "job not found")
 	}
 
-	return c.Status(fiber.StatusOK).JSON(job)
+	return SendSuccess(c, fiber.StatusOK, job, "job retrieved successfully")
 }

@@ -41,9 +41,7 @@ func (h *InvoiceHandler) ExportInvoices(c *fiber.Ctx) error {
 
 	jobID := c.FormValue("job_id")
 	if jobID == "" {
-		return c.Status(400).JSON(fiber.Map{
-			"error": "job_id is required",
-		})
+		return SendError(c, fiber.StatusBadRequest, "job_id is required")
 	}
 
 	j, err := h.jobService.GetJobByID(ctx, jobID)
@@ -53,9 +51,7 @@ func (h *InvoiceHandler) ExportInvoices(c *fiber.Ctx) error {
 
 	manifest := j.OutputManifest
 	if manifest == nil || len(manifest.Files) == 0 {
-		return c.Status(404).JSON(fiber.Map{
-			"error": "no output files",
-		})
+		return SendError(c, fiber.StatusNotFound, "no output files")
 	}
 
 	stat := invoice.ExportStat{
@@ -101,12 +97,11 @@ func (h *InvoiceHandler) ExportInvoices(c *fiber.Ctx) error {
 		return err
 	}
 
-	return c.JSON(fiber.Map{
-		"status": "ok",
-		"stat":   stat,
+	return SendSuccess(c, fiber.StatusOK, fiber.Map{
+		"stat": stat,
 		"file": fiber.Map{
 			"name": filename,
 			"uri":  finalObj.Path,
 		},
-	})
+	}, "invoices exported successfully")
 }
