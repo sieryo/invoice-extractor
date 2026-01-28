@@ -39,6 +39,7 @@ func ParseItem(line string) (*invoice.Item, error) {
 		Quantity:    qty,
 		UnitPrice:   unit,
 		TotalAmount: total,
+		TaxRate:     0.12, // 12%
 	}, nil
 }
 

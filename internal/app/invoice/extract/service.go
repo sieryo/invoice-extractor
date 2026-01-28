@@ -99,10 +99,13 @@ func (i *InvoiceExtractorService) ExtractBatch(
 				ExtractedAt: time.Now(),
 			}
 
+			// Inject TaxID & TKU for Buyer
 			if inv.Buyer != nil && inv.Buyer.Name != "" {
 				if b, ok := i.buyerRegistry.GetByName(inv.Buyer.Name); ok {
 					taxID := b.PrimaryTaxID()
+					tku := b.TKU()
 					inv.Buyer.TaxID = &taxID
+					inv.Buyer.TKU = &tku
 				}
 			}
 

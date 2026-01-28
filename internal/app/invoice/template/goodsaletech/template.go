@@ -2,6 +2,9 @@ package goodsaletech
 
 import (
 	"strings"
+
+	"github.com/sieryo/invoice-extractor/internal/app/invoice"
+	"github.com/sieryo/invoice-extractor/pkg/helper"
 )
 
 type GoodSaleTechTemplate struct{}
@@ -18,8 +21,12 @@ func (t *GoodSaleTechTemplate) Name() string {
 	return "PT Good Sale Tech"
 }
 
-func (t *GoodSaleTechTemplate) TaxID() string {
-	return "0632707600016000"
+func (t *GoodSaleTechTemplate) Seller() *invoice.Party {
+	return &invoice.Party{
+		Name:  t.Name(),
+		TaxID: helper.Ptr("0632707600016000"),
+		TKU:   helper.Ptr("0632707600016000000000"),
+	}
 }
 
 func (t *GoodSaleTechTemplate) Match(raw string) bool {

@@ -25,3 +25,7 @@ func (b *Buyer) PrimaryTaxID() string {
 	}
 	return b.NITKU
 }
+
+func (b *Buyer) TKU() string {
+	return b.NITKU
+}

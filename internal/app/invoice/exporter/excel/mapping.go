@@ -3,7 +3,7 @@ package excel
 const (
 	SheetInvoice = "Faktur"
 
-	ColSpecialNPWP = "C" // NPWP PENJUAL
+	ColInvSpecialNPWP = "C" // NPWP PENJUAL
 
 	InvoiceHeaderRow = 3
 	InvoiceStartRow  = 4
@@ -26,6 +26,8 @@ const (
 	ColInvBuyerAddress     = "P"
 	ColInvBuyerEmail       = "Q"
 	ColInvBuyerTKU         = "R"
+
+	ColInvSpecialFlagEnd = "A"
 )
 
 const (
@@ -43,9 +45,11 @@ const (
 	ColDetQty          = "G"
 	ColDetDiscount     = "H"
 	ColDetDPP          = "I"
-	ColDetDPPAlt       = "J"
+	ColDetTaxBase      = "J"
 	ColDetTaxRate      = "K"
 	ColDetTaxAmount    = "L"
 	ColDetLuxuryRate   = "M"
 	ColDetLuxuryAmount = "N"
+
+	ColDetSpecialFlagEnd = "A"
 )

@@ -17,13 +17,9 @@ func (t *GoodSaleTechTemplate) Parse(raw string) (*invoice.Invoice, error) {
 	norm := t.Normalize(raw)
 
 	lines := strings.Split(norm, "\n")
-	taxID := t.TaxID()
 	inv := &invoice.Invoice{
-		Buyer: &invoice.Party{},
-		Seller: &invoice.Party{
-			Name:  t.Name(),
-			TaxID: &taxID,
-		},
+		Buyer:  &invoice.Party{},
+		Seller: t.Seller(),
 	}
 	var addressParts []string
 
