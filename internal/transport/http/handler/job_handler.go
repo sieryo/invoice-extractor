@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/sieryo/invoice-extractor/internal/app/invoice/extract"
-	"github.com/sieryo/invoice-extractor/internal/app/invoice/tax/rename"
+
 	"github.com/sieryo/invoice-extractor/internal/app/job"
 	jobdomain "github.com/sieryo/invoice-extractor/internal/domain/job"
+	"github.com/sieryo/invoice-extractor/internal/transport/http/handler/helper"
 )
 
 type JobHandler struct {
@@ -44,46 +44,16 @@ func (h *JobHandler) CreateJob(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid job_type")
 	}
 
-	switch req.JobType {
-	case jobdomain.JobTypeExtractInvoice:
-		var payload extract.Payload
-		if err := json.Unmarshal(req.Payload, &payload); err != nil {
-			return fiber.NewError(fiber.StatusBadRequest, "invalid payload for extract invoice")
-		}
-
-		payloadBytes, err := json.Marshal(payload)
-
-		if err != nil {
-			return SendError(c, fiber.StatusBadRequest, "Failed to marshal payload")
-		}
-
-		job, err := h.jobService.CreateJob(ctx, userID, req.JobType, payloadBytes)
-		if err != nil {
-			return err
-		}
-		return c.JSON(job)
-
-	case jobdomain.JobTypeRenameTaxInvoice:
-		var payload rename.Payload
-		if err := json.Unmarshal(req.Payload, &payload); err != nil {
-			return fiber.NewError(fiber.StatusBadRequest, "invalid payload for rename tax invoice")
-		}
-
-		payloadBytes, err := json.Marshal(payload)
-
-		if err != nil {
-			return SendError(c, fiber.StatusBadRequest, "Failed to marshal payload")
-		}
-
-		job, err := h.jobService.CreateJob(ctx, userID, req.JobType, payloadBytes)
-		if err != nil {
-			return err
-		}
-		return c.JSON(job)
-
-	default:
-		return fiber.NewError(fiber.StatusBadRequest, "unsupported job_type")
+	payloadBytes, err := helper.ValidateJobPayload(req.JobType, req.Payload)
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
 	}
+
+	job, err := h.jobService.CreateJob(ctx, userID, req.JobType, payloadBytes)
+	if err != nil {
+		return err
+	}
+	return c.JSON(job)
 }
 
 func (h *JobHandler) ListJobs(c *fiber.Ctx) error {
