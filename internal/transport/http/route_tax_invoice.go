@@ -12,4 +12,10 @@ func (s *Server) registerTaxInvoiceRoutes(protected fiber.Router) {
 		s.appCtx.FileStore,
 	)
 	protected.Post("/invoice/tax/rename", taxInvoiceRenameHandler.Handle)
+
+	taxInvoiceHandler := handler.NewTaxInvoiceHandler(
+		s.appCtx.FileStore,
+		s.appCtx.JobService,
+	)
+	protected.Get("/invoice/tax/:job_id/download", taxInvoiceHandler.DownloadZip)
 }
