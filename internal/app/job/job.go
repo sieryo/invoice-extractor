@@ -91,7 +91,5 @@ type OutputFile struct {
 }
 
 type InputFile struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	URI  string `json:"uri"`
+	FileID string `json:"file_id"`
 }

@@ -37,3 +37,32 @@ CREATE TABLE jobs (
 	FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE collections (
+	id TEXT PRIMARY KEY,
+
+	user_id TEXT NOT NULL,
+	status TEXT NOT NULL, -- active, committed, expired
+
+	created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	expired_at DATETIME,
+
+	FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE files (
+	id TEXT PRIMARY KEY,
+
+	collection_id TEXT NOT NULL,
+	user_id TEXT NOT NULL,
+
+	name TEXT NOT NULL,
+	state TEXT NOT NULL, -- temp | final
+
+	size INTEGER,
+	mime_type TEXT,
+
+	created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+	FOREIGN KEY(collection_id) REFERENCES collections(id) ON DELETE CASCADE,
+	FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);

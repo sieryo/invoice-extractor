@@ -2,12 +2,11 @@ package filestore
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/google/uuid"
-	"github.com/sieryo/invoice-extractor/internal/app/shared"
+	"github.com/sieryo/invoice-extractor/internal/domain/file"
 )
 
 type LocalFileStore struct {
@@ -16,71 +15,66 @@ type LocalFileStore struct {
 
 func (l *LocalFileStore) SaveTemp(
 	ctx context.Context,
-	tempDirID string,
+	collectionID string,
 	name string,
 	data []byte,
-) (shared.TempObject, error) {
-
-	fileID := uuid.New().String()
-	safeName := fmt.Sprintf("%s_%s", fileID, name)
-
-	tempDir := filepath.Join(l.baseDir, "temp", tempDirID)
-	tempPath := filepath.Join(tempDir, safeName)
-
-	if err := os.MkdirAll(tempDir, 0755); err != nil {
-		return shared.TempObject{}, err
-	}
+) (file.FileObject, error) {
 
 	select {
 	case <-ctx.Done():
-		return shared.TempObject{}, ctx.Err()
+		return file.FileObject{}, ctx.Err()
 	default:
 	}
 
-	if err := os.WriteFile(tempPath, data, 0644); err != nil {
-		return shared.TempObject{}, err
+	fileID := uuid.New().String()
+
+	tempDir := filepath.Join(l.baseDir, "temp", collectionID)
+	tempPath := filepath.Join(tempDir, fileID)
+
+	if err := os.MkdirAll(tempDir, 0755); err != nil {
+		return file.FileObject{}, err
 	}
 
-	return shared.TempObject{
-		ID:        fileID,
-		TempDirID: tempDirID,
-		Name:      name,
-		Path:      tempPath,
-	}, nil
+	if err := os.WriteFile(tempPath, data, 0644); err != nil {
+		return file.FileObject{}, err
+	}
+
+	return file.NewTempFile(
+		fileID,
+		collectionID,
+		name,
+		tempPath,
+	), nil
 }
 
 func (l *LocalFileStore) Commit(
 	ctx context.Context,
-	obj shared.TempObject,
-) (shared.FinalObject, error) {
-
-	finalDir := filepath.Join(l.baseDir, "jobs", obj.TempDirID)
-	finalPath := filepath.Join(finalDir, obj.Name)
+	obj file.FileObject,
+) (file.FileObject, error) {
 
 	select {
 	case <-ctx.Done():
-		return shared.FinalObject{}, ctx.Err()
+		return file.FileObject{}, ctx.Err()
 	default:
 	}
 
+	finalDir := filepath.Join(l.baseDir, "files", obj.CollectionID)
+	finalPath := filepath.Join(finalDir, obj.ID)
+
 	if err := os.MkdirAll(finalDir, 0755); err != nil {
-		return shared.FinalObject{}, err
+		return file.FileObject{}, err
 	}
 
 	if err := os.Rename(obj.Path, finalPath); err != nil {
-		return shared.FinalObject{}, err
+		return file.FileObject{}, err
 	}
 
-	return shared.FinalObject{
-		ID:   obj.ID,
-		Name: obj.Name,
-		Path: finalPath,
-	}, nil
+	return obj.Commit(finalPath)
 }
 
 func (l *LocalFileStore) CleanupTemp(
 	ctx context.Context,
-	jobID string,
+	collectionID string,
 ) error {
 
 	select {
@@ -89,14 +83,14 @@ func (l *LocalFileStore) CleanupTemp(
 	default:
 	}
 
-	tempDir := filepath.Join(l.baseDir, "temp", jobID)
+	tempDir := filepath.Join(l.baseDir, "temp", collectionID)
 	return os.RemoveAll(tempDir)
 }
 
 func (l *LocalFileStore) Read(
 	ctx context.Context,
-	jobID string,
-	name string,
+	collectionID string,
+	fileID string,
 ) ([]byte, error) {
 
 	select {
@@ -105,8 +99,29 @@ func (l *LocalFileStore) Read(
 	default:
 	}
 
-	path := filepath.Join(l.baseDir, "jobs", jobID, name)
+	path := filepath.Join(l.baseDir, "files", collectionID, fileID)
 	return os.ReadFile(path)
+}
+
+func (l *LocalFileStore) Delete(
+	ctx context.Context,
+	collectionID string,
+	fileID string,
+) error {
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	tempPath := filepath.Join(l.baseDir, "temp", collectionID, fileID)
+	finalPath := filepath.Join(l.baseDir, "files", collectionID, fileID)
+
+	_ = os.Remove(tempPath)
+	_ = os.Remove(finalPath)
+
+	return nil
 }
 
 func NewLocalFileStore(baseDir string) *LocalFileStore {

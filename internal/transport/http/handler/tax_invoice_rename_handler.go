@@ -24,6 +24,8 @@ func NewTaxInvoiceRenameHandler(jobService *job.JobService, fileStore shared.Fil
 	}
 }
 
+// INI JUGA DIHAPUS.
+
 func (h *TaxInvoiceRenameHandler) Handle(c *fiber.Ctx) error {
 	form, err := c.MultipartForm()
 	if err != nil {

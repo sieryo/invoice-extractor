@@ -9,6 +9,8 @@ type JobHandler struct {
 	jobService *job.JobService
 }
 
+// JOB HANDLER AKAN MENAMBAH JOB DAN TIPE DARI JOB BERASAL DARI FE, CARI DULU APAKAH ADA, KALAU ADA MAKA LANGSUNG BUAT AJAH. INPUT JOB DARI FE JUGA DAN NANTI AKAN DI-HANDLE PADA RUNNER.
+
 func NewJobHandler(jobService *job.JobService) *JobHandler {
 	return &JobHandler{
 		jobService: jobService,
