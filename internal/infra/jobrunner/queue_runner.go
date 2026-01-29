@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sieryo/invoice-extractor/internal/app/job"
+	"github.com/sieryo/invoice-extractor/internal/domain/job"
 )
 
 type JobQueueRunner struct {
@@ -78,7 +78,7 @@ func (r *JobQueueRunner) executeJob(ctx context.Context, j *job.Job) {
 		},
 	}
 
-	ctx = job.WithProgressReporter(ctx, reporter)
+	ctx = WithProgressReporter(ctx, reporter)
 
 	if err != nil {
 		errMsg := err.Error()

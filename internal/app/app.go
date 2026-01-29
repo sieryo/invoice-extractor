@@ -18,7 +18,9 @@ import (
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/template/goodsaletech"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/template/seamakeup"
 	"github.com/sieryo/invoice-extractor/internal/app/job"
-	"github.com/sieryo/invoice-extractor/internal/app/shared"
+	jobapp "github.com/sieryo/invoice-extractor/internal/app/job"
+	"github.com/sieryo/invoice-extractor/internal/domain/file"
+	jobdomain "github.com/sieryo/invoice-extractor/internal/domain/job"
 	"github.com/sieryo/invoice-extractor/internal/infra/filestore"
 	"github.com/sieryo/invoice-extractor/internal/infra/jobrunner"
 	repository "github.com/sieryo/invoice-extractor/internal/infra/persistence/sqlite"
@@ -34,7 +36,7 @@ type App struct {
 	InvoiceService *invoice.InvoiceService
 
 	Logger    *slog.Logger
-	FileStore shared.FileStore
+	FileStore file.FileStore
 
 	BuyerRegistry *buyer.Registry
 	BuyerStore    *storage.BuyerCSVStore
@@ -88,15 +90,15 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 
 	renameTaxInvoiceHandler := rename.NewTaxInvoiceRenameJob(renameTaxInvoiceService, fs)
 
-	dispatcher.Register(job.JobTypeExtractInvoice, invoiceHandler)
-	dispatcher.Register(job.JobTypeRenameTaxInvoice, renameTaxInvoiceHandler)
+	dispatcher.Register(jobdomain.JobTypeExtractInvoice, invoiceHandler)
+	dispatcher.Register(jobdomain.JobTypeRenameTaxInvoice, renameTaxInvoiceHandler)
 
 	jobRunner := jobrunner.NewJobQueueRunner(jobRepo, dispatcher, 2)
 	ctx := context.Background()
 	jobRunner.StartPool(ctx)
 
 	// job service
-	jobService := job.NewJobService(jobRepo, jobRunner)
+	jobService := jobapp.NewJobService(jobRepo, jobRunner)
 
 	return &App{
 		RootDir:        rootDir,

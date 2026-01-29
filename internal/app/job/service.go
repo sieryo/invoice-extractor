@@ -3,29 +3,27 @@ package job
 import (
 	"context"
 	"time"
+
+	"github.com/sieryo/invoice-extractor/internal/domain/job"
 )
 
-type JobRunner interface {
-	Run(ctx context.Context, job *Job) error
-}
-
 type JobService struct {
-	repo   JobRepository
-	runner JobRunner
+	repo   job.JobRepository
+	runner job.JobRunner
 }
 
-func NewJobService(repo JobRepository, runner JobRunner) *JobService {
+func NewJobService(repo job.JobRepository, runner job.JobRunner) *JobService {
 	return &JobService{repo: repo, runner: runner}
 }
 
-func (s *JobService) CreateJob(ctx context.Context, j *Job) error {
-	j.Status = JobPending
+func (s *JobService) CreateJob(ctx context.Context, j *job.Job) error {
+	j.Status = job.JobPending
 	j.CreatedAt = time.Now()
 	return s.repo.Create(ctx, j)
 }
 
-func (s *JobService) StartJob(ctx context.Context, j *Job) error {
-	j.Status = JobRunning
+func (s *JobService) StartJob(ctx context.Context, j *job.Job) error {
+	j.Status = job.JobRunning
 	now := time.Now()
 	j.StartedAt = &now
 	if err := s.repo.UpdateStatus(ctx, j.ID, j.Status); err != nil {
@@ -38,22 +36,22 @@ func (s *JobService) UpdateProgress(ctx context.Context, id string, progress int
 	return s.repo.UpdateProgress(ctx, id, progress)
 }
 
-func (s *JobService) FinishJob(ctx context.Context, j *Job, success bool, errMsg *string) error {
+func (s *JobService) FinishJob(ctx context.Context, j *job.Job, success bool, errMsg *string) error {
 	now := time.Now()
 	j.FinishedAt = &now
 	if success {
-		j.Status = JobSuccess
+		j.Status = job.JobSuccess
 	} else {
-		j.Status = JobFailed
+		j.Status = job.JobFailed
 		j.ErrorMessage = errMsg
 	}
 	return s.repo.Update(ctx, j)
 }
 
-func (s *JobService) GetJobByID(ctx context.Context, id string) (*Job, error) {
+func (s *JobService) GetJobByID(ctx context.Context, id string) (*job.Job, error) {
 	return s.repo.FindByID(ctx, id)
 }
 
-func (s *JobService) ListJobs(ctx context.Context) ([]*Job, error) {
+func (s *JobService) ListJobs(ctx context.Context) ([]*job.Job, error) {
 	return s.repo.List(ctx)
 }

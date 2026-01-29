@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/sieryo/invoice-extractor/internal/app/job"
+	"github.com/sieryo/invoice-extractor/internal/domain/job"
 )
 
 type Dispatcher struct {

@@ -48,3 +48,8 @@ func (f FileObject) IsTemp() bool {
 func (f FileObject) IsFinal() bool {
 	return f.State == FileStateFinal
 }
+
+type UploadInput struct {
+	Name string
+	Data []byte
+}

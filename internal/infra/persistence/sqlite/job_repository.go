@@ -1,11 +1,11 @@
-package repository
+package sqlite
 
 import (
 	"context"
 	"database/sql"
 	"encoding/json"
 
-	"github.com/sieryo/invoice-extractor/internal/app/job"
+	"github.com/sieryo/invoice-extractor/internal/domain/job"
 )
 
 type JobRepository struct {

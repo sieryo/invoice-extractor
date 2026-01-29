@@ -24,6 +24,8 @@ func NewInvoiceExtractHandler(jobService *job.JobService, fileStore shared.FileS
 	}
 }
 
+// INI HAPUS, KARENA NANTI DIHANDLE PADA JOB.
+
 func (h *InvoiceExtractHandler) Handle(c *fiber.Ctx) error {
 	form, err := c.MultipartForm()
 	if err != nil {
