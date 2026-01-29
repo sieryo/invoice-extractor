@@ -17,7 +17,15 @@ func NewDispatcher() *Dispatcher {
 	}
 }
 
-func (d *Dispatcher) Register(jobType job.JobType, handler job.JobHandler) {
+func (d *Dispatcher) Has(jobType job.JobType) bool {
+	_, ok := d.handlers[jobType]
+	return ok
+}
+
+func (d *Dispatcher) MustRegister(jobType job.JobType, handler job.JobHandler) {
+	if _, exists := d.handlers[jobType]; exists {
+		panic(fmt.Sprintf("job handler already registered for %s", jobType))
+	}
 	d.handlers[jobType] = handler
 }
 

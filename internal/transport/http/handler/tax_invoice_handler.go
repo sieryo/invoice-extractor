@@ -8,16 +8,17 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/sieryo/invoice-extractor/internal/app/job"
-	"github.com/sieryo/invoice-extractor/internal/app/shared"
+	"github.com/sieryo/invoice-extractor/internal/domain/file"
+	jobdomain "github.com/sieryo/invoice-extractor/internal/domain/job"
 )
 
 type TaxInvoiceHandler struct {
-	fileStore  shared.FileStore
+	fileStore  file.FileStore
 	jobService *job.JobService
 }
 
 func NewTaxInvoiceHandler(
-	fileStore shared.FileStore,
+	fileStore file.FileStore,
 	jobService *job.JobService,
 ) *TaxInvoiceHandler {
 	return &TaxInvoiceHandler{
@@ -47,7 +48,7 @@ func (h *TaxInvoiceHandler) DownloadZip(c *fiber.Ctx) error {
 	zipWriter := zip.NewWriter(buf)
 
 	for _, f := range j.OutputManifest.Files {
-		if f.Status != job.OutputFileReady {
+		if f.Status != jobdomain.OutputFileReady {
 			continue
 		}
 

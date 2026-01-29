@@ -9,6 +9,7 @@ import (
 
 	"github.com/sieryo/invoice-extractor/internal/app/auth"
 	"github.com/sieryo/invoice-extractor/internal/app/buyer"
+	"github.com/sieryo/invoice-extractor/internal/app/collection"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/exporter/excel"
 	invoiceextract "github.com/sieryo/invoice-extractor/internal/app/invoice/extract"
@@ -31,9 +32,10 @@ import (
 type App struct {
 	RootDir string
 
-	AuthService    *auth.AuthService
-	JobService     *job.JobService
-	InvoiceService *invoice.InvoiceService
+	AuthService       *auth.AuthService
+	JobService        *job.JobService
+	InvoiceService    *invoice.InvoiceService
+	CollectionService *collection.CollectionService
 
 	Logger    *slog.Logger
 	FileStore file.FileStore
@@ -76,6 +78,7 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 	userRepo := repository.NewUserRepository(db)
 	sessionRepo := repository.NewSessionRepository(db)
 	jobRepo := repository.NewJobRepository(db)
+	collectionRepo := repository.NewCollectionRepository(db)
 
 	// services
 	authService := auth.NewService(userRepo, sessionRepo, logger)
@@ -83,6 +86,7 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 	invoiceService := invoice.NewInvoiceService(invoiceExporter, fs)
 	taxInvoiceExtractService := extract.NewTaxInvoiceExtractService()
 	renameTaxInvoiceService := rename.NewTaxInvoiceRenameService(taxInvoiceExtractService)
+	collectionService := collection.NewCollectionService(collectionRepo)
 
 	// dispatcher & handler
 	dispatcher := jobrunner.NewDispatcher()
@@ -90,8 +94,8 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 
 	renameTaxInvoiceHandler := rename.NewTaxInvoiceRenameJob(renameTaxInvoiceService, fs)
 
-	dispatcher.Register(jobdomain.JobTypeExtractInvoice, invoiceHandler)
-	dispatcher.Register(jobdomain.JobTypeRenameTaxInvoice, renameTaxInvoiceHandler)
+	dispatcher.MustRegister(jobdomain.JobTypeExtractInvoice, invoiceHandler)
+	dispatcher.MustRegister(jobdomain.JobTypeRenameTaxInvoice, renameTaxInvoiceHandler)
 
 	jobRunner := jobrunner.NewJobQueueRunner(jobRepo, dispatcher, 2)
 	ctx := context.Background()
@@ -101,14 +105,15 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 	jobService := jobapp.NewJobService(jobRepo, jobRunner)
 
 	return &App{
-		RootDir:        rootDir,
-		AuthService:    authService,
-		JobService:     jobService,
-		InvoiceService: invoiceService,
-		Logger:         logger,
-		FileStore:      fs,
-		JobRunner:      jobRunner,
-		BuyerRegistry:  buyerRegistry,
-		BuyerStore:     buyerStore,
+		RootDir:           rootDir,
+		AuthService:       authService,
+		CollectionService: collectionService,
+		JobService:        jobService,
+		InvoiceService:    invoiceService,
+		Logger:            logger,
+		FileStore:         fs,
+		JobRunner:         jobRunner,
+		BuyerRegistry:     buyerRegistry,
+		BuyerStore:        buyerStore,
 	}
 }

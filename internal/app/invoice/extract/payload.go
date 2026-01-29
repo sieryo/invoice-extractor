@@ -1,8 +1,11 @@
 package extract
 
-import "github.com/sieryo/invoice-extractor/internal/app/job"
+import (
+	"github.com/sieryo/invoice-extractor/internal/domain/file"
+)
 
 type Payload struct {
-	InputFiles []job.InputFile `json:"input_files"`
-	Template   *string         `json:"template,omitempty"`
+	CollectionID string
+	InputFiles   []file.FileRef `json:"input_files"`
+	Template     *string        `json:"template,omitempty"`
 }

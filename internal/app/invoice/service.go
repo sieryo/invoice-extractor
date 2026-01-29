@@ -4,18 +4,18 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/sieryo/invoice-extractor/internal/app/job"
-	"github.com/sieryo/invoice-extractor/internal/app/shared"
+	"github.com/sieryo/invoice-extractor/internal/domain/file"
+	"github.com/sieryo/invoice-extractor/internal/domain/job"
 )
 
 type InvoiceService struct {
 	exporter  InvoiceExporter
-	fileStore shared.FileStore
+	fileStore file.FileStore
 }
 
 func NewInvoiceService(
 	exporter InvoiceExporter,
-	fileStore shared.FileStore,
+	fileStore file.FileStore,
 ) *InvoiceService {
 	return &InvoiceService{
 		exporter:  exporter,

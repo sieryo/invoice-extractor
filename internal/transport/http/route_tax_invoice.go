@@ -7,12 +7,6 @@ import (
 
 func (s *Server) registerTaxInvoiceRoutes(protected fiber.Router) {
 
-	taxInvoiceRenameHandler := handler.NewTaxInvoiceRenameHandler(
-		s.appCtx.JobService,
-		s.appCtx.FileStore,
-	)
-	protected.Post("/invoice/tax/rename", taxInvoiceRenameHandler.Handle)
-
 	taxInvoiceHandler := handler.NewTaxInvoiceHandler(
 		s.appCtx.FileStore,
 		s.appCtx.JobService,

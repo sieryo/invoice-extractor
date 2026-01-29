@@ -12,7 +12,7 @@ import (
 
 type JobQueueRunner struct {
 	dispatcher *Dispatcher
-	repo       job.JobRepository
+	repo       job.Repository
 	queue      chan *job.Job
 	wg         sync.WaitGroup
 	workers    int
@@ -26,7 +26,7 @@ func (f funcProgressReporter) Report(p int) {
 	f.fn(p)
 }
 
-func NewJobQueueRunner(repo job.JobRepository, dispatcher *Dispatcher, workers int) *JobQueueRunner {
+func NewJobQueueRunner(repo job.Repository, dispatcher *Dispatcher, workers int) *JobQueueRunner {
 	return &JobQueueRunner{
 		dispatcher: dispatcher,
 		repo:       repo,

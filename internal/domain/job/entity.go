@@ -8,8 +8,8 @@ import (
 type JobType string
 
 const (
-	JobTypeExtractInvoice   JobType = "extract_invoice"
-	JobTypeRenameTaxInvoice JobType = "rename_tax_invoice"
+	JobTypeExtractInvoice   JobType = "invoice.extract"
+	JobTypeRenameTaxInvoice JobType = "taxInvoice.rename"
 )
 
 func (t JobType) IsValid() bool {
@@ -101,8 +101,4 @@ type OutputFile struct {
 	Type   OutputFileType   `json:"type"`
 	URI    string           `json:"uri"`
 	Status OutputFileStatus `json:"status"`
-}
-
-type InputFile struct {
-	FileID string `json:"file_id"`
 }

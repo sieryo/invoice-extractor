@@ -30,6 +30,11 @@ func (h *FileHandler) Upload(c *fiber.Ctx) error {
 		return SendError(c, fiber.StatusBadRequest, "no files uploaded")
 	}
 
+	collectionID := form.Value["collection_id"][0]
+	if collectionID == "" {
+		return SendError(c, fiber.StatusBadRequest, "collection_id is required")
+	}
+
 	ctx := c.Context()
 	var uploaded []file.FileObject
 
@@ -45,7 +50,7 @@ func (h *FileHandler) Upload(c *fiber.Ctx) error {
 			return SendError(c, 500, "failed to read file")
 		}
 
-		meta, err := h.fileStore.SaveTemp(ctx, file.Filename, data)
+		meta, err := h.fileStore.SaveTemp(ctx, collectionID, file.Filename, data)
 		if err != nil {
 			return SendError(c, 500, "failed to save file")
 		}

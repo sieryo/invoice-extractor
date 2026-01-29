@@ -6,11 +6,6 @@ import (
 )
 
 func (s *Server) registerInvoiceRoutes(protected fiber.Router) {
-	invoiceExtractHandler := handler.NewInvoiceExtractHandler(
-		s.appCtx.JobService,
-		s.appCtx.FileStore,
-	)
-	protected.Post("/invoice/extract", invoiceExtractHandler.Handle)
 
 	invoiceHandler := handler.NewInvoiceHandler(
 		s.appCtx.InvoiceService,

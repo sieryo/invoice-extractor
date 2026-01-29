@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/tax"
-	"github.com/sieryo/invoice-extractor/internal/app/job"
+	"github.com/sieryo/invoice-extractor/internal/domain/file"
 	"github.com/sieryo/invoice-extractor/internal/infra/adapter/pdftool"
 )
 
@@ -18,14 +18,14 @@ func NewTaxInvoiceExtractService() *TaxInvoiceExtractService {
 
 func (s *TaxInvoiceExtractService) Extract(
 	ctx context.Context,
-	file job.InputFile,
+	file file.ResolvedFile,
 ) (*tax.TaxInvoice, error) {
 
-	if _, err := os.Stat(file.URI); err != nil {
+	if _, err := os.Stat(file.Path); err != nil {
 		return nil, err
 	}
 
-	text, err := pdftool.ExtractText(ctx, file.URI, pdftool.DefaultOptions())
+	text, err := pdftool.ExtractText(ctx, file.Path, pdftool.DefaultOptions())
 	if err != nil {
 		return nil, err
 	}

@@ -11,9 +11,10 @@ import (
 	"github.com/sieryo/invoice-extractor/internal/app/buyer"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/template"
-	"github.com/sieryo/invoice-extractor/internal/app/job"
+	"github.com/sieryo/invoice-extractor/internal/domain/file"
 	"github.com/sieryo/invoice-extractor/internal/domain/shared"
 	"github.com/sieryo/invoice-extractor/internal/infra/adapter/pdftool"
+	"github.com/sieryo/invoice-extractor/internal/infra/jobrunner"
 )
 
 type InvoiceExtractorService struct {
@@ -30,7 +31,7 @@ func NewInvoiceExtractService(t *template.Registry, b *buyer.Registry) *InvoiceE
 
 func (i *InvoiceExtractorService) ExtractBatch(
 	ctx context.Context,
-	inputFiles []job.InputFile,
+	inputFiles []file.ResolvedFile,
 	templateID *string,
 ) (*BatchExtractResult, error) {
 
@@ -39,23 +40,23 @@ func (i *InvoiceExtractorService) ExtractBatch(
 	errChan := make(chan shared.FileResultError, len(inputFiles))
 	invoiceChan := make(chan *invoice.Invoice, len(inputFiles))
 
-	reporter := job.GetProgressReporter(ctx)
+	reporter := jobrunner.GetProgressReporter(ctx)
 
 	var done int32
 	total := int32(len(inputFiles))
 
 	for _, f := range inputFiles {
-		file := f
-		p := file.URI
+		inputFile := f
+		p := inputFile.Path
 
 		wg.Add(1)
-		go func(file job.InputFile) {
+		go func(refFile file.ResolvedFile) {
 			defer wg.Done()
 
 			// context turunan, bukan overwrite
 			ctx2 := ctx
 			if reporter != nil {
-				ctx2 = job.WithProgressReporter(ctx, reporter)
+				ctx2 = jobrunner.WithProgressReporter(ctx, reporter)
 			}
 
 			defer func() {
@@ -67,13 +68,13 @@ func (i *InvoiceExtractorService) ExtractBatch(
 			}()
 
 			if _, err := os.Stat(p); err != nil {
-				errChan <- shared.FileResultError{FileID: file.ID, FileName: file.Name, Err: err}
+				errChan <- shared.FileResultError{FileID: refFile.ID, FileName: refFile.Name, Err: err}
 				return
 			}
 
 			text, err := pdftool.ExtractText(ctx2, p, pdftool.DefaultOptions())
 			if err != nil {
-				errChan <- shared.FileResultError{FileID: file.ID, FileName: file.Name, Err: err}
+				errChan <- shared.FileResultError{FileID: refFile.ID, FileName: refFile.Name, Err: err}
 				return
 			}
 
@@ -82,8 +83,8 @@ func (i *InvoiceExtractorService) ExtractBatch(
 				t, ok := i.templateRegistry.GetByIdentifier(*templateID)
 				if !ok {
 					errChan <- shared.FileResultError{
-						FileID:   file.ID,
-						FileName: file.Name,
+						FileID:   refFile.ID,
+						FileName: refFile.Name,
 						Err:      fmt.Errorf("unknown template: %s", *templateID),
 					}
 					return
@@ -93,8 +94,8 @@ func (i *InvoiceExtractorService) ExtractBatch(
 				t, err := i.templateRegistry.Detect(text)
 				if err != nil {
 					errChan <- shared.FileResultError{
-						FileID:   file.ID,
-						FileName: file.Name,
+						FileID:   refFile.ID,
+						FileName: refFile.Name,
 						Err:      fmt.Errorf("no template matched"),
 					}
 					return
@@ -105,8 +106,8 @@ func (i *InvoiceExtractorService) ExtractBatch(
 			inv, err := tpl.Parse(text)
 			if err != nil {
 				errChan <- shared.FileResultError{
-					FileID:   file.ID,
-					FileName: file.Name,
+					FileID:   refFile.ID,
+					FileName: refFile.Name,
 					Err:      err,
 				}
 				return
@@ -115,9 +116,8 @@ func (i *InvoiceExtractorService) ExtractBatch(
 			// Inject metadata
 			inv.Metadata = &invoice.InvoiceMetadata{
 				SourceFile: invoice.FileRef{
-					ID:    file.ID,
-					Name:  file.Name,
-					Store: "Local",
+					ID:   refFile.ID,
+					Name: refFile.Name,
 				},
 				TemplateID:  tpl.Identifier(),
 				ExtractedAt: time.Now(),
@@ -134,7 +134,7 @@ func (i *InvoiceExtractorService) ExtractBatch(
 			}
 
 			invoiceChan <- inv
-		}(file)
+		}(inputFile)
 	}
 
 	go func() {

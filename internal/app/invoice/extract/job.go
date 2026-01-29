@@ -5,17 +5,18 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/sieryo/invoice-extractor/internal/app/job"
-	"github.com/sieryo/invoice-extractor/internal/app/shared"
+	"github.com/sieryo/invoice-extractor/internal/domain/file"
+	"github.com/sieryo/invoice-extractor/internal/domain/job"
 )
 
 // INI HANDLER
 type InvoiceExtractJob struct {
+	fileRepo  file.Repository
 	extractor *InvoiceExtractorService
-	fileStore shared.FileStore
+	fileStore file.FileStore
 }
 
-func NewInvoiceExtractJob(extractor *InvoiceExtractorService, fileStore shared.FileStore) *InvoiceExtractJob {
+func NewInvoiceExtractJob(extractor *InvoiceExtractorService, fileStore file.FileStore) *InvoiceExtractJob {
 	return &InvoiceExtractJob{
 		fileStore: fileStore,
 		extractor: extractor,
@@ -28,7 +29,21 @@ func (h *InvoiceExtractJob) Handle(ctx context.Context, j *job.Job) (*job.Output
 		return nil, err
 	}
 
-	result, err := h.extractor.ExtractBatch(ctx, payload.InputFiles, payload.Template)
+	resolved := make([]file.ResolvedFile, 0, len(payload.InputFiles))
+
+	for _, ref := range payload.InputFiles {
+		f, err := h.fileRepo.FindByID(ctx, ref.ID)
+		if err != nil {
+			return nil, err
+		}
+
+		resolved = append(resolved, file.ResolvedFile{
+			FileRef: ref,
+			Path:    f.Path,
+		})
+	}
+
+	result, err := h.extractor.ExtractBatch(ctx, resolved, payload.Template)
 	if err != nil {
 		return nil, err
 	}
@@ -40,12 +55,9 @@ func (h *InvoiceExtractJob) Handle(ctx context.Context, j *job.Job) (*job.Output
 		count := i + 1
 		name := fmt.Sprintf("invoice_%d.json", count)
 
-		// Langsung hapus data inputnya
-		inv.Metadata.SourceFile.Persistence = false
-
 		data, _ := json.Marshal(inv)
 
-		tempObj, err := h.fileStore.SaveTemp(ctx, j.ID, name, data)
+		tempObj, err := h.fileStore.SaveTemp(ctx, payload.CollectionID, name, data)
 		if err != nil {
 			return nil, err
 		}
@@ -73,9 +85,9 @@ func (h *InvoiceExtractJob) Handle(ctx context.Context, j *job.Job) (*job.Output
 		})
 	}
 
-	if err := h.fileStore.CleanupTemp(ctx, j.ID); err != nil {
-		return nil, err
-	}
+	// if err := h.fileStore.CleanupTemp(ctx, payload.CollectionID); err != nil {
+	// 	return nil, err
+	// }
 
 	outputManifest := job.OutputManifest{
 		Version: 1,

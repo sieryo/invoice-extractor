@@ -52,3 +52,16 @@ func (s *CollectionService) GetByID(
 
 	return coll, nil
 }
+
+func (s *CollectionService) ListByUser(
+	ctx context.Context,
+	userID string,
+) ([]*domain.Collection, error) {
+
+	collections, err := s.collectionRepo.ListByUserID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	return collections, nil
+}

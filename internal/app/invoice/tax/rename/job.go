@@ -5,18 +5,19 @@ import (
 	"encoding/json"
 	"os"
 
-	"github.com/sieryo/invoice-extractor/internal/app/job"
-	"github.com/sieryo/invoice-extractor/internal/app/shared"
+	"github.com/sieryo/invoice-extractor/internal/domain/file"
+	"github.com/sieryo/invoice-extractor/internal/domain/job"
 )
 
 type TaxInvoiceRenameJob struct {
+	fileRepo      file.Repository
 	renameService *TaxInvoiceRenameService
-	fileStore     shared.FileStore
+	fileStore     file.FileStore
 }
 
 func NewTaxInvoiceRenameJob(
 	renameService *TaxInvoiceRenameService,
-	fileStore shared.FileStore,
+	fileStore file.FileStore,
 ) *TaxInvoiceRenameJob {
 	return &TaxInvoiceRenameJob{
 		renameService: renameService,
@@ -30,8 +31,22 @@ func (j *TaxInvoiceRenameJob) Handle(ctx context.Context, jb *job.Job) (*job.Out
 		return nil, err
 	}
 
+	resolved := make([]file.ResolvedFile, 0, len(payload.InputFiles))
+
+	for _, ref := range payload.InputFiles {
+		f, err := j.fileRepo.FindByID(ctx, ref.ID)
+		if err != nil {
+			return nil, err
+		}
+
+		resolved = append(resolved, file.ResolvedFile{
+			FileRef: ref,
+			Path:    f.Path,
+		})
+	}
+
 	// proses rename batch
-	result, err := j.renameService.RenameBatch(ctx, payload.InputFiles)
+	result, err := j.renameService.RenameBatch(ctx, resolved)
 	if err != nil {
 		return nil, err
 	}

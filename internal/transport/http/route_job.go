@@ -8,6 +8,7 @@ import (
 func (s *Server) registerJobRoutes(protected fiber.Router) {
 	jobHandler := handler.NewJobHandler(s.appCtx.JobService)
 
+	protected.Post("/job/create", jobHandler.CreateJob)
 	protected.Get("/job/list", jobHandler.ListJobs)
 	protected.Get("/job/:id", jobHandler.GetJobByID)
 }

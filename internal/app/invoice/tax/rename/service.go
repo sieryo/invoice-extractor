@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/tax/extract"
-	"github.com/sieryo/invoice-extractor/internal/app/job"
+	"github.com/sieryo/invoice-extractor/internal/domain/file"
 	"github.com/sieryo/invoice-extractor/internal/domain/shared"
 )
 
@@ -21,7 +21,7 @@ func NewTaxInvoiceRenameService(extractor *extract.TaxInvoiceExtractService) *Ta
 
 func (s *TaxInvoiceRenameService) RenameBatch(
 	ctx context.Context,
-	inputFiles []job.InputFile,
+	inputFiles []file.ResolvedFile,
 ) (*BatchRenameResult, error) {
 
 	var (
@@ -46,7 +46,7 @@ func (s *TaxInvoiceRenameService) RenameBatch(
 			FileID:    f.ID,
 			OldName:   f.Name,
 			NewName:   newName,
-			SourceURI: f.URI,
+			SourceURI: f.Path,
 		})
 	}
 

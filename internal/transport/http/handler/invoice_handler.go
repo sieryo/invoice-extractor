@@ -4,18 +4,18 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice"
 	"github.com/sieryo/invoice-extractor/internal/app/job"
-	"github.com/sieryo/invoice-extractor/internal/app/shared"
+	"github.com/sieryo/invoice-extractor/internal/domain/file"
 )
 
 type InvoiceHandler struct {
 	invoiceService *invoice.InvoiceService
-	fileStore      shared.FileStore
+	fileStore      file.FileStore
 	jobService     *job.JobService
 }
 
 func NewInvoiceHandler(
 	invoiceService *invoice.InvoiceService,
-	fileStore shared.FileStore,
+	fileStore file.FileStore,
 	jobService *job.JobService,
 ) *InvoiceHandler {
 	return &InvoiceHandler{

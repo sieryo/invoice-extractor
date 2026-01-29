@@ -1,7 +1,10 @@
 package rename
 
-import "github.com/sieryo/invoice-extractor/internal/app/job"
+import (
+	"github.com/sieryo/invoice-extractor/internal/domain/file"
+)
 
 type Payload struct {
-	InputFiles []job.InputFile `json:"input_files"`
+	CollectionID string         `json:"collection_id"`
+	InputFiles   []file.FileRef `json:"input_files"`
 }

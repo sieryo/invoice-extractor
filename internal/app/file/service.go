@@ -61,6 +61,18 @@ func (s *FileService) UploadFiles(
 	return derefFiles(files), nil
 }
 
+func (s *FileService) ListByCollection(
+	ctx context.Context,
+	collectionID string,
+) ([]*file.FileObject, error) {
+
+	if _, err := s.collectionRepo.FindByID(ctx, collectionID); err != nil {
+		return nil, err
+	}
+
+	return s.fileRepo.ListByCollection(ctx, collectionID)
+}
+
 // Helper
 
 func derefFiles(files []*file.FileObject) []file.FileObject {

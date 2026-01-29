@@ -59,6 +59,41 @@ func (r *CollectionRepository) FindByID(
 	return &c, nil
 }
 
+func (r *CollectionRepository) ListByUserID(
+	ctx context.Context,
+	userID string,
+) ([]*collection.Collection, error) {
+
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, user_id, status, created_at, expired_at
+		FROM collections
+		WHERE user_id = ?
+		ORDER BY created_at DESC
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var res []*collection.Collection
+
+	for rows.Next() {
+		var c collection.Collection
+		if err := rows.Scan(
+			&c.ID,
+			&c.UserID,
+			&c.Status,
+			&c.CreatedAt,
+			&c.ExpiredAt,
+		); err != nil {
+			return nil, err
+		}
+		res = append(res, &c)
+	}
+
+	return res, rows.Err()
+}
+
 func (r *CollectionRepository) UpdateStatus(
 	ctx context.Context,
 	id string,

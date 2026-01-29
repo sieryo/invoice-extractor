@@ -2,7 +2,7 @@ package job
 
 import "context"
 
-type JobRepository interface {
+type Repository interface {
 	Create(ctx context.Context, job *Job) error
 	List(ctx context.Context) ([]*Job, error)
 
