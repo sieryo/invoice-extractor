@@ -26,10 +26,10 @@ func NewInvoiceService(
 func (s *InvoiceService) LoadInvoice(
 	ctx context.Context,
 	jobID string,
-	name string,
+	fileID string,
 ) (*Invoice, error) {
 
-	b, err := s.fileStore.Read(ctx, jobID, name)
+	b, err := s.fileStore.Read(ctx, jobID, fileID)
 
 	if err != nil {
 		return nil, err

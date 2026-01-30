@@ -66,6 +66,22 @@ func (h *FileHandler) Upload(c *fiber.Ctx) error {
 	}, "files uploaded")
 }
 
+func (h *FileHandler) GetFileObjectByID(c *fiber.Ctx) error {
+	ctx := c.Context()
+	id := c.Params("id")
+
+	if id == "" {
+		return SendError(c, fiber.StatusBadRequest, "id is required")
+	}
+
+	f, err := h.fileService.GetByID(ctx, id)
+	if err != nil {
+		return SendError(c, fiber.StatusBadRequest, err.Error())
+	}
+
+	return SendSuccess(c, fiber.StatusOK, f, "file retrieved successfully")
+}
+
 func (h *FileHandler) ListByCollection(c *fiber.Ctx) error {
 	ctx := c.Context()
 	collectionID := c.Params("id")

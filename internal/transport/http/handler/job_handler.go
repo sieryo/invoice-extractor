@@ -87,6 +87,10 @@ func (h *JobHandler) ListJobs(c *fiber.Ctx) error {
 		return SendError(c, fiber.StatusInternalServerError, "failed to retrieve jobs")
 	}
 
+	if len(jobs) == 0 {
+		return SendSuccess(c, fiber.StatusOK, []jobdomain.Job{}, "jobs retrieved successfully")
+	}
+
 	return SendSuccess(c, fiber.StatusOK, jobs, "jobs retrieved successfully")
 }
 

@@ -28,20 +28,30 @@ func NewInvoiceHandler(
 	}
 }
 
+type LoadInvoiceRequest struct {
+	JobID  string `form:"job_id"`
+	FileID string `form:"file_id"`
+}
+
 func (h *InvoiceHandler) LoadInvoice(c *fiber.Ctx) error {
 	ctx := c.Context()
 
-	jobID := c.FormValue("job_id")
+	var req LoadInvoiceRequest
+	if err := c.BodyParser(&req); err != nil {
+		return SendError(c, fiber.StatusBadRequest, "invalid form data")
+	}
+
+	jobID := req.JobID
 	if jobID == "" {
 		return SendError(c, fiber.StatusBadRequest, "job_id is required")
 	}
 
-	name := c.FormValue("name")
-	if name == "" {
+	fileID := req.FileID
+	if fileID == "" {
 		return SendError(c, fiber.StatusBadRequest, "name is required")
 	}
 
-	inv, err := h.invoiceService.LoadInvoice(ctx, jobID, name)
+	inv, err := h.invoiceService.LoadInvoice(ctx, jobID, fileID)
 	if err != nil {
 		return SendError(c, fiber.StatusNotFound, "invoice not found")
 	}

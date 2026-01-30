@@ -60,6 +60,13 @@ func (s *FileService) UploadFiles(
 	return derefFiles(files), nil
 }
 
+func (s *FileService) GetByID(
+	ctx context.Context,
+	fileID string,
+) (*file.FileObject, error) {
+	return s.fileRepo.FindByID(ctx, fileID)
+}
+
 func (s *FileService) ListByCollection(
 	ctx context.Context,
 	collectionID string,
