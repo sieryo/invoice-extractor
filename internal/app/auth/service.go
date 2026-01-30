@@ -90,3 +90,12 @@ func (s *AuthService) Logout(sessionID string) error {
 func (s *AuthService) GetSession(sessionID string) (*session.Session, error) {
 	return s.sessionRepo.GetByID(sessionID)
 }
+
+func (s *AuthService) GetUserBySessionID(sessionID string) (*user.User, error) {
+	sess, err := s.sessionRepo.GetByID(sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.userRepo.GetByID(sess.UserID)
+}

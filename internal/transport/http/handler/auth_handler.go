@@ -74,3 +74,21 @@ func (h *AuthHandler) Logout(c *fiber.Ctx) error {
 
 	return SendSuccess(c, fiber.StatusOK, nil, "logout successful")
 }
+
+func (h *AuthHandler) Me(c *fiber.Ctx) error {
+	sessionID := c.Locals("sessionID")
+	if sessionID == nil {
+		return SendError(c, fiber.StatusUnauthorized, "unauthorized")
+	}
+
+	u, err := h.authService.GetUserBySessionID(sessionID.(string))
+	if err != nil {
+		return SendError(c, fiber.StatusUnauthorized, "user not found")
+	}
+
+	return SendSuccess(c, fiber.StatusOK, fiber.Map{
+		"id":         u.ID,
+		"username":   u.Username,
+		"created_at": u.CreatedAt,
+	}, "user retrieved successfully")
+}

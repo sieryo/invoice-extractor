@@ -68,22 +68,24 @@ func (h *InvoiceExtractJob) Handle(ctx context.Context, j *job.Job) (*job.Output
 			return nil, err
 		}
 		files = append(files, job.OutputFile{
-			ID:           finalObj.ID,
-			SourceFileID: &inv.Metadata.SourceFile.ID,
-			Name:         name,
-			Type:         job.OutputFileTypeInvoice,
-			URI:          finalObj.Path,
-			Status:       job.OutputFileReady,
+			ID:             finalObj.ID,
+			SourceFileID:   &inv.Metadata.SourceFile.ID,
+			SourceFileName: inv.Metadata.SourceFile.Name,
+			Name:           name,
+			Type:           job.OutputFileTypeInvoice,
+			URI:            finalObj.Path,
+			Status:         job.OutputFileReady,
 		})
 	}
 
 	for _, e := range result.Errors {
 		files = append(files, job.OutputFile{
-			ID:     e.FileID,
-			Name:   e.FileName,
-			URI:    "",
-			Status: job.OutputFileFailed,
-			Type:   job.OutputFileTypeInvoice,
+			ID:             e.FileID,
+			Name:           e.FileName,
+			SourceFileName: e.FileName,
+			URI:            "",
+			Status:         job.OutputFileFailed,
+			Type:           job.OutputFileTypeInvoice,
 		})
 
 	}

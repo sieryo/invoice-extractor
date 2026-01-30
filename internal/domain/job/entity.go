@@ -96,10 +96,11 @@ const (
 )
 
 type OutputFile struct {
-	ID           string           `json:"id"`
-	SourceFileID *string          `json:"source_file_id"`
-	Name         string           `json:"name"`
-	Type         OutputFileType   `json:"type"`
-	URI          string           `json:"uri"`
-	Status       OutputFileStatus `json:"status"`
+	ID             string           `json:"id"`
+	SourceFileID   *string          `json:"source_file_id"`
+	SourceFileName string           `json:"source_file_name"`
+	Name           string           `json:"name"`
+	Type           OutputFileType   `json:"type"`
+	URI            string           `json:"uri"`
+	Status         OutputFileStatus `json:"status"`
 }

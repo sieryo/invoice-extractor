@@ -83,7 +83,7 @@ func (l *LocalFileStore) Commit(
 
 	finalName := obj.Name
 	ext := filepath.Ext(finalName)
-	base := strings.TrimSuffix(finalName, ext)
+	base := strings.TrimSuffix(obj.ID, ext)
 	attempt := 1
 
 	for {
