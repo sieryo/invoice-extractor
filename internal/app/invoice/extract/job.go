@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 
 	"github.com/sieryo/invoice-extractor/internal/domain/file"
 	"github.com/sieryo/invoice-extractor/internal/domain/job"
@@ -72,6 +73,7 @@ func (h *InvoiceExtractJob) Handle(ctx context.Context, j *job.Job) (*job.Output
 			SourceFileID:   &inv.Metadata.SourceFile.ID,
 			SourceFileName: inv.Metadata.SourceFile.Name,
 			Name:           name,
+			StorageName:    finalObj.ID + filepath.Ext(name),
 			Type:           job.OutputFileTypeInvoice,
 			URI:            finalObj.Path,
 			Status:         job.OutputFileReady,

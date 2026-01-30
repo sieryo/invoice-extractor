@@ -100,6 +100,7 @@ type OutputFile struct {
 	SourceFileID   *string          `json:"source_file_id"`
 	SourceFileName string           `json:"source_file_name"`
 	Name           string           `json:"name"`
+	StorageName    string           `json:"storage_name"`
 	Type           OutputFileType   `json:"type"`
 	URI            string           `json:"uri"`
 	Status         OutputFileStatus `json:"status"`

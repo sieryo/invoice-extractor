@@ -29,8 +29,8 @@ func NewInvoiceHandler(
 }
 
 type LoadInvoiceRequest struct {
-	JobID  string `form:"job_id"`
-	FileID string `form:"file_id"`
+	JobID  string `json:"job_id"`
+	FileID string `json:"file_id"`
 }
 
 func (h *InvoiceHandler) LoadInvoice(c *fiber.Ctx) error {

@@ -72,7 +72,12 @@ func (s *InvoiceService) LoadInvoicesByJob(
 			continue
 		}
 
-		inv, err := s.LoadInvoice(ctx, j.ID, f.Name)
+		targetName := f.Name
+		if f.StorageName != "" {
+			targetName = f.StorageName
+		}
+
+		inv, err := s.LoadInvoice(ctx, j.ID, targetName)
 		if err != nil {
 			stat.Failed++
 			continue

@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/google/uuid"
 	"github.com/sieryo/invoice-extractor/internal/domain/file"
@@ -81,22 +80,15 @@ func (l *LocalFileStore) Commit(
 		return file.FileObject{}, err
 	}
 
-	finalName := obj.Name
-	ext := filepath.Ext(finalName)
-	base := strings.TrimSuffix(obj.ID, ext)
-	attempt := 1
+	ext := filepath.Ext(obj.Name)
+	finalName := obj.ID + ext
+	finalPath := filepath.Join(finalDir, finalName)
 
-	for {
-		finalPath := filepath.Join(finalDir, finalName)
-		if _, err := os.Stat(finalPath); os.IsNotExist(err) {
-			if err := os.Rename(obj.Path, finalPath); err != nil {
-				return file.FileObject{}, err
-			}
-			return obj.Commit(finalPath)
-		}
-		attempt++
-		finalName = fmt.Sprintf("%s(%d)%s", base, attempt, ext)
+	if err := os.Rename(obj.Path, finalPath); err != nil {
+		return file.FileObject{}, err
 	}
+
+	return obj.Commit(finalPath)
 }
 
 func (l *LocalFileStore) CleanupTemp(

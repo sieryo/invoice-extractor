@@ -7,46 +7,46 @@ import (
 )
 
 type FileRef struct {
-	ID   string
-	Name string
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
 type Party struct {
-	Name    string
-	TaxID   *string // NPWP / NIK
-	TKU     *string // ID Tempat Kegiatan Usaha (DJP e-Faktur) TKU
-	Address *string
+	Name    string  `json:"name"`
+	TaxID   *string `json:"tax_id"` // NPWP / NIK
+	TKU     *string `json:"tku"`    // ID Tempat Kegiatan Usaha (DJP e-Faktur)
+	Address *string `json:"address"`
 }
 
 type Invoice struct {
-	Number      string
-	Date        *time.Time
-	OrderNumber string
-	PONumber    string
+	Number      string     `json:"number"`
+	Date        *time.Time `json:"date"`
+	OrderNumber string     `json:"order_number"`
+	PONumber    string     `json:"po_number"`
 
-	Buyer  *Party
-	Seller *Party
+	Buyer  *Party `json:"buyer"`
+	Seller *Party `json:"seller"`
 
-	Items    []Item
-	Subtotal *Money
-	VAT      *Money
-	Total    *Money
+	Items    []Item `json:"items"`
+	Subtotal *Money `json:"subtotal"`
+	VAT      *Money `json:"vat"`
+	Total    *Money `json:"total"`
 
-	Metadata *InvoiceMetadata
+	Metadata *InvoiceMetadata `json:"metadata"`
 }
 
 type InvoiceMetadata struct {
-	SourceFile  FileRef
-	TemplateID  string
-	ExtractedAt time.Time
+	SourceFile  FileRef   `json:"source_file"`
+	TemplateID  string    `json:"template_id"`
+	ExtractedAt time.Time `json:"extracted_at"`
 }
 
 type Item struct {
-	Name        string
-	Quantity    int
-	UnitPrice   *Money
-	TotalAmount *Money
-	TaxRate     float64 // 0.12
+	Name        string  `json:"name"`
+	Quantity    int     `json:"quantity"`
+	UnitPrice   *Money  `json:"unit_price"`
+	TotalAmount *Money  `json:"total_amount"`
+	TaxRate     float64 `json:"tax_rate"` // 0.12
 }
 
 func (i *Item) GetTaxBase() float64 {
@@ -87,6 +87,6 @@ func (i *Item) GetNetAmount() float64 {
 
 // SEMENTARA
 type Money struct {
-	Amount   float64
-	Currency string
+	Amount   float64 `json:"amount"`
+	Currency string  `json:"currency"`
 }
