@@ -56,6 +56,7 @@ CREATE TABLE files (
 
 	name TEXT NOT NULL,
 	state TEXT NOT NULL, -- temp | final
+	path TEXT NOT NULL,
 
 	size INTEGER,
 	mime_type TEXT,

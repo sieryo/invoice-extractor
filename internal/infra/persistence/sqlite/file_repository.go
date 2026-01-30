@@ -21,13 +21,14 @@ func (r *FileRepository) Create(
 ) error {
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO files (
-			id, collection_id, name, state, size, mime_type
-		) VALUES (?, ?, ?, ?, ?, ?)
+			id, collection_id, name, state, path, size, mime_type
+		) VALUES (?, ?, ?, ?, ?, ?, ?)
 	`,
 		f.ID,
 		f.CollectionID,
 		f.Name,
 		f.State,
+		f.Path,
 		f.Size,
 		f.MimeType,
 	)
@@ -47,8 +48,8 @@ func (r *FileRepository) CreateBulk(
 
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO files (
-			id, collection_id, name, state, size, mime_type
-		) VALUES (?, ?, ?, ?, ?, ?)
+			id, collection_id, name, state, path, size, mime_type
+		) VALUES (?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
@@ -61,6 +62,7 @@ func (r *FileRepository) CreateBulk(
 			f.CollectionID,
 			f.Name,
 			f.State,
+			f.Path,
 			f.Size,
 			f.MimeType,
 		)
@@ -78,7 +80,7 @@ func (r *FileRepository) FindByID(
 ) (*file.FileObject, error) {
 
 	row := r.db.QueryRowContext(ctx, `
-		SELECT id, collection_id, name, state, size, mime_type
+		SELECT id, collection_id, name, state, path, size, mime_type
 		FROM files
 		WHERE id = ?
 	`, id)
@@ -89,6 +91,7 @@ func (r *FileRepository) FindByID(
 		&f.CollectionID,
 		&f.Name,
 		&f.State,
+		&f.Path,
 		&f.Size,
 		&f.MimeType,
 	); err != nil {
@@ -104,7 +107,7 @@ func (r *FileRepository) ListByCollection(
 ) ([]*file.FileObject, error) {
 
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, collection_id, name, state, size, mime_type
+		SELECT id, collection_id, name, state, path, size, mime_type
 		FROM files
 		WHERE collection_id = ?
 		ORDER BY created_at ASC
@@ -123,6 +126,7 @@ func (r *FileRepository) ListByCollection(
 			&f.CollectionID,
 			&f.Name,
 			&f.State,
+			&f.Path,
 			&f.Size,
 			&f.MimeType,
 		); err != nil {

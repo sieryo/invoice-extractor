@@ -11,4 +11,5 @@ func (s *Server) registerJobRoutes(protected fiber.Router) {
 	protected.Post("/job/create", jobHandler.CreateJob)
 	protected.Get("/job/list", jobHandler.ListJobs)
 	protected.Get("/job/:id", jobHandler.GetJobByID)
+	protected.Post("/job/start", jobHandler.StartJob)
 }

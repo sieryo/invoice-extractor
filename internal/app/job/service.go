@@ -47,7 +47,7 @@ func (s *JobService) StartJob(ctx context.Context, id string) error {
 		return err
 	}
 
-	if j.Status != job.JobPending {
+	if j.Status != job.JobPending && j.Status != job.JobFailed {
 		return job.ErrJobNotStartable
 	}
 

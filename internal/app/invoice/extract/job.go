@@ -11,13 +11,14 @@ import (
 
 // INI HANDLER
 type InvoiceExtractJob struct {
-	fileRepo  file.Repository
 	extractor *InvoiceExtractorService
 	fileStore file.FileStore
+	fileRepo  file.Repository
 }
 
-func NewInvoiceExtractJob(extractor *InvoiceExtractorService, fileStore file.FileStore) *InvoiceExtractJob {
+func NewInvoiceExtractJob(extractor *InvoiceExtractorService, fileStore file.FileStore, fileRepo file.Repository) *InvoiceExtractJob {
 	return &InvoiceExtractJob{
+		fileRepo:  fileRepo,
 		fileStore: fileStore,
 		extractor: extractor,
 	}
@@ -57,7 +58,7 @@ func (h *InvoiceExtractJob) Handle(ctx context.Context, j *job.Job) (*job.Output
 
 		data, _ := json.Marshal(inv)
 
-		tempObj, err := h.fileStore.SaveTemp(ctx, payload.CollectionID, name, data)
+		tempObj, err := h.fileStore.SaveTemp(ctx, j.ID, name, data)
 		if err != nil {
 			return nil, err
 		}
@@ -83,6 +84,7 @@ func (h *InvoiceExtractJob) Handle(ctx context.Context, j *job.Job) (*job.Output
 			Status: job.OutputFileFailed,
 			Type:   job.OutputFileTypeInvoice,
 		})
+
 	}
 
 	// if err := h.fileStore.CleanupTemp(ctx, payload.CollectionID); err != nil {

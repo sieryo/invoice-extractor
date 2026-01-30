@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -70,35 +71,47 @@ func (r *JobQueueRunner) worker(ctx context.Context, id int) {
 }
 
 func (r *JobQueueRunner) executeJob(ctx context.Context, j *job.Job) {
-	outputManifest, err := r.dispatcher.Dispatch(ctx, j)
+	defer func() {
+		if rec := recover(); rec != nil {
+			stack := debug.Stack()
+			errMsg := fmt.Sprintf("panic: %v", rec)
+			errMsgPrint := fmt.Sprintf("panic: %v\n%s", rec, stack)
+
+			j.Status = job.JobFailed
+			j.ErrorMessage = &errMsg
+			j.Progress = 0
+			_ = r.repo.Update(ctx, j)
+
+			fmt.Printf("Recovered panic in job %s:\n%s\n", j.ID, errMsgPrint)
+		}
+	}()
 
 	reporter := funcProgressReporter{
 		fn: func(p int) {
 			_ = r.repo.UpdateProgress(ctx, j.ID, p)
 		},
 	}
-
 	ctx = WithProgressReporter(ctx, reporter)
 
+	// jalankan dispatch
+	outputManifest, err := r.dispatcher.Dispatch(ctx, j)
 	if err != nil {
 		errMsg := err.Error()
 		j.Status = job.JobFailed
 		j.ErrorMessage = &errMsg
 		_ = r.repo.Update(ctx, j)
+		fmt.Printf("Err : %s\n", errMsg)
+		return
+	}
 
-		// Diemin aja progressnya.
+	// sukses
+	j.Status = job.JobSuccess
+	j.FinishedAt = ptrTimeNow()
+	j.OutputManifest = outputManifest
+	j.Progress = 100
 
-		fmt.Printf("Err : %s", errMsg)
-	} else {
-		j.Status = job.JobSuccess
-		j.FinishedAt = ptrTimeNow()
-		j.OutputManifest = outputManifest
-		j.Progress = 100
-
-		if err := r.repo.Update(ctx, j); err != nil {
-			log.Printf("failed to update job %s: %v", j.ID, err)
-		}
-
+	if err := r.repo.Update(ctx, j); err != nil {
+		log.Printf("failed to update job %s: %v", j.ID, err)
 	}
 }
 

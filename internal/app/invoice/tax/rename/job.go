@@ -18,8 +18,10 @@ type TaxInvoiceRenameJob struct {
 func NewTaxInvoiceRenameJob(
 	renameService *TaxInvoiceRenameService,
 	fileStore file.FileStore,
+	fileRepo file.Repository,
 ) *TaxInvoiceRenameJob {
 	return &TaxInvoiceRenameJob{
+		fileRepo:      fileRepo,
 		renameService: renameService,
 		fileStore:     fileStore,
 	}

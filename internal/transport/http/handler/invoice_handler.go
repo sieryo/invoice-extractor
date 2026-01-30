@@ -1,10 +1,13 @@
 package handler
 
 import (
+	"fmt"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice"
 	"github.com/sieryo/invoice-extractor/internal/app/job"
 	"github.com/sieryo/invoice-extractor/internal/domain/file"
+	jobdomain "github.com/sieryo/invoice-extractor/internal/domain/job"
 )
 
 type InvoiceHandler struct {
@@ -59,13 +62,21 @@ func (h *InvoiceHandler) ExportInvoices(c *fiber.Ctx) error {
 		return SendError(c, fiber.StatusNotFound, "job not found")
 	}
 
+	if j.Status != jobdomain.JobSuccess {
+		return SendError(c, fiber.StatusBadRequest, "job is not completed")
+	}
+
+	if j.Type != jobdomain.JobTypeExtractInvoice {
+		return SendError(c, fiber.StatusBadRequest, "job is not an invoice extract job")
+	}
+
 	invoices, stat, err := h.invoiceService.LoadInvoicesByJob(ctx, j)
 	if err != nil {
 		return err
 	}
 
 	if len(invoices) == 0 {
-		return c.Status(fiber.StatusNotFound).JSON(stat)
+		return SendError(c, fiber.StatusNotFound, "no invoices found")
 	}
 
 	data, err := h.invoiceService.Export(ctx, invoices)
@@ -73,7 +84,7 @@ func (h *InvoiceHandler) ExportInvoices(c *fiber.Ctx) error {
 		return err
 	}
 
-	filename := "invoices.xlsx"
+	filename := fmt.Sprintf("invoices_%s.xlsx", j.ID)
 
 	tempObj, err := h.fileStore.SaveTemp(ctx, j.ID, filename, data)
 	if err != nil {

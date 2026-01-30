@@ -2,9 +2,11 @@ package filestore
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/sieryo/invoice-extractor/internal/domain/file"
@@ -29,8 +31,10 @@ func (l *LocalFileStore) SaveTemp(
 
 	fileID := uuid.New().String()
 
+	fileName := fmt.Sprintf("%s-%s", fileID, name)
+
 	tempDir := filepath.Join(l.baseDir, "temp", collectionID)
-	tempPath := filepath.Join(tempDir, fileID)
+	tempPath := filepath.Join(tempDir, fileName)
 
 	if err := os.MkdirAll(tempDir, 0755); err != nil {
 		return file.FileObject{}, err
@@ -72,17 +76,27 @@ func (l *LocalFileStore) Commit(
 	}
 
 	finalDir := filepath.Join(l.baseDir, "files", obj.CollectionID)
-	finalPath := filepath.Join(finalDir, obj.ID)
 
 	if err := os.MkdirAll(finalDir, 0755); err != nil {
 		return file.FileObject{}, err
 	}
 
-	if err := os.Rename(obj.Path, finalPath); err != nil {
-		return file.FileObject{}, err
-	}
+	finalName := obj.Name
+	ext := filepath.Ext(finalName)
+	base := strings.TrimSuffix(finalName, ext)
+	attempt := 1
 
-	return obj.Commit(finalPath)
+	for {
+		finalPath := filepath.Join(finalDir, finalName)
+		if _, err := os.Stat(finalPath); os.IsNotExist(err) {
+			if err := os.Rename(obj.Path, finalPath); err != nil {
+				return file.FileObject{}, err
+			}
+			return obj.Commit(finalPath)
+		}
+		attempt++
+		finalName = fmt.Sprintf("%s(%d)%s", base, attempt, ext)
+	}
 }
 
 func (l *LocalFileStore) CleanupTemp(

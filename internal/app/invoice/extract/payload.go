@@ -5,7 +5,7 @@ import (
 )
 
 type Payload struct {
-	CollectionID string
+	CollectionID string         `json:"collection_id"`
 	InputFiles   []file.FileRef `json:"input_files"`
 	Template     *string        `json:"template,omitempty"`
 }

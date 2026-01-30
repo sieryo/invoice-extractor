@@ -94,9 +94,9 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 
 	// dispatcher & handler
 	dispatcher := jobrunner.NewDispatcher()
-	invoiceHandler := invoiceextract.NewInvoiceExtractJob(invoiceExtractService, fs)
+	invoiceHandler := invoiceextract.NewInvoiceExtractJob(invoiceExtractService, fs, fileRepo)
 
-	renameTaxInvoiceHandler := rename.NewTaxInvoiceRenameJob(renameTaxInvoiceService, fs)
+	renameTaxInvoiceHandler := rename.NewTaxInvoiceRenameJob(renameTaxInvoiceService, fs, fileRepo)
 
 	dispatcher.MustRegister(jobdomain.JobTypeExtractInvoice, invoiceHandler)
 	dispatcher.MustRegister(jobdomain.JobTypeRenameTaxInvoice, renameTaxInvoiceHandler)
