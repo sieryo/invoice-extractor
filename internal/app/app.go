@@ -10,6 +10,7 @@ import (
 	"github.com/sieryo/invoice-extractor/internal/app/auth"
 	"github.com/sieryo/invoice-extractor/internal/app/buyer"
 	"github.com/sieryo/invoice-extractor/internal/app/collection"
+	appfile "github.com/sieryo/invoice-extractor/internal/app/file"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/exporter/excel"
 	invoiceextract "github.com/sieryo/invoice-extractor/internal/app/invoice/extract"
@@ -36,6 +37,7 @@ type App struct {
 	JobService        *job.JobService
 	InvoiceService    *invoice.InvoiceService
 	CollectionService *collection.CollectionService
+	FileService       *appfile.FileService
 
 	Logger    *slog.Logger
 	FileStore file.FileStore
@@ -79,6 +81,7 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 	sessionRepo := repository.NewSessionRepository(db)
 	jobRepo := repository.NewJobRepository(db)
 	collectionRepo := repository.NewCollectionRepository(db)
+	fileRepo := repository.NewFileRepository(db)
 
 	// services
 	authService := auth.NewService(userRepo, sessionRepo, logger)
@@ -87,6 +90,7 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 	taxInvoiceExtractService := extract.NewTaxInvoiceExtractService()
 	renameTaxInvoiceService := rename.NewTaxInvoiceRenameService(taxInvoiceExtractService)
 	collectionService := collection.NewCollectionService(collectionRepo)
+	fileService := appfile.NewFileService(fs, fileRepo, collectionRepo)
 
 	// dispatcher & handler
 	dispatcher := jobrunner.NewDispatcher()
@@ -108,6 +112,7 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 		RootDir:           rootDir,
 		AuthService:       authService,
 		CollectionService: collectionService,
+		FileService:       fileService,
 		JobService:        jobService,
 		InvoiceService:    invoiceService,
 		Logger:            logger,

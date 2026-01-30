@@ -2,7 +2,9 @@ package handler
 
 import (
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	"github.com/sieryo/invoice-extractor/internal/app/collection"
+	dcollection "github.com/sieryo/invoice-extractor/internal/domain/collection"
 )
 
 type CollectionHandler struct {
@@ -16,7 +18,7 @@ func NewCollectionHandler(collectionService *collection.CollectionService) *Coll
 }
 
 type CreateCollectionRequest struct {
-	ID string `json:"id"`
+	Name string `json:"name"`
 }
 
 func (h *CollectionHandler) CreateCollection(c *fiber.Ctx) error {
@@ -31,11 +33,9 @@ func (h *CollectionHandler) CreateCollection(c *fiber.Ctx) error {
 		return SendError(c, fiber.StatusBadRequest, "invalid request body")
 	}
 
-	if req.ID == "" {
-		return SendError(c, fiber.StatusBadRequest, "id is required")
-	}
+	newID := uuid.NewString()
 
-	coll, err := h.collectionService.Create(ctx, req.ID, userID)
+	coll, err := h.collectionService.Create(ctx, newID, userID)
 	if err != nil {
 		return SendError(c, fiber.StatusInternalServerError, err.Error())
 	}
@@ -53,7 +53,7 @@ func (h *CollectionHandler) GetCollectionByID(c *fiber.Ctx) error {
 
 	coll, err := h.collectionService.GetByID(ctx, id)
 	if err != nil {
-		if err == collection.ErrCollectionNotFound {
+		if err == dcollection.ErrCollectionNotFound {
 			return SendError(c, fiber.StatusNotFound, "collection not found")
 		}
 		return SendError(c, fiber.StatusInternalServerError, err.Error())

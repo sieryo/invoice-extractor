@@ -29,7 +29,7 @@ func (s *FileService) UploadFiles(
 
 	coll, err := s.collectionRepo.FindByID(ctx, collectionID)
 	if err != nil {
-		return nil, err
+		return nil, collection.ErrCollectionNotFound
 	}
 	if !coll.IsActive() {
 		return nil, collection.ErrCollectionNotActive
@@ -46,7 +46,6 @@ func (s *FileService) UploadFiles(
 		)
 		if err != nil {
 
-			//Just cleanup
 			s.store.CleanupTemp(ctx, collectionID)
 			return nil, err
 		}

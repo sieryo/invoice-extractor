@@ -2,14 +2,9 @@ package collection
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	domain "github.com/sieryo/invoice-extractor/internal/domain/collection"
-)
-
-var (
-	ErrCollectionNotFound = errors.New("collection not found")
 )
 
 type CollectionService struct {
@@ -47,7 +42,7 @@ func (s *CollectionService) GetByID(
 
 	coll, err := s.collectionRepo.FindByID(ctx, id)
 	if err != nil {
-		return nil, ErrCollectionNotFound
+		return nil, domain.ErrCollectionNotFound
 	}
 
 	return coll, nil

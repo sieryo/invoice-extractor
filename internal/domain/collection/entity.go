@@ -11,13 +11,13 @@ const (
 )
 
 type Collection struct {
-	ID string
+	ID string `json:"id"`
 
-	UserID string
-	Status Status
+	UserID string `json:"user_id"`
+	Status Status `json:"status"`
 
-	CreatedAt time.Time
-	ExpiredAt *time.Time
+	CreatedAt time.Time  `json:"created_at"`
+	ExpiredAt *time.Time `json:"expired_at,omitempty"`
 }
 
 func NewCollection(id string, userID string, now time.Time) *Collection {

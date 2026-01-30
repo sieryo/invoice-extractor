@@ -2,6 +2,7 @@ package filestore
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"path/filepath"
 
@@ -39,11 +40,23 @@ func (l *LocalFileStore) SaveTemp(
 		return file.FileObject{}, err
 	}
 
+	size := int64(len(data))
+	mimeType := "application/octet-stream"
+	if size > 0 {
+		head := data
+		if len(head) > 512 {
+			head = head[:512]
+		}
+		mimeType = http.DetectContentType(head)
+	}
+
 	return file.NewTempFile(
 		fileID,
 		collectionID,
 		name,
 		tempPath,
+		size,
+		mimeType,
 	), nil
 }
 

@@ -4,20 +4,19 @@ import (
 	"io"
 
 	"github.com/gofiber/fiber/v2"
+	appFile "github.com/sieryo/invoice-extractor/internal/app/file"
 	"github.com/sieryo/invoice-extractor/internal/domain/file"
 )
 
 type FileHandler struct {
-	fileStore file.FileStore
+	fileService *appFile.FileService
 }
 
-func NewFileHandler(fileStore file.FileStore) *FileHandler {
+func NewFileHandler(fileService *appFile.FileService) *FileHandler {
 	return &FileHandler{
-		fileStore: fileStore,
+		fileService: fileService,
 	}
 }
-
-// Definisi fungsi untuk buat collection
 
 func (h *FileHandler) Upload(c *fiber.Ctx) error {
 	form, err := c.MultipartForm()
@@ -36,29 +35,48 @@ func (h *FileHandler) Upload(c *fiber.Ctx) error {
 	}
 
 	ctx := c.Context()
-	var uploaded []file.FileObject
 
-	for _, file := range files {
-		src, err := file.Open()
+	var inputs []file.UploadInput
+
+	for _, f := range files {
+		src, err := f.Open()
 		if err != nil {
-			return SendError(c, 500, "failed to open file")
+			return SendError(c, fiber.StatusInternalServerError, "failed to open file")
 		}
-		defer src.Close()
 
 		data, err := io.ReadAll(src)
+		src.Close()
 		if err != nil {
-			return SendError(c, 500, "failed to read file")
+			return SendError(c, fiber.StatusInternalServerError, "failed to read file")
 		}
 
-		meta, err := h.fileStore.SaveTemp(ctx, collectionID, file.Filename, data)
-		if err != nil {
-			return SendError(c, 500, "failed to save file")
-		}
+		inputs = append(inputs, file.UploadInput{
+			Name: f.Filename,
+			Data: data,
+		})
+	}
 
-		uploaded = append(uploaded, meta)
+	uploaded, err := h.fileService.UploadFiles(ctx, collectionID, inputs)
+	if err != nil {
+		return SendError(c, fiber.StatusInternalServerError, err.Error())
 	}
 
 	return SendSuccess(c, fiber.StatusOK, fiber.Map{
 		"files": uploaded,
 	}, "files uploaded")
+}
+
+func (h *FileHandler) ListByCollection(c *fiber.Ctx) error {
+	ctx := c.Context()
+	collectionID := c.Params("collectionId")
+	if collectionID == "" {
+		return SendError(c, fiber.StatusBadRequest, "collectionId is required")
+	}
+
+	files, err := h.fileService.ListByCollection(ctx, collectionID)
+	if err != nil {
+		return SendError(c, fiber.StatusInternalServerError, err.Error())
+	}
+
+	return SendSuccess(c, fiber.StatusOK, files, "files retrieved successfully")
 }

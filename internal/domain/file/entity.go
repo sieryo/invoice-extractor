@@ -8,19 +8,22 @@ const (
 )
 
 type FileObject struct {
-	ID           string
-	CollectionID string
-	Name         string
-	Path         string
-	State        FileState
+	ID           string    `json:"id"`
+	CollectionID string    `json:"collection_id"`
+	Name         string    `json:"name"`
+	Path         string    `json:"path"`
+	State        FileState `json:"state"`
+	Size         int64     `json:"size"`
+	MimeType     string    `json:"mime_type"`
 }
 
-// NewTempFile adalah cara resmi bikin file temp
 func NewTempFile(
 	id string,
 	collectionID string,
 	name string,
 	path string,
+	size int64,
+	mimeType string,
 ) FileObject {
 	return FileObject{
 		ID:           id,
@@ -28,6 +31,8 @@ func NewTempFile(
 		Name:         name,
 		Path:         path,
 		State:        FileStateTemp,
+		Size:         size,
+		MimeType:     mimeType,
 	}
 }
 

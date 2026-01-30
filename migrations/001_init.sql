@@ -53,7 +53,6 @@ CREATE TABLE files (
 	id TEXT PRIMARY KEY,
 
 	collection_id TEXT NOT NULL,
-	user_id TEXT NOT NULL,
 
 	name TEXT NOT NULL,
 	state TEXT NOT NULL, -- temp | final
@@ -63,6 +62,5 @@ CREATE TABLE files (
 
 	created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-	FOREIGN KEY(collection_id) REFERENCES collections(id) ON DELETE CASCADE,
-	FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+	FOREIGN KEY(collection_id) REFERENCES collections(id) ON DELETE CASCADE
 );
