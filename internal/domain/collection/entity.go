@@ -15,15 +15,17 @@ type Collection struct {
 
 	UserID string `json:"user_id"`
 	Status Status `json:"status"`
+	Name   string `json:"name"`
 
 	CreatedAt time.Time  `json:"created_at"`
 	ExpiredAt *time.Time `json:"expired_at,omitempty"`
 }
 
-func NewCollection(id string, userID string, now time.Time) *Collection {
+func NewCollection(id string, userID string, name string, now time.Time) *Collection {
 	return &Collection{
 		ID:        id,
 		UserID:    userID,
+		Name:      name,
 		Status:    StatusActive,
 		CreatedAt: now,
 	}

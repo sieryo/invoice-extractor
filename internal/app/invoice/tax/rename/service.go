@@ -35,7 +35,7 @@ func (s *TaxInvoiceRenameService) RenameBatch(
 			errors = append(errors, shared.FileResultError{
 				FileID:   f.ID,
 				FileName: f.Name,
-				Err:      err,
+				Error:    err.Error(),
 			})
 			continue
 		}

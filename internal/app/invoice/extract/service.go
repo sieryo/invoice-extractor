@@ -68,13 +68,13 @@ func (i *InvoiceExtractorService) ExtractBatch(
 			}()
 
 			if _, err := os.Stat(p); err != nil {
-				errChan <- shared.FileResultError{FileID: refFile.ID, FileName: refFile.Name, Err: err}
+				errChan <- shared.FileResultError{FileID: refFile.ID, FileName: refFile.Name, Error: err.Error()}
 				return
 			}
 
 			text, err := pdftool.ExtractText(ctx2, p, pdftool.DefaultOptions())
 			if err != nil {
-				errChan <- shared.FileResultError{FileID: refFile.ID, FileName: refFile.Name, Err: err}
+				errChan <- shared.FileResultError{FileID: refFile.ID, FileName: refFile.Name, Error: err.Error()}
 				return
 			}
 
@@ -85,7 +85,7 @@ func (i *InvoiceExtractorService) ExtractBatch(
 					errChan <- shared.FileResultError{
 						FileID:   refFile.ID,
 						FileName: refFile.Name,
-						Err:      fmt.Errorf("unknown template: %s", *templateID),
+						Error:    fmt.Sprintf("unknown template: %s", *templateID),
 					}
 					return
 				}
@@ -96,7 +96,7 @@ func (i *InvoiceExtractorService) ExtractBatch(
 					errChan <- shared.FileResultError{
 						FileID:   refFile.ID,
 						FileName: refFile.Name,
-						Err:      fmt.Errorf("no template matched"),
+						Error:    "no template matched",
 					}
 					return
 				}
@@ -108,7 +108,7 @@ func (i *InvoiceExtractorService) ExtractBatch(
 				errChan <- shared.FileResultError{
 					FileID:   refFile.ID,
 					FileName: refFile.Name,
-					Err:      err,
+					Error:    err.Error(),
 				}
 				return
 			}

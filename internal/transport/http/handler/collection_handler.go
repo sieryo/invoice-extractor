@@ -35,7 +35,7 @@ func (h *CollectionHandler) CreateCollection(c *fiber.Ctx) error {
 
 	newID := uuid.NewString()
 
-	coll, err := h.collectionService.Create(ctx, newID, userID)
+	coll, err := h.collectionService.Create(ctx, newID, req.Name, userID)
 	if err != nil {
 		return SendError(c, fiber.StatusInternalServerError, err.Error())
 	}
@@ -72,6 +72,10 @@ func (h *CollectionHandler) ListUserCollections(c *fiber.Ctx) error {
 	collections, err := h.collectionService.ListByUser(ctx, userID)
 	if err != nil {
 		return SendError(c, fiber.StatusInternalServerError, err.Error())
+	}
+
+	if len(collections) == 0 {
+		return SendSuccess(c, fiber.StatusOK, []dcollection.Collection{}, "collections retrieved successfully")
 	}
 
 	return SendSuccess(c, fiber.StatusOK, collections, "collections retrieved successfully")

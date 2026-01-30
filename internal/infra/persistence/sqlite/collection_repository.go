@@ -22,11 +22,12 @@ func (r *CollectionRepository) Create(
 ) error {
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO collections (
-			id, user_id, status, created_at, expired_at
-		) VALUES (?, ?, ?, ?, ?)
+			id, user_id, name, status, created_at, expired_at
+		) VALUES (?, ?, ?, ?, ?, ?)
 	`,
 		c.ID,
 		c.UserID,
+		c.Name,
 		c.Status,
 		c.CreatedAt,
 		c.ExpiredAt,
@@ -40,7 +41,7 @@ func (r *CollectionRepository) FindByID(
 ) (*collection.Collection, error) {
 
 	row := r.db.QueryRowContext(ctx, `
-		SELECT id, user_id, status, created_at, expired_at
+		SELECT id, user_id, name, status, created_at, expired_at
 		FROM collections
 		WHERE id = ?
 	`, id)
@@ -49,6 +50,7 @@ func (r *CollectionRepository) FindByID(
 	if err := row.Scan(
 		&c.ID,
 		&c.UserID,
+		&c.Name,
 		&c.Status,
 		&c.CreatedAt,
 		&c.ExpiredAt,
@@ -65,7 +67,7 @@ func (r *CollectionRepository) ListByUserID(
 ) ([]*collection.Collection, error) {
 
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, user_id, status, created_at, expired_at
+		SELECT id, user_id, name, status, created_at, expired_at
 		FROM collections
 		WHERE user_id = ?
 		ORDER BY created_at DESC
@@ -82,6 +84,7 @@ func (r *CollectionRepository) ListByUserID(
 		if err := rows.Scan(
 			&c.ID,
 			&c.UserID,
+			&c.Name,
 			&c.Status,
 			&c.CreatedAt,
 			&c.ExpiredAt,

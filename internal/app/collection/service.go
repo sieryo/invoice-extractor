@@ -22,11 +22,12 @@ func NewCollectionService(
 func (s *CollectionService) Create(
 	ctx context.Context,
 	id string,
+	name string,
 	userID string,
 ) (*domain.Collection, error) {
 
 	now := time.Now()
-	coll := domain.NewCollection(id, userID, now)
+	coll := domain.NewCollection(id, userID, name, now)
 
 	if err := s.collectionRepo.Create(ctx, coll); err != nil {
 		return nil, err

@@ -42,6 +42,7 @@ CREATE TABLE collections (
 
 	user_id TEXT NOT NULL,
 	status TEXT NOT NULL, -- active, committed, expired
+	name TEXT NOT NULL,
 
 	created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	expired_at DATETIME,
