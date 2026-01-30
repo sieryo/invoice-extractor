@@ -19,6 +19,11 @@ func NewFileHandler(fileService *appFile.FileService) *FileHandler {
 }
 
 func (h *FileHandler) Upload(c *fiber.Ctx) error {
+	collectionID := c.Params("id")
+	if collectionID == "" {
+		return SendError(c, fiber.StatusBadRequest, "collection_id is required")
+	}
+
 	form, err := c.MultipartForm()
 	if err != nil {
 		return SendError(c, fiber.StatusBadRequest, "invalid multipart form")
@@ -27,11 +32,6 @@ func (h *FileHandler) Upload(c *fiber.Ctx) error {
 	files := form.File["files"]
 	if len(files) == 0 {
 		return SendError(c, fiber.StatusBadRequest, "no files uploaded")
-	}
-
-	collectionID := form.Value["collection_id"][0]
-	if collectionID == "" {
-		return SendError(c, fiber.StatusBadRequest, "collection_id is required")
 	}
 
 	ctx := c.Context()
@@ -76,6 +76,10 @@ func (h *FileHandler) ListByCollection(c *fiber.Ctx) error {
 	files, err := h.fileService.ListByCollection(ctx, collectionID)
 	if err != nil {
 		return SendError(c, fiber.StatusInternalServerError, err.Error())
+	}
+
+	if len(files) == 0 {
+		return SendSuccess(c, fiber.StatusOK, []file.FileObject{}, "files retrieved successfully")
 	}
 
 	return SendSuccess(c, fiber.StatusOK, files, "files retrieved successfully")
