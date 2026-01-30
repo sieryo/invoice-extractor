@@ -68,7 +68,7 @@ func (h *FileHandler) Upload(c *fiber.Ctx) error {
 
 func (h *FileHandler) ListByCollection(c *fiber.Ctx) error {
 	ctx := c.Context()
-	collectionID := c.Params("collectionId")
+	collectionID := c.Params("id")
 	if collectionID == "" {
 		return SendError(c, fiber.StatusBadRequest, "collectionId is required")
 	}

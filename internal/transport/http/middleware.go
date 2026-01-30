@@ -5,11 +5,18 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 )
 
 func (s *Server) registerMiddleware() {
 	s.app.Use(recover.New())
+	s.app.Use(cors.New(cors.Config{
+		AllowOrigins:  "*",
+		AllowMethods:  "GET,POST,PUT,DELETE,OPTIONS",
+		AllowHeaders:  "*",
+		ExposeHeaders: "Content-Length, Content-Disposition, X-File-Id, X-Exported-Filename",
+	}))
 }
 
 // AuthMiddleware validates session token and extracts userId
