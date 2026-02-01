@@ -62,7 +62,15 @@ func (h *InvoiceHandler) LoadInvoice(c *fiber.Ctx) error {
 func (h *InvoiceHandler) ExportInvoices(c *fiber.Ctx) error {
 	ctx := c.Context()
 
-	jobID := c.FormValue("job_id")
+	var req struct {
+		JobID string `json:"job_id"`
+	}
+
+	if err := c.BodyParser(&req); err != nil {
+		return SendError(c, fiber.StatusBadRequest, "invalid request body")
+	}
+
+	jobID := req.JobID
 	if jobID == "" {
 		return SendError(c, fiber.StatusBadRequest, "job_id is required")
 	}
@@ -80,7 +88,7 @@ func (h *InvoiceHandler) ExportInvoices(c *fiber.Ctx) error {
 		return SendError(c, fiber.StatusBadRequest, "job is not an invoice extract job")
 	}
 
-	invoices, stat, err := h.invoiceService.LoadInvoicesByJob(ctx, j)
+	invoices, _, err := h.invoiceService.LoadInvoicesByJob(ctx, j)
 	if err != nil {
 		return err
 	}
@@ -96,23 +104,10 @@ func (h *InvoiceHandler) ExportInvoices(c *fiber.Ctx) error {
 
 	filename := fmt.Sprintf("invoices_%s.xlsx", j.ID)
 
-	tempObj, err := h.fileStore.SaveTemp(ctx, j.ID, filename, data)
-	if err != nil {
-		return err
-	}
+	c.Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
 
-	finalObj, err := h.fileStore.Commit(ctx, tempObj)
-	if err != nil {
-		return err
-	}
-
-	return SendSuccess(c, fiber.StatusOK, fiber.Map{
-		"stat": stat,
-		"file": fiber.Map{
-			"name": filename,
-			"uri":  finalObj.Path,
-		},
-	}, "invoices exported successfully")
+	return c.Send(data)
 }
 
 func (h *InvoiceHandler) ListInvoices(c *fiber.Ctx) error {
