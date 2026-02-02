@@ -28,4 +28,5 @@ type FileStore interface {
 	) error
 
 	CleanupTemp(ctx context.Context, collectionID string) error
+	Cleanup(ctx context.Context, collectionID string) error
 }

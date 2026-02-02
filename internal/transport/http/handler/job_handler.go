@@ -109,3 +109,18 @@ func (h *JobHandler) GetJobByID(c *fiber.Ctx) error {
 
 	return SendSuccess(c, fiber.StatusOK, job, "job retrieved successfully")
 }
+
+func (h *JobHandler) DeleteJob(c *fiber.Ctx) error {
+	ctx := c.Context()
+	jobID := c.Params("id")
+
+	if jobID == "" {
+		return SendError(c, fiber.StatusBadRequest, "job ID is required")
+	}
+
+	if err := h.jobService.DeleteJob(ctx, jobID); err != nil {
+		return SendError(c, fiber.StatusInternalServerError, err.Error())
+	}
+
+	return SendSuccess(c, fiber.StatusOK, nil, "job deleted successfully")
+}

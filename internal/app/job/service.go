@@ -2,19 +2,22 @@ package job
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/sieryo/invoice-extractor/internal/domain/file"
 	"github.com/sieryo/invoice-extractor/internal/domain/job"
 )
 
 type JobService struct {
-	repo   job.Repository
-	runner job.JobRunner
+	repo      job.Repository
+	runner    job.JobRunner
+	fileStore file.FileStore
 }
 
-func NewJobService(repo job.Repository, runner job.JobRunner) *JobService {
-	return &JobService{repo: repo, runner: runner}
+func NewJobService(repo job.Repository, runner job.JobRunner, fileStore file.FileStore) *JobService {
+	return &JobService{repo: repo, runner: runner, fileStore: fileStore}
 }
 
 func (s *JobService) CreateJob(
@@ -85,4 +88,17 @@ func (s *JobService) GetJobByID(ctx context.Context, id string) (*job.Job, error
 // TODO HARUS PAKE USER ID
 func (s *JobService) ListJobs(ctx context.Context) ([]*job.Job, error) {
 	return s.repo.List(ctx)
+}
+
+func (s *JobService) DeleteJob(ctx context.Context, id string) error {
+	if err := s.repo.Delete(ctx, id); err != nil {
+		return err
+	}
+
+	if err := s.fileStore.Cleanup(ctx, id); err != nil {
+		fmt.Printf("Failed to cleanup job files: %v\n", err)
+		return err
+	}
+
+	return nil
 }

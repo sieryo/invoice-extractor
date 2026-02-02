@@ -15,4 +15,7 @@ func (s *Server) registerInvoiceRoutes(protected fiber.Router) {
 	protected.Post("/invoice/export", invoiceHandler.ExportInvoices)
 	protected.Post("/invoice/load", invoiceHandler.LoadInvoice)
 	protected.Get("/invoice/list/:job_id", invoiceHandler.ListInvoices)
+
+	protected.Get("/invoice/tax/:job_id/download", invoiceHandler.DownloadTaxInvoices)
+
 }

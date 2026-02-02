@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 
 	"github.com/sieryo/invoice-extractor/internal/domain/file"
 	"github.com/sieryo/invoice-extractor/internal/domain/job"
@@ -63,7 +64,7 @@ func (j *TaxInvoiceRenameJob) Handle(ctx context.Context, jb *job.Job) (*job.Out
 			continue
 		}
 
-		tempObj, err := j.fileStore.SaveTemp(ctx, jb.ID, r.NewName, data)
+		tempObj, err := j.fileStore.SaveTemp(ctx, jb.ID, r.Name, data)
 		if err != nil {
 			return nil, err
 		}
@@ -74,11 +75,14 @@ func (j *TaxInvoiceRenameJob) Handle(ctx context.Context, jb *job.Job) (*job.Out
 		}
 
 		files = append(files, job.OutputFile{
-			ID:     finalObj.ID,
-			Name:   r.NewName,
-			Type:   job.OutputFileTypeTaxInvoice,
-			URI:    finalObj.Path,
-			Status: job.OutputFileReady,
+			ID:             finalObj.ID,
+			Name:           r.Name,
+			SourceFileID:   &r.SourceID,
+			StorageName:    finalObj.ID + filepath.Ext(r.Name),
+			SourceFileName: r.SourceName,
+			Type:           job.OutputFileTypeTaxInvoice,
+			URI:            finalObj.Path,
+			Status:         job.OutputFileReady,
 		})
 	}
 

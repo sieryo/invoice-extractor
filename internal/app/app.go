@@ -106,7 +106,7 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 	jobRunner.StartPool(ctx)
 
 	// job service
-	jobService := jobapp.NewJobService(jobRepo, jobRunner)
+	jobService := jobapp.NewJobService(jobRepo, jobRunner, fs)
 
 	return &App{
 		RootDir:           rootDir,

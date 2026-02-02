@@ -5,10 +5,11 @@ import (
 )
 
 type RenamedFile struct {
-	FileID    string
-	SourceURI string
-	OldName   string
-	NewName   string
+	ID         string
+	Name       string
+	SourceID   string
+	SourceName string
+	SourceURI  string
 }
 
 type BatchRenameResult struct {

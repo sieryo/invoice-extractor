@@ -43,10 +43,11 @@ func (s *TaxInvoiceRenameService) RenameBatch(
 		newName := fmt.Sprintf("%s - %s.pdf", info.Number, info.Buyer.Name)
 
 		results = append(results, RenamedFile{
-			FileID:    f.ID,
-			OldName:   f.Name,
-			NewName:   newName,
-			SourceURI: f.Path,
+			ID:         f.ID,
+			Name:       newName,
+			SourceID:   f.ID,
+			SourceName: f.Name,
+			SourceURI:  f.Path,
 		})
 	}
 

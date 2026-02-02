@@ -252,3 +252,8 @@ func (r *JobRepository) UpdateProgress(ctx context.Context, id string, progress 
 	`, progress, id)
 	return err
 }
+
+func (r *JobRepository) Delete(ctx context.Context, id string) error {
+	_, err := r.db.ExecContext(ctx, "DELETE FROM jobs WHERE id = ?", id)
+	return err
+}

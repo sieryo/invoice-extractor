@@ -10,4 +10,5 @@ type Repository interface {
 	Update(ctx context.Context, job *Job) error
 	UpdateStatus(ctx context.Context, id string, status JobStatus) error
 	UpdateProgress(ctx context.Context, id string, progress int) error
+	Delete(ctx context.Context, id string) error
 }

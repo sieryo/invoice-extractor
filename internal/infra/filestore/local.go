@@ -106,6 +106,32 @@ func (l *LocalFileStore) CleanupTemp(
 	return os.RemoveAll(tempDir)
 }
 
+func (l *LocalFileStore) Cleanup(
+	ctx context.Context,
+	collectionID string,
+) error {
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	// Remove temp directory if exists
+	tempDir := filepath.Join(l.baseDir, "temp", collectionID)
+	if err := os.RemoveAll(tempDir); err != nil {
+		return err
+	}
+
+	// Remove files directory if exists
+	filesDir := filepath.Join(l.baseDir, "files", collectionID)
+	if err := os.RemoveAll(filesDir); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (l *LocalFileStore) Read(
 	ctx context.Context,
 	collectionID string,
