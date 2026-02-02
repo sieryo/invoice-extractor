@@ -3,10 +3,13 @@ package rename
 import (
 	"context"
 	"fmt"
+	"sync"
+	"sync/atomic"
 
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/tax/extract"
 	"github.com/sieryo/invoice-extractor/internal/domain/file"
 	"github.com/sieryo/invoice-extractor/internal/domain/shared"
+	"github.com/sieryo/invoice-extractor/internal/infra/jobrunner"
 )
 
 type TaxInvoiceRenameService struct {
@@ -24,35 +27,80 @@ func (s *TaxInvoiceRenameService) RenameBatch(
 	inputFiles []file.ResolvedFile,
 ) (*BatchRenameResult, error) {
 
-	var (
-		results []RenamedFile
-		errors  []shared.FileResultError
-	)
+	var wg sync.WaitGroup
+
+	resultChan := make(chan RenamedFile, len(inputFiles))
+	errChan := make(chan shared.FileResultError, len(inputFiles))
+
+	reporter := jobrunner.GetProgressReporter(ctx)
+
+	var done int32
+	total := int32(len(inputFiles))
 
 	for _, f := range inputFiles {
-		info, err := s.extractor.Extract(ctx, f)
-		if err != nil {
-			errors = append(errors, shared.FileResultError{
-				FileID:   f.ID,
-				FileName: f.Name,
-				Error:    err.Error(),
-			})
-			continue
-		}
+		inputFile := f
 
-		newName := fmt.Sprintf("%s - %s.pdf", info.Number, info.Buyer.Name)
+		wg.Add(1)
+		go func(refFile file.ResolvedFile) {
+			defer wg.Done()
 
-		results = append(results, RenamedFile{
-			ID:         f.ID,
-			Name:       newName,
-			SourceID:   f.ID,
-			SourceName: f.Name,
-			SourceURI:  f.Path,
-		})
+			ctx2 := ctx
+			if reporter != nil {
+				ctx2 = jobrunner.WithProgressReporter(ctx, reporter)
+			}
+
+			defer func() {
+				if reporter != nil {
+					current := atomic.AddInt32(&done, 1)
+					progress := int(float64(current) / float64(total) * 100)
+					reporter.Report(progress)
+				}
+			}()
+
+			info, err := s.extractor.Extract(ctx2, refFile)
+			if err != nil {
+				errChan <- shared.FileResultError{
+					FileID:   refFile.ID,
+					FileName: refFile.Name,
+					Error:    err.Error(),
+				}
+				return
+			}
+
+			newName := fmt.Sprintf("%s - %s.pdf", info.Number, info.Buyer.Name)
+
+			resultChan <- RenamedFile{
+				ID:         refFile.ID,
+				Name:       newName,
+				SourceID:   refFile.ID,
+				SourceName: refFile.Name,
+				SourceURI:  refFile.Path,
+			}
+		}(inputFile)
 	}
 
-	return &BatchRenameResult{
-		Files:  results,
-		Errors: errors,
-	}, nil
+	go func() {
+		wg.Wait()
+		close(errChan)
+		close(resultChan)
+	}()
+
+	result := &BatchRenameResult{}
+
+	for {
+		select {
+		case err, ok := <-errChan:
+			if ok {
+				result.Errors = append(result.Errors, err)
+			}
+		case file, ok := <-resultChan:
+			if ok {
+				result.Files = append(result.Files, file)
+			} else {
+				return result, nil
+			}
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
 }
