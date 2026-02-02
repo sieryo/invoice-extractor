@@ -12,5 +12,6 @@ type Repository interface {
 	ListByUserID(ctx context.Context, userID string) ([]*Collection, error)
 
 	UpdateStatus(ctx context.Context, id string, status Status) error
+	Delete(ctx context.Context, id string) error
 	Expire(ctx context.Context, now time.Time) error
 }

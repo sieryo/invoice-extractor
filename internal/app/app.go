@@ -89,7 +89,7 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 	invoiceService := invoice.NewInvoiceService(invoiceExporter, fs)
 	taxInvoiceExtractService := extract.NewTaxInvoiceExtractService()
 	renameTaxInvoiceService := rename.NewTaxInvoiceRenameService(taxInvoiceExtractService)
-	collectionService := collection.NewCollectionService(collectionRepo)
+	collectionService := collection.NewCollectionService(collectionRepo, fs)
 	fileService := appfile.NewFileService(fs, fileRepo, collectionRepo)
 
 	// dispatcher & handler

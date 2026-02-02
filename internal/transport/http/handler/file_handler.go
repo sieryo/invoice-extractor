@@ -100,3 +100,35 @@ func (h *FileHandler) ListByCollection(c *fiber.Ctx) error {
 
 	return SendSuccess(c, fiber.StatusOK, files, "files retrieved successfully")
 }
+
+func (h *FileHandler) DeleteFile(c *fiber.Ctx) error {
+	ctx := c.Context()
+	id := c.Params("id")
+	if id == "" {
+		return SendError(c, fiber.StatusBadRequest, "id is required")
+	}
+
+	if err := h.fileService.Delete(ctx, id); err != nil {
+		return SendError(c, fiber.StatusInternalServerError, err.Error())
+	}
+	return SendSuccess(c, fiber.StatusOK, nil, "file deleted successfully")
+}
+
+func (h *FileHandler) DeleteFilesBulk(c *fiber.Ctx) error {
+	ctx := c.Context()
+	var req struct {
+		IDs []string `json:"ids"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return SendError(c, fiber.StatusBadRequest, "invalid request body")
+	}
+
+	if len(req.IDs) == 0 {
+		return SendError(c, fiber.StatusBadRequest, "ids are required")
+	}
+
+	if err := h.fileService.DeleteBulk(ctx, req.IDs); err != nil {
+		return SendError(c, fiber.StatusInternalServerError, err.Error())
+	}
+	return SendSuccess(c, fiber.StatusOK, nil, "files deleted successfully")
+}

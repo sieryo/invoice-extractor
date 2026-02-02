@@ -8,6 +8,7 @@ import (
 	"github.com/sieryo/invoice-extractor/internal/app/job"
 	"github.com/sieryo/invoice-extractor/internal/domain/file"
 	jobdomain "github.com/sieryo/invoice-extractor/internal/domain/job"
+	"github.com/sieryo/invoice-extractor/pkg/helper"
 )
 
 type InvoiceHandler struct {
@@ -102,7 +103,14 @@ func (h *InvoiceHandler) ExportInvoices(c *fiber.Ctx) error {
 		return err
 	}
 
-	filename := fmt.Sprintf("invoices_%s.xlsx", j.ID)
+	sellerTaxID := "UNKNOWN"
+	if invoices[0].Seller != nil && invoices[0].Seller.TaxID != nil {
+		sellerTaxID = *invoices[0].Seller.TaxID
+	}
+
+	date := helper.GetIndonesiaDateStr()
+
+	filename := fmt.Sprintf("%s - %s.xlsx", sellerTaxID, date)
 
 	c.Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 	c.Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))

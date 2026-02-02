@@ -80,3 +80,20 @@ func (h *CollectionHandler) ListUserCollections(c *fiber.Ctx) error {
 
 	return SendSuccess(c, fiber.StatusOK, collections, "collections retrieved successfully")
 }
+
+func (h *CollectionHandler) DeleteCollection(c *fiber.Ctx) error {
+	ctx := c.Context()
+	id := c.Params("id")
+	if id == "" {
+		return SendError(c, fiber.StatusBadRequest, "id is required")
+	}
+
+	if err := h.collectionService.Delete(ctx, id); err != nil {
+		if err == dcollection.ErrCollectionNotFound {
+			return SendError(c, fiber.StatusNotFound, "collection not found")
+		}
+		return SendError(c, fiber.StatusInternalServerError, err.Error())
+	}
+
+	return SendSuccess(c, fiber.StatusOK, nil, "collection deleted successfully")
+}

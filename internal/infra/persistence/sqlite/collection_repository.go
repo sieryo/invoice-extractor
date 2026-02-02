@@ -110,6 +110,17 @@ func (r *CollectionRepository) UpdateStatus(
 	return err
 }
 
+func (r *CollectionRepository) Delete(
+	ctx context.Context,
+	id string,
+) error {
+	_, err := r.db.ExecContext(ctx, `
+		DELETE FROM collections
+		WHERE id = ?
+	`, id)
+	return err
+}
+
 func (r *CollectionRepository) Expire(
 	ctx context.Context,
 	now time.Time,

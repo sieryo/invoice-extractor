@@ -151,6 +151,45 @@ func (r *FileRepository) UpdateState(
 	return err
 }
 
+func (r *FileRepository) Delete(
+	ctx context.Context,
+	id string,
+) error {
+	_, err := r.db.ExecContext(ctx, `
+		DELETE FROM files
+		WHERE id = ?
+	`, id)
+	return err
+}
+
+func (r *FileRepository) DeleteBulk(
+	ctx context.Context,
+	ids []string,
+) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.PrepareContext(ctx, `
+		DELETE FROM files
+		WHERE id = ?
+	`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, id := range ids {
+		if _, err := stmt.ExecContext(ctx, id); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
 func (r *FileRepository) DeleteByCollection(
 	ctx context.Context,
 	collectionID string,
