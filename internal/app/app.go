@@ -42,8 +42,11 @@ type App struct {
 	Logger    *slog.Logger
 	FileStore file.FileStore
 
-	BuyerRegistry *buyer.Registry
-	BuyerStore    *storage.BuyerCSVStore
+	BuyerRegistry        *buyer.Registry
+	BuyerStore           *storage.BuyerCSVStore
+	BuyerRegistryService *buyer.BuyerRegistryService
+
+	TemplateRegistryService *template.TemplateRegistryService
 
 	JobRunner *jobrunner.JobQueueRunner
 }
@@ -92,6 +95,10 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 	collectionService := collection.NewCollectionService(collectionRepo, fs)
 	fileService := appfile.NewFileService(fs, fileRepo, collectionRepo)
 
+	// registry services
+	buyerRegistryService := buyer.NewBuyerRegistryService(buyerRegistry, buyerStore, rootDir)
+	templateRegistryService := template.NewTemplateRegistryService(templateRegistry)
+
 	// dispatcher & handler
 	dispatcher := jobrunner.NewDispatcher()
 	invoiceHandler := invoiceextract.NewInvoiceExtractJob(invoiceExtractService, fs, fileRepo)
@@ -109,16 +116,18 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 	jobService := jobapp.NewJobService(jobRepo, jobRunner, fs)
 
 	return &App{
-		RootDir:           rootDir,
-		AuthService:       authService,
-		CollectionService: collectionService,
-		FileService:       fileService,
-		JobService:        jobService,
-		InvoiceService:    invoiceService,
-		Logger:            logger,
-		FileStore:         fs,
-		JobRunner:         jobRunner,
-		BuyerRegistry:     buyerRegistry,
-		BuyerStore:        buyerStore,
+		RootDir:                 rootDir,
+		AuthService:             authService,
+		CollectionService:       collectionService,
+		FileService:             fileService,
+		JobService:              jobService,
+		InvoiceService:          invoiceService,
+		Logger:                  logger,
+		FileStore:               fs,
+		JobRunner:               jobRunner,
+		BuyerRegistry:           buyerRegistry,
+		BuyerStore:              buyerStore,
+		BuyerRegistryService:    buyerRegistryService,
+		TemplateRegistryService: templateRegistryService,
 	}
 }

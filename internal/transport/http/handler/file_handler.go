@@ -61,9 +61,7 @@ func (h *FileHandler) Upload(c *fiber.Ctx) error {
 		return SendError(c, fiber.StatusInternalServerError, err.Error())
 	}
 
-	return SendSuccess(c, fiber.StatusOK, fiber.Map{
-		"files": uploaded,
-	}, "files uploaded")
+	return SendSuccess(c, fiber.StatusOK, uploaded, "files uploaded")
 }
 
 func (h *FileHandler) GetFileObjectByID(c *fiber.Ctx) error {
