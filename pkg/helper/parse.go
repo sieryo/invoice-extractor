@@ -20,25 +20,32 @@ func ParseDecimal(input string) (decimal.Decimal, error) {
 		return decimal.Zero, errors.New("empty amount")
 	}
 
-	lastDot := strings.LastIndex(s, ".")
-	lastComma := strings.LastIndex(s, ",")
+	dotCount := strings.Count(s, ".")
+	commaCount := strings.Count(s, ",")
 
-	var decimalSep string
-	var thousandSep string
-
-	if lastDot > lastComma {
-		decimalSep = "."
-		thousandSep = ","
-	} else if lastComma > lastDot {
-		decimalSep = ","
-		thousandSep = "."
+	// Helper: cek apakah string diakhiri decimal 2 digit
+	endsWith2Digits := func(sep string) bool {
+		parts := strings.Split(s, sep)
+		return len(parts) > 1 && len(parts[len(parts)-1]) == 2
 	}
 
-	if thousandSep != "" {
-		s = strings.ReplaceAll(s, thousandSep, "")
-	}
-	if decimalSep != "" && decimalSep != "." {
-		s = strings.ReplaceAll(s, decimalSep, ".")
+	switch {
+	// Format: 40.259,00
+	case commaCount == 1 && endsWith2Digits(","):
+		s = strings.ReplaceAll(s, ".", "")
+		s = strings.ReplaceAll(s, ",", ".")
+
+	// Format: 40,259.00
+	case dotCount == 1 && endsWith2Digits("."):
+		s = strings.ReplaceAll(s, ",", "")
+
+	// Format: 2.415.540 or 966.216
+	case dotCount > 0 && commaCount == 0:
+		s = strings.ReplaceAll(s, ".", "")
+
+	// Format: 2,415,540
+	case commaCount > 0 && dotCount == 0:
+		s = strings.ReplaceAll(s, ",", "")
 	}
 
 	return decimal.NewFromString(s)

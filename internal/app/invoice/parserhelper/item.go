@@ -33,8 +33,10 @@ func ParseItem(line string) (*invoice.Item, error) {
 	}
 
 	name := CleanString(matchGroup(ItemRegex, m, "name"))
+	sku := CleanString(matchGroup(ItemRegex, m, "sku"))
 
 	return &invoice.Item{
+		Sku:         sku,
 		Name:        name,
 		Quantity:    qty,
 		UnitPrice:   unit,

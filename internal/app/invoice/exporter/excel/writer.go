@@ -102,7 +102,7 @@ func writeInvoices(
 			f.SetCellValue(detailSheet, cell(ColDetType, detailRow), "A")
 			f.SetCellValue(detailSheet, cell(ColDetCode, detailRow), "000000")
 
-			f.SetCellValue(detailSheet, cell(ColDetName, detailRow), item.Name)
+			f.SetCellValue(detailSheet, cell(ColDetName, detailRow), item.GetExportedName())
 
 			f.SetCellValue(detailSheet, cell(ColDetUnit, detailRow), "UM.0018")
 
@@ -112,7 +112,11 @@ func writeInvoices(
 
 			f.SetCellValue(detailSheet, cell(ColDetQty, detailRow), item.Quantity)
 
-			f.SetCellValue(detailSheet, cell(ColDetDiscount, detailRow), 0)
+			if item.Discount != nil {
+				f.SetCellValue(detailSheet, cell(ColDetDiscount, detailRow), item.Discount.Amount)
+			} else {
+				f.SetCellValue(detailSheet, cell(ColDetDiscount, detailRow), 0)
+			}
 
 			if item.TotalAmount != nil {
 				f.SetCellValue(detailSheet, cell(ColDetDPP, detailRow), item.TotalAmount.Amount)

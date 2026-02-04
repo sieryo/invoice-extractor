@@ -89,6 +89,14 @@ func (t *SeaMakeupTemplate) Parse(raw string) (*invoice.Invoice, error) {
 			}
 		}
 
+		// Discount
+		if inv.Discount == nil {
+			if m, ok := parserhelper.ParseSummaryMoney(parserhelper.DiscountRegex, line); ok {
+				inv.Discount = m
+				continue
+			}
+		}
+
 		// VAT
 		if inv.VAT == nil {
 			if m, ok := parserhelper.ParseSummaryMoney(parserhelper.VATRegex, line); ok {
@@ -105,6 +113,8 @@ func (t *SeaMakeupTemplate) Parse(raw string) (*invoice.Invoice, error) {
 			}
 		}
 	}
+
+	invoice.ApplyDiscountToMostExpensiveItem(inv)
 
 	// ===== ADDRESS =====
 	if len(addressParts) > 0 {

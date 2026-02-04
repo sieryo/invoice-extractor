@@ -96,6 +96,13 @@ func (t *GoodSaleTechTemplate) Parse(raw string) (*invoice.Invoice, error) {
 				continue
 			}
 		}
+		// discount
+		if inv.Discount == nil {
+			if m, ok := parserhelper.ParseSummaryMoney(parserhelper.DiscountRegex, line); ok {
+				inv.Discount = m
+				continue
+			}
+		}
 
 		// TOTAL
 		if inv.Total == nil {
@@ -105,6 +112,8 @@ func (t *GoodSaleTechTemplate) Parse(raw string) (*invoice.Invoice, error) {
 			}
 		}
 	}
+
+	invoice.ApplyDiscountToMostExpensiveItem(inv)
 
 	// ===== ADDRESS =====
 	if len(addressParts) > 0 {

@@ -1,6 +1,7 @@
 package invoice
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/sieryo/invoice-extractor/pkg/helper"
@@ -29,6 +30,7 @@ type Invoice struct {
 
 	Items    []Item `json:"items"`
 	Subtotal *Money `json:"subtotal"`
+	Discount *Money `json:"discount"`
 	VAT      *Money `json:"vat"`
 	Total    *Money `json:"total"`
 
@@ -42,9 +44,11 @@ type InvoiceMetadata struct {
 }
 
 type Item struct {
+	Sku         string  `json:"sku"`
 	Name        string  `json:"name"`
 	Quantity    int     `json:"quantity"`
 	UnitPrice   *Money  `json:"unit_price"`
+	Discount    *Money  `json:"discount"`
 	TotalAmount *Money  `json:"total_amount"`
 	TaxRate     float64 `json:"tax_rate"` // 0.12
 }
@@ -81,8 +85,50 @@ func (i *Item) GetTotalTax() float64 {
 	return helper.Round2(taxBase * i.TaxRate)
 }
 
+func (i *Item) GetExportedName() string {
+	return fmt.Sprintf("%s %s", i.Sku, i.Name)
+}
+
 func (i *Item) GetNetAmount() float64 {
 	return i.GetTotalAmount() - i.GetTotalTax()
+}
+
+func FindMostExpensiveItem(items []Item) *Item {
+	var maxItem *Item
+
+	for i := range items {
+		it := &items[i]
+
+		if it.TotalAmount == nil {
+			continue
+		}
+
+		if maxItem == nil || it.TotalAmount.Amount > maxItem.TotalAmount.Amount {
+			maxItem = it
+		}
+	}
+
+	return maxItem
+}
+
+func ApplyDiscountToMostExpensiveItem(inv *Invoice) {
+	if inv.Discount == nil || len(inv.Items) == 0 {
+		return
+	}
+
+	item := FindMostExpensiveItem(inv.Items)
+	if item == nil || item.TotalAmount == nil {
+		return
+	}
+
+	discount := inv.Discount.Amount
+
+	// Minus gpp untuk sementara
+	item.TotalAmount.Amount -= discount
+
+	item.Discount = &Money{
+		Amount: discount,
+	}
 }
 
 // SEMENTARA

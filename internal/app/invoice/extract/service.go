@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -42,7 +43,7 @@ func (i *InvoiceExtractorService) ExtractBatch(
 
 	reporter := jobrunner.GetProgressReporter(ctx)
 
-	var done int32
+	var extracted int32
 	total := int32(len(inputFiles))
 
 	for _, f := range inputFiles {
@@ -53,19 +54,21 @@ func (i *InvoiceExtractorService) ExtractBatch(
 		go func(refFile file.ResolvedFile) {
 			defer wg.Done()
 
+			defer func() {
+				current := atomic.AddInt32(&extracted, 1)
+
+				if reporter != nil {
+					p := float64(current) / float64(total)
+					progress := int(p * 70)
+					reporter.Report(progress)
+				}
+			}()
+
 			// context turunan, bukan overwrite
 			ctx2 := ctx
 			if reporter != nil {
 				ctx2 = jobrunner.WithProgressReporter(ctx, reporter)
 			}
-
-			defer func() {
-				if reporter != nil {
-					current := atomic.AddInt32(&done, 1)
-					progress := int(float64(current) / float64(total) * 100)
-					reporter.Report(progress)
-				}
-			}()
 
 			if _, err := os.Stat(p); err != nil {
 				errChan <- shared.FileResultError{FileID: refFile.ID, FileName: refFile.Name, Error: err.Error()}
@@ -134,6 +137,7 @@ func (i *InvoiceExtractorService) ExtractBatch(
 			}
 
 			invoiceChan <- inv
+
 		}(inputFile)
 	}
 
@@ -145,20 +149,56 @@ func (i *InvoiceExtractorService) ExtractBatch(
 
 	result := &BatchExtractResult{}
 
-	for {
+	invoiceDone := false
+	errorDone := false
+
+	for !(invoiceDone && errorDone) {
 		select {
 		case err, ok := <-errChan:
-			if ok {
-				result.Errors = append(result.Errors, err)
+			if !ok {
+				errorDone = true
+				continue
 			}
+			result.Errors = append(result.Errors, err)
+
 		case inv, ok := <-invoiceChan:
-			if ok {
-				result.Invoices = append(result.Invoices, inv)
-			} else {
-				return result, nil
+			if !ok {
+				invoiceDone = true
+				continue
 			}
+			result.Invoices = append(result.Invoices, inv)
+
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
 	}
+
+	sort.Slice(result.Invoices, func(i, j int) bool {
+		di := result.Invoices[i].Date
+		dj := result.Invoices[j].Date
+
+		// invoice tanpa tanggal taruh paling belakang
+		if di == nil && dj == nil {
+			return false
+		}
+		if di == nil {
+			return false
+		}
+		if dj == nil {
+			return true
+		}
+
+		// oldest dulu
+		return di.Before(*dj)
+	})
+
+	if reporter != nil {
+		total := len(result.Invoices)
+		for idx := range result.Invoices {
+			progress := int(float64(idx+1) / float64(total) * 100)
+			reporter.Report(progress)
+		}
+	}
+
+	return result, nil
 }
