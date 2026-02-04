@@ -39,8 +39,6 @@ func (h *FrontendHandler) Init(app *fiber.App) {
 		cleanPath := path.Clean(reqPath)
 		file := strings.TrimPrefix(cleanPath, "/")
 
-		fmt.Println(file)
-
 		data, err := fs.ReadFile(sub, file)
 		if err != nil {
 			fmt.Println(err)

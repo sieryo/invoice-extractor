@@ -35,7 +35,7 @@ func main() {
 	db.SetMaxIdleConns(1)
 	defer database.CloseSQLite(db)
 
-	if err := database.RunMigrations(db, "migrations"); err != nil {
+	if err := database.RunMigrations(db); err != nil {
 		ilogger.Error("migration failed", "error", err)
 		log.Fatal(err)
 	}

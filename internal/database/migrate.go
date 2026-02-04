@@ -2,16 +2,18 @@ package database
 
 import (
 	"database/sql"
+	"embed"
 	"fmt"
+	"io/fs"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 )
 
-func RunMigrations(db *sql.DB, migrationsDir string) error {
-	// 1. Create schema_migrations table if it doesn't exist
+//go:embed migrations/*.sql
+var migrationsFS embed.FS
+
+func RunMigrations(db *sql.DB) error {
 	_, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS schema_migrations (
 			filename TEXT PRIMARY KEY,
@@ -22,10 +24,9 @@ func RunMigrations(db *sql.DB, migrationsDir string) error {
 		return fmt.Errorf("failed to create schema_migrations table: %w", err)
 	}
 
-	// 2. Read migration files
-	entries, err := os.ReadDir(migrationsDir)
+	entries, err := fs.ReadDir(migrationsFS, "migrations")
 	if err != nil {
-		return fmt.Errorf("failed to read migrations directory: %w", err)
+		return fmt.Errorf("failed to read migrations: %w", err)
 	}
 
 	var sqlFiles []string
@@ -36,12 +37,14 @@ func RunMigrations(db *sql.DB, migrationsDir string) error {
 	}
 	sort.Strings(sqlFiles)
 
-	// 3. Apply new migrations
 	for _, filename := range sqlFiles {
 		var exists bool
-		err := db.QueryRow("SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE filename = ?)", filename).Scan(&exists)
+		err := db.QueryRow(
+			"SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE filename = ?)",
+			filename,
+		).Scan(&exists)
 		if err != nil {
-			return fmt.Errorf("failed to check migration status for %s: %w", filename, err)
+			return fmt.Errorf("failed to check migration %s: %w", filename, err)
 		}
 
 		if exists {
@@ -50,28 +53,35 @@ func RunMigrations(db *sql.DB, migrationsDir string) error {
 
 		slog.Info("Applying migration", "filename", filename)
 
-		content, err := os.ReadFile(filepath.Join(migrationsDir, filename))
+		content, err := fs.ReadFile(
+			migrationsFS,
+			"migrations/"+filename,
+		)
+
 		if err != nil {
-			return fmt.Errorf("failed to read migration file %s: %w", filename, err)
+			return fmt.Errorf("failed to read migration %s: %w", filename, err)
 		}
 
 		tx, err := db.Begin()
 		if err != nil {
-			return fmt.Errorf("failed to begin transaction: %w", err)
+			return err
 		}
 
 		if _, err := tx.Exec(string(content)); err != nil {
 			tx.Rollback()
-			return fmt.Errorf("failed to execute migration %s: %w", filename, err)
+			return fmt.Errorf("failed to exec %s: %w", filename, err)
 		}
 
-		if _, err := tx.Exec("INSERT INTO schema_migrations (filename) VALUES (?)", filename); err != nil {
+		if _, err := tx.Exec(
+			"INSERT INTO schema_migrations (filename) VALUES (?)",
+			filename,
+		); err != nil {
 			tx.Rollback()
-			return fmt.Errorf("failed to record migration %s: %w", filename, err)
+			return err
 		}
 
 		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("failed to commit migration %s: %w", filename, err)
+			return err
 		}
 	}
 
