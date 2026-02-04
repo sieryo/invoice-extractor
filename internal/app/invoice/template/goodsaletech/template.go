@@ -28,8 +28,8 @@ func (t *GoodSaleTechTemplate) Alias() string {
 func (t *GoodSaleTechTemplate) Seller() *invoice.Party {
 	return &invoice.Party{
 		Name:  t.Name(),
-		TaxID: helper.Ptr("0632707600016000"),
-		TKU:   helper.Ptr("0632707600016000000000"),
+		TaxID: helper.Ptr("0902329143011000"),
+		TKU:   helper.Ptr("0902329143011000000000"),
 	}
 }
 
