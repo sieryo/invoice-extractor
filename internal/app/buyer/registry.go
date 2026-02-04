@@ -57,6 +57,7 @@ func (r *Registry) Load(buyers []domainbuyer.Buyer) {
 	}
 
 	r.byName = m
+	r.loaded = true
 }
 
 func (r *Registry) GetByName(name string) (domainbuyer.Buyer, bool) {
@@ -64,5 +65,6 @@ func (r *Registry) GetByName(name string) (domainbuyer.Buyer, bool) {
 	defer r.mu.RUnlock()
 
 	b, ok := r.byName[normalizeName(name)]
+
 	return b, ok
 }

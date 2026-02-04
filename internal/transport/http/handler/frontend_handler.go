@@ -2,7 +2,6 @@ package handler
 
 import (
 	"embed"
-	"fmt"
 	"io/fs"
 	"path"
 	"path/filepath"
@@ -41,7 +40,6 @@ func (h *FrontendHandler) Init(app *fiber.App) {
 
 		data, err := fs.ReadFile(sub, file)
 		if err != nil {
-			fmt.Println(err)
 			if strings.HasPrefix(file, "assets/") ||
 				strings.Contains(file, ".") {
 				return c.SendStatus(404)
