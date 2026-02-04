@@ -1,0 +1,7 @@
+version: "3"
+
+tasks:
+  release:
+    desc: Build & sign Windows release
+    cmds:
+      - powershell -ExecutionPolicy Bypass -File scripts/release.ps1

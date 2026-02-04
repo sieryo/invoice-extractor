@@ -3,13 +3,13 @@
 /tmp
 
 /files
-/tools/*/context
-/tools/*/files
-/tools/*/output
-/tools/*/master/*.*
-internal/route/dist
 
 build/*
 
+/internal/embed/frontend/**
+
 assets/**
 data/**
+
+.env
+.env.production
