@@ -40,6 +40,16 @@ func ExtractValue(line string) string {
 	return strings.TrimSpace(line[idx+1:])
 }
 
+func ExtractCustomerName(line string) string {
+	re := regexp.MustCompile(`(?i)customer\s*name\s*:\s*(.+)$`)
+	matches := re.FindStringSubmatch(line)
+	if len(matches) < 2 {
+		return ""
+	}
+
+	return CleanString(matches[1])
+}
+
 func CleanString(raw string) string {
 	return helper.CleanString(raw)
 }

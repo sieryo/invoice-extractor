@@ -33,14 +33,17 @@ func (t *SeaMakeupTemplate) Parse(raw string) (*invoice.Invoice, error) {
 			continue
 		}
 
+		lower := strings.ToLower(line)
+
 		// ===== HEADER =====
 		if !inTable {
 			switch {
-			case strings.HasPrefix(line, "Customer Name"):
-				val := parserhelper.ExtractValue(line)
-				inv.Buyer.Name = parserhelper.CleanString(val)
+			case strings.Contains(lower, "customer name"):
+				if name := parserhelper.ExtractCustomerName(line); name != "" {
+					inv.Buyer.Name = name
+				}
 
-			case strings.HasPrefix(line, "Invoice No"):
+			case strings.HasPrefix(lower, "invoice no"):
 				val, addr := parserhelper.ExtractValueAndAddress(line)
 				invoiceNo := parserhelper.CleanString(val)
 				inv.Number = invoiceNo
@@ -48,21 +51,21 @@ func (t *SeaMakeupTemplate) Parse(raw string) (*invoice.Invoice, error) {
 					addressParts = append(addressParts, parserhelper.CleanString(addr))
 				}
 
-			case strings.HasPrefix(line, "Invoice Date"):
+			case strings.HasPrefix(lower, "invoice date"):
 				val, addr := parserhelper.ExtractValueAndAddress(line)
 				inv.Date = parserhelper.ParseDateValue(val)
 				if addr != "" {
 					addressParts = append(addressParts, addr)
 				}
 
-			case strings.HasPrefix(line, "Po. Number"):
+			case strings.HasPrefix(lower, "po. number"):
 				val, addr := parserhelper.ExtractValueAndAddress(line)
 				inv.PONumber = parserhelper.CleanString(val)
 				if addr != "" {
 					addressParts = append(addressParts, addr)
 				}
 
-			case strings.HasPrefix(line, "No. Order"):
+			case strings.HasPrefix(lower, "no. order"):
 				val, addr := parserhelper.ExtractValueAndAddress(line)
 				inv.OrderNumber = parserhelper.CleanString(val)
 				if addr != "" {
