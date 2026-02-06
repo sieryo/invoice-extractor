@@ -34,8 +34,8 @@ func (t *GoodSaleTechTemplate) Seller() *invoice.Party {
 }
 
 func (t *GoodSaleTechTemplate) Match(raw string) bool {
-	return strings.Contains(raw, "PT Good Sale Tech") &&
-		strings.Contains(raw, "INVOICE")
+	return strings.Contains(raw, strings.ToLower(t.Name())) &&
+		strings.Contains(raw, strings.ToLower("INVOICE"))
 }
 
 func (t *GoodSaleTechTemplate) FormatInvoiceNumber(inv *invoice.Invoice) string {

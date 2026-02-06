@@ -17,6 +17,7 @@ import (
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/tax/extract"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/tax/rename"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/template"
+	giaprima "github.com/sieryo/invoice-extractor/internal/app/invoice/template/giaprimaindonesia"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/template/goodsaletech"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/template/seamakeup"
 	"github.com/sieryo/invoice-extractor/internal/app/job"
@@ -59,6 +60,7 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 	templateRegistry := template.NewRegistry()
 	templateRegistry.Register(seamakeup.NewSeaMakeupTemplate())
 	templateRegistry.Register(goodsaletech.NewGoodSaleTechTemplate())
+	templateRegistry.Register(giaprima.NewGiaPrimaTemplate())
 	buyerRegistry := buyer.NewRegistry()
 
 	// infra

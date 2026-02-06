@@ -34,8 +34,8 @@ func (t *SeaMakeupTemplate) Seller() *invoice.Party {
 }
 
 func (t *SeaMakeupTemplate) Match(raw string) bool {
-	return strings.Contains(raw, "PT Sea Makeup Beauty") &&
-		strings.Contains(raw, "INVOICE")
+	return strings.Contains(raw, strings.ToLower(t.Name())) &&
+		strings.Contains(raw, strings.ToLower("INVOICE"))
 }
 
 func (t *SeaMakeupTemplate) FormatInvoiceNumber(inv *invoice.Invoice) string {

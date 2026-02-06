@@ -2,6 +2,7 @@ package template
 
 import (
 	"fmt"
+	"strings"
 )
 
 type Registry struct {
@@ -38,8 +39,10 @@ func (r *Registry) GetByIdentifier(id string) (Template, bool) {
 }
 
 func (r *Registry) Detect(raw string) (Template, error) {
+	// handle lower disini
+	lowerRaw := strings.ToLower(raw)
 	for _, t := range r.list {
-		if t.Match(raw) {
+		if t.Match(lowerRaw) {
 			return t, nil
 		}
 	}
