@@ -29,6 +29,18 @@ func writeInvoices(
 		return err
 	}
 
+	borderStyle, err := f.NewStyle(&excelize.Style{
+		Border: []excelize.Border{
+			{Type: "left", Color: "9BC2E6", Style: 1},
+			{Type: "top", Color: "9BC2E6", Style: 1},
+			{Type: "bottom", Color: "9BC2E6", Style: 1},
+			{Type: "right", Color: "9BC2E6", Style: 1},
+		},
+	})
+	if err != nil {
+		return err
+	}
+
 	invoiceSheet := SheetInvoice
 	detailSheet := SheetInvoiceDetail
 
@@ -95,6 +107,14 @@ func writeInvoices(
 				f.SetCellValue(invoiceSheet, cell(ColInvBuyerTKU, invoiceRow), *inv.Buyer.TKU)
 			}
 		}
+
+		// Apply border style to the row (Columns A to R)
+		f.SetCellStyle(
+			invoiceSheet,
+			cell(ColInvRow, invoiceRow),
+			cell(ColInvBuyerTKU, invoiceRow),
+			borderStyle,
+		)
 
 		for _, item := range inv.Items {
 
