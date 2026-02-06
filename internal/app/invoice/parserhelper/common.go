@@ -6,7 +6,7 @@ import (
 
 var (
 	ItemRegex = regexp.MustCompile(
-		`^\d+\s+(?P<sku>[\w-]+)\s+(?P<name>.+?)\s{2,}(?P<qty>[\d.]+)\s+(?P<unit>[\d.,]+)\s+(?P<total>[\d.,]+)$`,
+		`^\d+\s+(?P<sku>[A-Za-z0-9+-]+)\s+(?P<name>.+?)\s{2,}(?P<qty>[\d.]+)\s+(?P<unit>[\d.,]+)\s+(?P<total>[\d.,]+)$`,
 	)
 
 	SubtotalRegex = regexp.MustCompile(`(?i)subtotal\s+(?P<amount>[\d.,]+)`)

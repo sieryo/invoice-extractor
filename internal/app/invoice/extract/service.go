@@ -9,6 +9,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"regexp"
+	"strconv"
+
 	"github.com/sieryo/invoice-extractor/internal/app/buyer"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/template"
@@ -17,6 +20,22 @@ import (
 	"github.com/sieryo/invoice-extractor/internal/infra/adapter/pdftool"
 	"github.com/sieryo/invoice-extractor/internal/infra/jobrunner"
 )
+
+var leadingNumberRegex = regexp.MustCompile(`^\s*(\d+)[\.\s]+`)
+
+func extractLeadingNumber(filename string) (int, bool) {
+	matches := leadingNumberRegex.FindStringSubmatch(filename)
+	if len(matches) < 2 {
+		return 0, false
+	}
+
+	n, err := strconv.Atoi(matches[1])
+	if err != nil {
+		return 0, false
+	}
+
+	return n, true
+}
 
 type InvoiceExtractorService struct {
 	buyerRegistry    *buyer.Registry
@@ -174,22 +193,29 @@ func (i *InvoiceExtractorService) ExtractBatch(
 	}
 
 	sort.Slice(result.Invoices, func(i, j int) bool {
-		di := result.Invoices[i].Date
-		dj := result.Invoices[j].Date
+		fi := result.Invoices[i].Metadata.SourceFile.Name
+		fj := result.Invoices[j].Metadata.SourceFile.Name
 
-		// invoice tanpa tanggal taruh paling belakang
-		if di == nil && dj == nil {
-			return false
+		ni, okI := extractLeadingNumber(fi)
+		nj, okJ := extractLeadingNumber(fj)
+
+		// Dua-duanya punya angka → bandingkan angka
+		if okI && okJ {
+			return ni < nj
 		}
-		if di == nil {
-			return false
-		}
-		if dj == nil {
+
+		// Hanya i yang punya angka → i duluan
+		if okI && !okJ {
 			return true
 		}
 
-		// oldest dulu
-		return di.Before(*dj)
+		// Hanya j yang punya angka → j duluan
+		if !okI && okJ {
+			return false
+		}
+
+		// Dua-duanya gak punya angka → biarin stabil
+		return false
 	})
 
 	if reporter != nil {
