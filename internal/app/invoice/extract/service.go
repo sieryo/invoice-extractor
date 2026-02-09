@@ -150,6 +150,7 @@ func (i *InvoiceExtractorService) ExtractBatch(
 				if b, ok := i.buyerRegistry.GetByName(inv.Buyer.Name); ok {
 					taxID := b.PrimaryTaxID()
 					tku := b.TKU()
+					inv.Buyer.Name = b.Name
 					inv.Buyer.TaxID = &taxID
 					inv.Buyer.TKU = &tku
 				}

@@ -32,10 +32,15 @@ func (s *BuyerRegistryService) List() []domainbuyer.Buyer {
 	s.registry.mu.RLock()
 	defer s.registry.mu.RUnlock()
 
-	buyers := make([]domainbuyer.Buyer, 0, len(s.registry.byName))
-	for _, b := range s.registry.byName {
-		buyers = append(buyers, b)
+	if !s.registry.loaded {
+		return nil
 	}
+
+	buyers := make([]domainbuyer.Buyer, 0, len(s.registry.buyers))
+	for _, nb := range s.registry.buyers {
+		buyers = append(buyers, nb.Raw)
+	}
+
 	return buyers
 }
 
