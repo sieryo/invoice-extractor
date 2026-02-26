@@ -13,3 +13,6 @@ data/**
 
 .env
 .env.production
+
+
+.save-drive

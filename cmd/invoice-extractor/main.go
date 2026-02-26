@@ -14,6 +14,8 @@ import (
 	"github.com/sieryo/invoice-extractor/internal/transport/http"
 )
 
+var version = "1.0.0"
+
 func main() {
 	configDir, err := os.UserConfigDir()
 	if err != nil {
@@ -53,7 +55,7 @@ func main() {
 	url := fmt.Sprintf("http://localhost:%d", port)
 
 	ilogger.Info("HTTP server starting", "addr", addr)
-	logger.ServerStarted(url, environment)
+	logger.ServerStarted(url, environment+" | version="+version)
 
 	log.Fatal(server.Listen(addr))
 }
