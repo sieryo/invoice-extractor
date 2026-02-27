@@ -5,12 +5,14 @@ import (
 )
 
 var (
+	summaryAmountPattern = `(?P<amount>(?:(?:idr|rp)\.?\s*)?[\d.,]+)`
+
 	ItemRegex = regexp.MustCompile(
-		`^\d+\s+(?P<sku>[A-Za-z0-9+-]+)\s+(?P<name>.+?)\s{2,}(?P<qty>[\d.]+)\s+(?P<unit>[\d.,]+)\s+(?P<total>[\d.,]+)$`,
+		`^\d+\.?\s+(?P<sku>\S+)\s+(?P<name>.+?)\s{2,}(?P<qty>[\d.,]+)\s+(?P<unit>(?i:(?:idr|rp)\.?\s*)?[\d.,]+)\s+(?P<total>(?i:(?:idr|rp)\.?\s*)?[\d.,]+)$`,
 	)
 
-	SubtotalRegex = regexp.MustCompile(`(?i)subtotal\s+(?P<amount>[\d.,]+)`)
-	DiscountRegex = regexp.MustCompile(`(?i)discount\s+(?P<amount>[\d.,]+)`)
-	VATRegex      = regexp.MustCompile(`(?i)vat\s+(?P<amount>[\d.,]+)`)
-	TotalRegex    = regexp.MustCompile(`(?i)total\s+(?P<amount>[\d.,]+)`)
+	SubtotalRegex = regexp.MustCompile(`(?i)\bsubtotal\b[^\d]*(?:` + summaryAmountPattern + `)`)
+	DiscountRegex = regexp.MustCompile(`(?i)\bdiscount\b[^\d]*(?:` + summaryAmountPattern + `)`)
+	VATRegex      = regexp.MustCompile(`(?i)\bvat\b[^\d]*(?:` + summaryAmountPattern + `)`)
+	TotalRegex    = regexp.MustCompile(`(?i)\btotal\b[^\d]*(?:` + summaryAmountPattern + `)`)
 )
