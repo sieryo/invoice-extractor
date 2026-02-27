@@ -7,14 +7,13 @@ import (
 	"path/filepath"
 
 	"github.com/sieryo/invoice-extractor/internal/app"
+	"github.com/sieryo/invoice-extractor/internal/buildinfo"
 	"github.com/sieryo/invoice-extractor/internal/config"
 	"github.com/sieryo/invoice-extractor/internal/database"
 	"github.com/sieryo/invoice-extractor/internal/netutil"
 	"github.com/sieryo/invoice-extractor/internal/pkg/logger"
 	"github.com/sieryo/invoice-extractor/internal/transport/http"
 )
-
-var version = "1.0.1"
 
 func main() {
 	configDir, err := os.UserConfigDir()
@@ -30,7 +29,7 @@ func main() {
 
 	cfg := config.Load()
 
-	ilogger := logger.Setup(environment, logPath)
+	ilogger := logger.Setup(buildinfo.Environment, logPath)
 
 	db := database.NewSQLite(dbPath)
 	db.SetMaxOpenConns(1)
@@ -55,7 +54,7 @@ func main() {
 	url := fmt.Sprintf("http://localhost:%d", port)
 
 	ilogger.Info("HTTP server starting", "addr", addr)
-	logger.ServerStarted(url, environment+" | version="+version)
+	logger.ServerStarted(url, buildinfo.Environment+" | version="+buildinfo.Version)
 
 	log.Fatal(server.Listen(addr))
 }

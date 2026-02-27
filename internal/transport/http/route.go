@@ -2,6 +2,7 @@ package http
 
 func (s *Server) registerRoutes() {
 	api := s.app.Group("/api")
+	s.registerMetaRoutes(api)
 
 	// Register authentication routes (public and protected)
 	s.registerAuthRoutes(api)
