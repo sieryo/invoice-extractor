@@ -14,7 +14,7 @@ import (
 	"github.com/sieryo/invoice-extractor/internal/transport/http"
 )
 
-var version = "1.0.0"
+var version = "1.0.1"
 
 func main() {
 	configDir, err := os.UserConfigDir()
