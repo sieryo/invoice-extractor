@@ -67,7 +67,7 @@ func (s *InvoiceService) LoadInvoicesByJob(
 	stat.Total = len(j.OutputManifest.Files)
 
 	for _, f := range j.OutputManifest.Files {
-		if f.Status != job.OutputFileReady {
+		if f.Status != job.OutputFileReady && f.Status != job.OutputFileWarning {
 			stat.Failed++
 			continue
 		}

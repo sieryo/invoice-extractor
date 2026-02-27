@@ -14,5 +14,5 @@ var (
 	SubtotalRegex = regexp.MustCompile(`(?i)\bsubtotal\b[^\d]*(?:` + summaryAmountPattern + `)`)
 	DiscountRegex = regexp.MustCompile(`(?i)\bdiscount\b[^\d]*(?:` + summaryAmountPattern + `)`)
 	VATRegex      = regexp.MustCompile(`(?i)\bvat\b[^\d]*(?:` + summaryAmountPattern + `)`)
-	TotalRegex    = regexp.MustCompile(`(?i)\btotal\b[^\d]*(?:` + summaryAmountPattern + `)`)
+	TotalRegex    = regexp.MustCompile(`(?i)^\s*total\s*[:=]?\s*(?:` + summaryAmountPattern + `)\s*$`)
 )

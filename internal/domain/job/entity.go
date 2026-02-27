@@ -33,6 +33,7 @@ type Summary struct {
 	TotalFiles int `json:"total_files"`
 	Ready      int `json:"ready"`
 	Failed     int `json:"failed"`
+	Warnings   int `json:"warnings"`
 }
 
 type JobStatus string
@@ -41,6 +42,7 @@ const (
 	JobPending  JobStatus = "pending"
 	JobRunning  JobStatus = "running"
 	JobSuccess  JobStatus = "success"
+	JobWarning  JobStatus = "warning"
 	JobFailed   JobStatus = "failed"
 	JobCanceled JobStatus = "canceled"
 )
@@ -83,8 +85,9 @@ func NewJob(id string, userID *string, jobType JobType, payload []byte) *Job {
 type OutputFileStatus string
 
 const (
-	OutputFileReady  OutputFileStatus = "ready"
-	OutputFileFailed OutputFileStatus = "failed"
+	OutputFileReady   OutputFileStatus = "ready"
+	OutputFileWarning OutputFileStatus = "warning"
+	OutputFileFailed  OutputFileStatus = "failed"
 )
 
 type OutputFileType string
@@ -104,4 +107,5 @@ type OutputFile struct {
 	Type           OutputFileType   `json:"type"`
 	URI            string           `json:"uri"`
 	Status         OutputFileStatus `json:"status"`
+	Warnings       []string         `json:"warnings,omitempty"`
 }

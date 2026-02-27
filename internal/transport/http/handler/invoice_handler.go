@@ -84,7 +84,7 @@ func (h *InvoiceHandler) ExportInvoices(c *fiber.Ctx) error {
 		return SendError(c, fiber.StatusNotFound, "job not found")
 	}
 
-	if j.Status != jobdomain.JobSuccess {
+	if j.Status != jobdomain.JobSuccess && j.Status != jobdomain.JobWarning {
 		return SendError(c, fiber.StatusBadRequest, "job is not completed")
 	}
 
@@ -166,7 +166,7 @@ func (h *InvoiceHandler) DownloadTaxInvoices(c *fiber.Ctx) error {
 	zipWriter := zip.NewWriter(buf)
 
 	for _, f := range j.OutputManifest.Files {
-		if f.Status != jobdomain.OutputFileReady {
+		if f.Status != jobdomain.OutputFileReady && f.Status != jobdomain.OutputFileWarning {
 			continue
 		}
 

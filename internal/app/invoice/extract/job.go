@@ -53,6 +53,7 @@ func (h *InvoiceExtractJob) Handle(ctx context.Context, j *job.Job) (*job.Output
 	var files []job.OutputFile
 
 	// SUCCESS invoices
+	warningCount := 0
 	for i, inv := range result.Invoices {
 		count := i + 1
 		name := fmt.Sprintf("invoice_%d.json", count)
@@ -68,6 +69,14 @@ func (h *InvoiceExtractJob) Handle(ctx context.Context, j *job.Job) (*job.Output
 		if err != nil {
 			return nil, err
 		}
+		outputStatus := job.OutputFileReady
+		outputWarnings := []string(nil)
+		if inv.Metadata != nil && len(inv.Metadata.Warnings) > 0 {
+			outputStatus = job.OutputFileWarning
+			outputWarnings = inv.Metadata.Warnings
+			warningCount++
+		}
+
 		files = append(files, job.OutputFile{
 			ID:             finalObj.ID,
 			SourceFileID:   &inv.Metadata.SourceFile.ID,
@@ -76,7 +85,8 @@ func (h *InvoiceExtractJob) Handle(ctx context.Context, j *job.Job) (*job.Output
 			StorageName:    finalObj.ID + filepath.Ext(name),
 			Type:           job.OutputFileTypeInvoice,
 			URI:            finalObj.Path,
-			Status:         job.OutputFileReady,
+			Status:         outputStatus,
+			Warnings:       outputWarnings,
 		})
 	}
 
@@ -102,6 +112,7 @@ func (h *InvoiceExtractJob) Handle(ctx context.Context, j *job.Job) (*job.Output
 			TotalFiles: len(result.Invoices) + len(result.Errors),
 			Ready:      len(result.Invoices),
 			Failed:     len(result.Errors),
+			Warnings:   warningCount,
 		},
 		Files: files,
 	}

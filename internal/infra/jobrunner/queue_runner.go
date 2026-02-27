@@ -104,8 +104,11 @@ func (r *JobQueueRunner) executeJob(ctx context.Context, j *job.Job) {
 		return
 	}
 
-	// sukses
+	// selesai dengan warning jika manifest punya anomali parse
 	j.Status = job.JobSuccess
+	if outputManifest != nil && outputManifest.Summary.Warnings > 0 {
+		j.Status = job.JobWarning
+	}
 	j.FinishedAt = ptrTimeNow()
 	j.OutputManifest = outputManifest
 	j.Progress = 100

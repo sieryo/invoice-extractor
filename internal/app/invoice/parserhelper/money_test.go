@@ -89,3 +89,19 @@ func TestParseSummaryMoney(t *testing.T) {
 		})
 	}
 }
+
+func TestParseSummaryMoney_TotalDoesNotMatchTotalAfterDiscount(t *testing.T) {
+	line := "Total After Discount : Rp10.000"
+	if got, ok := ParseSummaryMoney(TotalRegex, line); ok || got != nil {
+		t.Fatalf("expected no match for total-after-discount line, got %+v", got)
+	}
+
+	validLine := "Total : Rp12.000"
+	got, ok := ParseSummaryMoney(TotalRegex, validLine)
+	if !ok {
+		t.Fatalf("expected total line to match: %q", validLine)
+	}
+	if got.Amount != 12000 {
+		t.Fatalf("expected amount 12000, got %.2f", got.Amount)
+	}
+}

@@ -14,6 +14,7 @@ import (
 
 	"github.com/sieryo/invoice-extractor/internal/app/buyer"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice"
+	"github.com/sieryo/invoice-extractor/internal/app/invoice/parserhelper"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/template"
 	"github.com/sieryo/invoice-extractor/internal/domain/file"
 	"github.com/sieryo/invoice-extractor/internal/domain/shared"
@@ -144,6 +145,7 @@ func (i *InvoiceExtractorService) ExtractBatch(
 				TemplateID:  tpl.Identifier(),
 				ExtractedAt: time.Now(),
 			}
+			inv.Metadata.Warnings = parserhelper.BuildParseWarnings(inv)
 
 			// buyer enrichment
 			if inv.Buyer != nil && inv.Buyer.Name != "" {

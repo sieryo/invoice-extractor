@@ -41,6 +41,7 @@ type InvoiceMetadata struct {
 	SourceFile  FileRef   `json:"source_file"`
 	TemplateID  string    `json:"template_id"`
 	ExtractedAt time.Time `json:"extracted_at"`
+	Warnings    []string  `json:"warnings,omitempty"`
 }
 
 type Item struct {
