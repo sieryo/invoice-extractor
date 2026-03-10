@@ -158,7 +158,6 @@ func (i *InvoiceExtractorService) ExtractBatch(
 				},
 				TemplateID:     tpl.Identifier(),
 				TemplateName:   tpl.Name(),
-				RawText:        text,
 				NormalizedText: normalized,
 				ExtractedAt:    inv.Metadata.ExtractedAt,
 			}

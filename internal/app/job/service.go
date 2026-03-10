@@ -302,3 +302,33 @@ func (s *JobService) UnarchiveJob(ctx context.Context, jobID string, archiveName
 		RestoredAudit: restoredAudit,
 	}, nil
 }
+
+func (s *JobService) GetArchiveBytes(ctx context.Context, jobID string, archiveName *string) ([]byte, string, error) {
+	if _, err := s.repo.FindByID(ctx, jobID); err != nil {
+		return nil, "", jobdomain.ErrJobNotFound
+	}
+
+	name := ""
+	if archiveName != nil && *archiveName != "" {
+		name = *archiveName
+	} else {
+		archives, err := s.fileStore.ListArchive(ctx, jobID)
+		if err != nil {
+			return nil, "", err
+		}
+		if len(archives) == 0 {
+			return nil, "", jobdomain.ErrArchiveNotFound
+		}
+		sort.Slice(archives, func(i, k int) bool {
+			return archives[i].ModTime.After(archives[k].ModTime)
+		})
+		name = archives[0].Name
+	}
+
+	data, err := s.fileStore.ReadArchive(ctx, jobID, name)
+	if err != nil {
+		return nil, "", err
+	}
+
+	return data, name, nil
+}

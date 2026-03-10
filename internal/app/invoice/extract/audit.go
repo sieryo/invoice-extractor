@@ -28,7 +28,6 @@ type InvoiceAudit struct {
 	SourceFile     invoice.FileRef `json:"source_file"`
 	TemplateID     string          `json:"template_id"`
 	TemplateName   string          `json:"template_name"`
-	RawText        string          `json:"raw_text"`
 	NormalizedText string          `json:"normalized_text"`
 	Warnings       []string        `json:"warnings,omitempty"`
 	Buyer          BuyerAudit      `json:"buyer"`

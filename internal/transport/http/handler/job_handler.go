@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/gofiber/fiber/v2"
 
@@ -216,4 +217,34 @@ func (h *JobHandler) UnarchiveJob(c *fiber.Ctx) error {
 	}
 
 	return SendSuccess(c, fiber.StatusOK, result, "job unarchived successfully")
+}
+
+func (h *JobHandler) DownloadArchive(c *fiber.Ctx) error {
+	ctx := c.Context()
+	jobID := c.Params("id")
+	if jobID == "" {
+		return SendError(c, fiber.StatusBadRequest, "job ID is required")
+	}
+
+	name := c.Query("name")
+	var namePtr *string
+	if name != "" {
+		namePtr = &name
+	}
+
+	data, filename, err := h.jobService.GetArchiveBytes(ctx, jobID, namePtr)
+	if err != nil {
+		switch {
+		case errors.Is(err, jobdomain.ErrJobNotFound):
+			return SendError(c, fiber.StatusNotFound, err.Error())
+		case errors.Is(err, jobdomain.ErrArchiveNotFound):
+			return SendError(c, fiber.StatusNotFound, err.Error())
+		default:
+			return SendError(c, fiber.StatusInternalServerError, "failed to download archive")
+		}
+	}
+
+	c.Set("Content-Type", "application/zip")
+	c.Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	return c.Send(data)
 }
