@@ -78,24 +78,22 @@ func TestRegister(t *testing.T) {
 
 	t.Run("Success", func(t *testing.T) {
 		username := "testuser"
-		password := "password123"
 
 		mockUserRepo.On("GetByUsername", username).Return(nil, errors.New("record not found"))
 		mockUserRepo.On("Create", mock.AnythingOfType("*user.User")).Return(nil)
 
-		err := authService.Register(username, password)
+		err := authService.Register(username)
 		assert.NoError(t, err)
 		mockUserRepo.AssertExpectations(t)
 	})
 
 	t.Run("UsernameTaken", func(t *testing.T) {
 		username := "existinguser"
-		password := "password123"
 
 		existingUser := &user.User{Username: username}
 		mockUserRepo.On("GetByUsername", username).Return(existingUser, nil)
 
-		err := authService.Register(username, password)
+		err := authService.Register(username)
 		assert.Error(t, err)
 		assert.Equal(t, "username already taken", err.Error())
 		mockUserRepo.AssertExpectations(t)

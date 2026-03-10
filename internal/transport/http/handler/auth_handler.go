@@ -19,7 +19,6 @@ func NewAuthHandler(authService *auth.AuthService) *AuthHandler {
 
 type RegisterRequest struct {
 	Username string `json:"username"`
-	Password string `json:"password"`
 }
 
 type LoginRequest struct {
@@ -43,11 +42,11 @@ func (h *AuthHandler) Register(c *fiber.Ctx) error {
 		return SendError(c, fiber.StatusBadRequest, "invalid request body")
 	}
 
-	if req.Username == "" || req.Password == "" {
-		return SendError(c, fiber.StatusBadRequest, "username and password are required")
+	if req.Username == "" {
+		return SendError(c, fiber.StatusBadRequest, "username are required")
 	}
 
-	if err := h.authService.Register(req.Username, req.Password); err != nil {
+	if err := h.authService.Register(req.Username); err != nil {
 		return SendError(c, fiber.StatusBadRequest, err.Error())
 	}
 

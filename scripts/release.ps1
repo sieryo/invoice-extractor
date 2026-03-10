@@ -104,7 +104,26 @@ if ($null -eq $saveDrive) {
     throw "save-drive command not found. Install or add it to PATH."
 }
 
-& save-drive push --file $zipPath --to $driveFolder --mkdir --replace
+$zipName = [IO.Path]::GetFileName($zipPath)
+$useReplace = $false
+$listOutput = & save-drive list --from $driveFolder 2>&1
+if ($LASTEXITCODE -eq 0) {
+    if ($listOutput | Select-String -SimpleMatch $zipName) {
+        $useReplace = $true
+        Write-Host ">> Existing same-version file found. Replacing $zipName"
+    } else {
+        Write-Host ">> No same-version file found. Uploading without replace"
+    }
+} else {
+    Write-Warning "save-drive list failed; uploading without replace to avoid deleting different versions"
+}
+
+$pushArgs = @("push", "--file", $zipPath, "--to", $driveFolder, "--mkdir")
+if ($useReplace) {
+    $pushArgs += "--replace"
+}
+
+& save-drive @pushArgs
 if ($LASTEXITCODE -ne 0) {
     throw "save-drive push failed with exit code $LASTEXITCODE"
 }
