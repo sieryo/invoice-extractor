@@ -35,13 +35,14 @@ func (h *BuyerRegistryHandler) Update(c *fiber.Ctx) error {
 		return SendError(c, fiber.StatusInternalServerError, "failed to save file")
 	}
 
-	count, err := h.service.Update(tmpPath)
+	count, issues, err := h.service.Update(tmpPath)
 	if err != nil {
 		return SendError(c, fiber.StatusBadRequest, err.Error())
 	}
 
 	return SendSuccess(c, fiber.StatusOK, fiber.Map{
-		"count": count,
+		"count":  count,
+		"issues": issues,
 	}, "buyer data uploaded successfully")
 }
 

@@ -47,7 +47,7 @@ func (h *BuyerUploadHandler) Handle(c *fiber.Ctx) error {
 		return err
 	}
 
-	buyers, err := h.parser.Parse(tmpPath)
+	buyers, issues, err := h.parser.Parse(tmpPath)
 	if err != nil {
 		return SendError(c, fiber.StatusBadRequest, err.Error())
 	}
@@ -57,6 +57,7 @@ func (h *BuyerUploadHandler) Handle(c *fiber.Ctx) error {
 	}
 
 	return SendSuccess(c, fiber.StatusOK, fiber.Map{
-		"count": len(buyers),
+		"count":  len(buyers),
+		"issues": issues,
 	}, "buyer data uploaded successfully")
 }

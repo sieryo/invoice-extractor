@@ -3,7 +3,9 @@ package handler
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -199,4 +201,90 @@ func (h *InvoiceHandler) DownloadTaxInvoices(c *fiber.Ctx) error {
 	c.Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
 
 	return c.Send(buf.Bytes())
+}
+
+func (h *InvoiceHandler) GetInvoiceAudit(c *fiber.Ctx) error {
+	ctx := c.Context()
+
+	jobID := c.Params("job_id")
+	if jobID == "" {
+		return SendError(c, fiber.StatusBadRequest, "job_id is required")
+	}
+
+	if _, err := h.jobService.GetJobByID(ctx, jobID); err != nil {
+		return SendError(c, fiber.StatusNotFound, "job not found")
+	}
+
+	fileID := c.Query("file_id")
+	if fileID != "" {
+		name := fmt.Sprintf("audit_%s.json", fileID)
+		data, err := h.fileStore.ReadAudit(ctx, jobID, name)
+		if err != nil {
+			return SendError(c, fiber.StatusNotFound, "audit not found")
+		}
+
+		var payload any
+		if err := json.Unmarshal(data, &payload); err != nil {
+			return SendSuccess(c, fiber.StatusOK, fiber.Map{
+				"file":       name,
+				"raw":        string(data),
+				"parseError": err.Error(),
+			}, "audit retrieved successfully")
+		}
+
+		return SendSuccess(c, fiber.StatusOK, payload, "audit retrieved successfully")
+	}
+
+	names, err := h.fileStore.ListAudit(ctx, jobID)
+	if err != nil {
+		return SendError(c, fiber.StatusInternalServerError, "failed to list audit files")
+	}
+
+	if len(names) == 0 {
+		return SendSuccess(c, fiber.StatusOK, fiber.Map{
+			"audits": []any{},
+			"count":  0,
+		}, "audit files retrieved successfully")
+	}
+
+	audits := make([]any, 0, len(names))
+	errors := make([]string, 0)
+
+	for _, name := range names {
+		data, err := h.fileStore.ReadAudit(ctx, jobID, name)
+		if err != nil {
+			errors = append(errors, fmt.Sprintf("%s: %v", name, err))
+			continue
+		}
+
+		var payload any
+		if err := json.Unmarshal(data, &payload); err != nil {
+			audits = append(audits, fiber.Map{
+				"file":       name,
+				"raw":        string(data),
+				"parseError": err.Error(),
+			})
+			continue
+		}
+
+		if m, ok := payload.(map[string]any); ok {
+			m["audit_file"] = name
+			payload = m
+		}
+
+		audits = append(audits, payload)
+	}
+
+	if len(errors) > 0 {
+		return SendSuccess(c, fiber.StatusOK, fiber.Map{
+			"audits": audits,
+			"count":  len(audits),
+			"errors": strings.Join(errors, "; "),
+		}, "audit files retrieved successfully")
+	}
+
+	return SendSuccess(c, fiber.StatusOK, fiber.Map{
+		"audits": audits,
+		"count":  len(audits),
+	}, "audit files retrieved successfully")
 }

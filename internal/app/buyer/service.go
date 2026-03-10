@@ -44,20 +44,20 @@ func (s *BuyerRegistryService) List() []domainbuyer.Buyer {
 	return buyers
 }
 
-func (s *BuyerRegistryService) Update(filePath string) (int, error) {
-	buyers, err := s.parser.Parse(filePath)
+func (s *BuyerRegistryService) Update(filePath string) (int, []parser.ValidationIssue, error) {
+	buyers, issues, err := s.parser.Parse(filePath)
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 
 	if err := s.store.Save(buyers); err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 
 	s.registry.Load(buyers)
 	s.registry.loaded = true
 
-	return len(buyers), nil
+	return len(buyers), issues, nil
 }
 
 func (s *BuyerRegistryService) IsLoaded() bool {

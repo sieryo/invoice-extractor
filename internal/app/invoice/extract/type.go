@@ -7,5 +7,6 @@ import (
 
 type BatchExtractResult struct {
 	Invoices []*invoice.Invoice
+	Audits   []InvoiceAudit
 	Errors   []shared.FileResultError
 }

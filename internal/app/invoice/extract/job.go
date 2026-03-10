@@ -90,6 +90,19 @@ func (h *InvoiceExtractJob) Handle(ctx context.Context, j *job.Job) (*job.Output
 		})
 	}
 
+	for _, audit := range result.Audits {
+		data, err := json.Marshal(audit)
+		if err != nil {
+			fmt.Printf("failed to marshal audit for %s: %v\n", audit.SourceFile.Name, err)
+			continue
+		}
+
+		name := fmt.Sprintf("audit_%s.json", audit.SourceFile.ID)
+		if _, err := h.fileStore.SaveAudit(ctx, j.ID, name, data); err != nil {
+			fmt.Printf("failed to save audit for %s: %v\n", audit.SourceFile.Name, err)
+		}
+	}
+
 	for _, e := range result.Errors {
 		files = append(files, job.OutputFile{
 			ID:             e.FileID,

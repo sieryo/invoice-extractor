@@ -91,6 +91,79 @@ func (l *LocalFileStore) Commit(
 	return obj.Commit(finalPath)
 }
 
+func (l *LocalFileStore) SaveAudit(
+	ctx context.Context,
+	collectionID string,
+	name string,
+	data []byte,
+) (string, error) {
+
+	select {
+	case <-ctx.Done():
+		return "", ctx.Err()
+	default:
+	}
+
+	auditDir := filepath.Join(l.baseDir, "audit", collectionID)
+	if err := os.MkdirAll(auditDir, 0755); err != nil {
+		return "", err
+	}
+
+	auditPath := filepath.Join(auditDir, name)
+	if err := os.WriteFile(auditPath, data, 0644); err != nil {
+		return "", err
+	}
+
+	return auditPath, nil
+}
+
+func (l *LocalFileStore) ReadAudit(
+	ctx context.Context,
+	collectionID string,
+	name string,
+) ([]byte, error) {
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	auditPath := filepath.Join(l.baseDir, "audit", collectionID, name)
+	return os.ReadFile(auditPath)
+}
+
+func (l *LocalFileStore) ListAudit(
+	ctx context.Context,
+	collectionID string,
+) ([]string, error) {
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	auditDir := filepath.Join(l.baseDir, "audit", collectionID)
+	entries, err := os.ReadDir(auditDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []string{}, nil
+		}
+		return nil, err
+	}
+
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		names = append(names, e.Name())
+	}
+
+	return names, nil
+}
+
 func (l *LocalFileStore) CleanupTemp(
 	ctx context.Context,
 	collectionID string,
@@ -126,6 +199,12 @@ func (l *LocalFileStore) Cleanup(
 	// Remove files directory if exists
 	filesDir := filepath.Join(l.baseDir, "files", collectionID)
 	if err := os.RemoveAll(filesDir); err != nil {
+		return err
+	}
+
+	// Remove audit directory if exists
+	auditDir := filepath.Join(l.baseDir, "audit", collectionID)
+	if err := os.RemoveAll(auditDir); err != nil {
 		return err
 	}
 

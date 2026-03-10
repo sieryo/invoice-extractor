@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/sieryo/invoice-extractor/internal/domain/buyer"
+	"github.com/sieryo/invoice-extractor/pkg/helper"
 )
 
 type BuyerCSVStore struct {
@@ -83,11 +84,26 @@ func (s *BuyerCSVStore) Load(path string) ([]buyer.Buyer, error) {
 			continue
 		}
 
+		npwp15 := helper.DigitsOnly(row[1])
+		if npwp15 != "" && !helper.IsNPWP15(npwp15) {
+			npwp15 = ""
+		}
+
+		npwp16 := helper.DigitsOnly(row[2])
+		if npwp16 != "" && !helper.IsNPWP16(npwp16) {
+			npwp16 = ""
+		}
+
+		nitku := helper.DigitsOnly(row[3])
+		if nitku != "" && !helper.IsNITKU(nitku) {
+			nitku = ""
+		}
+
 		buyers = append(buyers, buyer.Buyer{
 			Name:    row[0],
-			NPWP15:  row[1],
-			NPWP16:  row[2],
-			NITKU:   row[3],
+			NPWP15:  npwp15,
+			NPWP16:  npwp16,
+			NITKU:   nitku,
 			Email:   row[4],
 			Address: row[5],
 		})

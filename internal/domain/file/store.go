@@ -15,6 +15,24 @@ type FileStore interface {
 		obj FileObject,
 	) (FileObject, error)
 
+	SaveAudit(
+		ctx context.Context,
+		collectionID string,
+		name string,
+		data []byte,
+	) (string, error)
+
+	ReadAudit(
+		ctx context.Context,
+		collectionID string,
+		name string,
+	) ([]byte, error)
+
+	ListAudit(
+		ctx context.Context,
+		collectionID string,
+	) ([]string, error)
+
 	Read(
 		ctx context.Context,
 		collectionID string,

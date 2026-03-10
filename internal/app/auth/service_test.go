@@ -40,6 +40,14 @@ func (m *MockUserRepository) GetByID(id string) (*user.User, error) {
 	return args.Get(0).(*user.User), args.Error(1)
 }
 
+func (m *MockUserRepository) List() ([]user.User, error) {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]user.User), args.Error(1)
+}
+
 type MockSessionRepository struct {
 	mock.Mock
 }

@@ -69,18 +69,7 @@ func (s *AuthService) Login(username, password string) (string, error) {
 		return "", errors.New("invalid credentials")
 	}
 
-	sessionID := uuid.New().String()
-	session := &session.Session{
-		ID:        sessionID,
-		UserID:    user.ID,
-		ExpiresAt: time.Now().Add(24 * time.Hour * 30),
-	}
-
-	if err := s.sessionRepo.Create(session); err != nil {
-		return "", err
-	}
-
-	return sessionID, nil
+	return s.createSession(user.ID)
 }
 
 func (s *AuthService) Logout(sessionID string) error {
@@ -91,6 +80,19 @@ func (s *AuthService) GetSession(sessionID string) (*session.Session, error) {
 	return s.sessionRepo.GetByID(sessionID)
 }
 
+func (s *AuthService) LoginByID(userID string) (string, error) {
+	u, err := s.userRepo.GetByID(userID)
+	if err != nil || u == nil {
+		return "", errors.New("invalid credentials")
+	}
+
+	return s.createSession(u.ID)
+}
+
+func (s *AuthService) ListUsers() ([]user.User, error) {
+	return s.userRepo.List()
+}
+
 func (s *AuthService) GetUserBySessionID(sessionID string) (*user.User, error) {
 	sess, err := s.sessionRepo.GetByID(sessionID)
 	if err != nil {
@@ -98,4 +100,19 @@ func (s *AuthService) GetUserBySessionID(sessionID string) (*user.User, error) {
 	}
 
 	return s.userRepo.GetByID(sess.UserID)
+}
+
+func (s *AuthService) createSession(userID string) (string, error) {
+	sessionID := uuid.New().String()
+	session := &session.Session{
+		ID:        sessionID,
+		UserID:    userID,
+		ExpiresAt: time.Now().Add(24 * time.Hour * 30),
+	}
+
+	if err := s.sessionRepo.Create(session); err != nil {
+		return "", err
+	}
+
+	return sessionID, nil
 }

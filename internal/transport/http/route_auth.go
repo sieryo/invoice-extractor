@@ -11,6 +11,8 @@ func (s *Server) registerAuthRoutes(api fiber.Router) {
 	// Public auth routes
 	api.Post("/auth/register", authHandler.Register)
 	api.Post("/auth/login", authHandler.Login)
+	api.Post("/auth/login/by-id", authHandler.LoginByID)
+	api.Get("/auth/users", authHandler.ListUsers)
 
 	// Protected auth routes
 	protected := api.Group("", s.AuthMiddleware())

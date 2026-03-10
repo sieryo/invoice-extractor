@@ -20,6 +20,7 @@ import (
 	"github.com/sieryo/invoice-extractor/internal/domain/shared"
 	"github.com/sieryo/invoice-extractor/internal/infra/adapter/pdftool"
 	"github.com/sieryo/invoice-extractor/internal/infra/jobrunner"
+	"github.com/sieryo/invoice-extractor/pkg/helper"
 )
 
 var leadingNumberRegex = regexp.MustCompile(`^\s*(\d+)[\.\s]+`)
@@ -60,6 +61,7 @@ func (i *InvoiceExtractorService) ExtractBatch(
 
 	errChan := make(chan shared.FileResultError, len(inputFiles))
 	invoiceChan := make(chan *invoice.Invoice, len(inputFiles))
+	auditChan := make(chan InvoiceAudit, len(inputFiles))
 
 	reporter := jobrunner.GetProgressReporter(ctx)
 
@@ -126,6 +128,8 @@ func (i *InvoiceExtractorService) ExtractBatch(
 				tpl = t
 			}
 
+			normalized := tpl.Normalize(text)
+
 			inv, err := tpl.Parse(text)
 			if err != nil {
 				errChan <- shared.FileResultError{
@@ -147,18 +151,70 @@ func (i *InvoiceExtractorService) ExtractBatch(
 			}
 			inv.Metadata.Warnings = parserhelper.BuildParseWarnings(inv)
 
-			// buyer enrichment
-			if inv.Buyer != nil && inv.Buyer.Name != "" {
-				if b, ok := i.buyerRegistry.GetByName(inv.Buyer.Name); ok {
-					taxID := b.PrimaryTaxID()
-					tku := b.TKU()
-					inv.Buyer.Name = b.Name
-					inv.Buyer.TaxID = &taxID
-					inv.Buyer.TKU = &tku
+			audit := InvoiceAudit{
+				SourceFile: invoice.FileRef{
+					ID:   refFile.ID,
+					Name: refFile.Name,
+				},
+				TemplateID:     tpl.Identifier(),
+				TemplateName:   tpl.Name(),
+				RawText:        text,
+				NormalizedText: normalized,
+				ExtractedAt:    inv.Metadata.ExtractedAt,
+			}
+
+			if inv.Buyer != nil {
+				audit.Buyer.ParsedName = inv.Buyer.Name
+				if inv.Buyer.TaxID != nil {
+					audit.Buyer.ParsedTaxID = *inv.Buyer.TaxID
+				}
+				if inv.Buyer.TKU != nil {
+					audit.Buyer.ParsedTKU = *inv.Buyer.TKU
 				}
 			}
 
+			// buyer enrichment
+			if inv.Buyer != nil && inv.Buyer.Name != "" {
+				if b, ok := i.buyerRegistry.GetByName(inv.Buyer.Name); ok {
+					rawTaxID := b.PrimaryTaxID()
+					rawTKU := b.TKU()
+
+					taxID := helper.DigitsOnly(rawTaxID)
+					tku := helper.DigitsOnly(rawTKU)
+
+					taxIDKind := helper.TaxIDKind(taxID)
+					taxIDValid := helper.IsValidTaxID(taxID)
+					tkuValid := helper.IsNITKU(tku)
+
+					inv.Buyer.Name = b.Name
+					if taxIDValid {
+						inv.Buyer.TaxID = &taxID
+					} else if rawTaxID != "" {
+						inv.Metadata.Warnings = append(inv.Metadata.Warnings, "invalid buyer tax id in registry")
+					}
+
+					if tkuValid {
+						inv.Buyer.TKU = &tku
+					} else if rawTKU != "" {
+						inv.Metadata.Warnings = append(inv.Metadata.Warnings, "invalid buyer tku in registry")
+					}
+
+					audit.Buyer.Enriched = true
+					audit.Buyer.RegistryName = b.Name
+					audit.Buyer.RegistryTaxID = rawTaxID
+					audit.Buyer.RegistryTKU = rawTKU
+					audit.Buyer.AppliedTaxID = taxID
+					audit.Buyer.AppliedTKU = tku
+					audit.Buyer.TaxIDKind = taxIDKind
+					audit.Buyer.TaxIDValid = taxIDValid
+					audit.Buyer.TKUValid = tkuValid
+				}
+			}
+
+			audit.Warnings = inv.Metadata.Warnings
+
 			invoiceChan <- inv
+			auditChan <- audit
 
 		}(inputFile)
 	}
@@ -167,14 +223,16 @@ func (i *InvoiceExtractorService) ExtractBatch(
 		wg.Wait()
 		close(errChan)
 		close(invoiceChan)
+		close(auditChan)
 	}()
 
 	result := &BatchExtractResult{}
 
 	invoiceDone := false
 	errorDone := false
+	auditDone := false
 
-	for !(invoiceDone && errorDone) {
+	for !(invoiceDone && errorDone && auditDone) {
 		select {
 		case err, ok := <-errChan:
 			if !ok {
@@ -189,6 +247,13 @@ func (i *InvoiceExtractorService) ExtractBatch(
 				continue
 			}
 			result.Invoices = append(result.Invoices, inv)
+
+		case audit, ok := <-auditChan:
+			if !ok {
+				auditDone = true
+				continue
+			}
+			result.Audits = append(result.Audits, audit)
 
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -218,6 +283,25 @@ func (i *InvoiceExtractorService) ExtractBatch(
 		}
 
 		// Dua-duanya gak punya angka → biarin stabil
+		return false
+	})
+
+	sort.Slice(result.Audits, func(i, j int) bool {
+		fi := result.Audits[i].SourceFile.Name
+		fj := result.Audits[j].SourceFile.Name
+
+		ni, okI := extractLeadingNumber(fi)
+		nj, okJ := extractLeadingNumber(fj)
+
+		if okI && okJ {
+			return ni < nj
+		}
+		if okI && !okJ {
+			return true
+		}
+		if !okI && okJ {
+			return false
+		}
 		return false
 	})
 
