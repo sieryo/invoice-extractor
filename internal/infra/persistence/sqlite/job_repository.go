@@ -20,9 +20,9 @@ func (r *JobRepository) Create(ctx context.Context, j *job.Job) error {
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO jobs (
 			id, user_id, collection_id, type, status, progress, input_payload,
-			output_manifest, error_message, created_at, started_at,
-			finished_at, expired_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			output_manifest, error_message, archive_count, archive_latest, archived,
+			created_at, started_at, finished_at, expired_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		j.ID,
 		j.UserID,
@@ -33,6 +33,9 @@ func (r *JobRepository) Create(ctx context.Context, j *job.Job) error {
 		j.InputPayload,
 		j.OutputManifest,
 		j.ErrorMessage,
+		j.ArchiveCount,
+		j.ArchiveLatest,
+		j.Archived,
 		j.CreatedAt,
 		j.StartedAt,
 		j.FinishedAt,
@@ -53,6 +56,9 @@ func (r *JobRepository) List(ctx context.Context) ([]*job.Job, error) {
 			input_payload,
 			output_manifest,
 			error_message,
+			archive_count,
+			archive_latest,
+			archived,
 			created_at,
 			started_at,
 			finished_at,
@@ -74,6 +80,9 @@ func (r *JobRepository) List(ctx context.Context) ([]*job.Job, error) {
 		var userID sql.NullString
 		var collectionID sql.NullString
 		var errorMessage sql.NullString
+		var archiveLatest sql.NullTime
+		var archiveCount sql.NullInt64
+		var archived sql.NullInt64
 		var startedAt sql.NullTime
 		var finishedAt sql.NullTime
 		var expiredAt sql.NullTime
@@ -88,6 +97,9 @@ func (r *JobRepository) List(ctx context.Context) ([]*job.Job, error) {
 			&j.InputPayload,
 			&outputManifest,
 			&errorMessage,
+			&archiveCount,
+			&archiveLatest,
+			&archived,
 			&j.CreatedAt,
 			&startedAt,
 			&finishedAt,
@@ -114,6 +126,16 @@ func (r *JobRepository) List(ctx context.Context) ([]*job.Job, error) {
 
 		if errorMessage.Valid {
 			j.ErrorMessage = &errorMessage.String
+		}
+
+		if archiveCount.Valid {
+			j.ArchiveCount = int(archiveCount.Int64)
+		}
+		if archiveLatest.Valid {
+			j.ArchiveLatest = &archiveLatest.Time
+		}
+		if archived.Valid {
+			j.Archived = archived.Int64 != 0
 		}
 
 		if startedAt.Valid {
@@ -148,6 +170,9 @@ func (r *JobRepository) FindByID(ctx context.Context, id string) (*job.Job, erro
 			input_payload,
 			output_manifest,
 			error_message,
+			archive_count,
+			archive_latest,
+			archived,
 			created_at,
 			started_at,
 			finished_at,
@@ -166,6 +191,9 @@ func (r *JobRepository) FindByID(ctx context.Context, id string) (*job.Job, erro
 		finishedAt     sql.NullTime
 		expiredAt      sql.NullTime
 		outputManifest []byte
+		archiveLatest  sql.NullTime
+		archiveCount   sql.NullInt64
+		archived       sql.NullInt64
 	)
 
 	if err := row.Scan(
@@ -178,6 +206,9 @@ func (r *JobRepository) FindByID(ctx context.Context, id string) (*job.Job, erro
 		&j.InputPayload,
 		&outputManifest,
 		&errorMessage,
+		&archiveCount,
+		&archiveLatest,
+		&archived,
 		&j.CreatedAt,
 		&startedAt,
 		&finishedAt,
@@ -203,6 +234,16 @@ func (r *JobRepository) FindByID(ctx context.Context, id string) (*job.Job, erro
 
 	if errorMessage.Valid {
 		j.ErrorMessage = &errorMessage.String
+	}
+
+	if archiveCount.Valid {
+		j.ArchiveCount = int(archiveCount.Int64)
+	}
+	if archiveLatest.Valid {
+		j.ArchiveLatest = &archiveLatest.Time
+	}
+	if archived.Valid {
+		j.Archived = archived.Int64 != 0
 	}
 
 	if startedAt.Valid {
@@ -233,6 +274,7 @@ func (r *JobRepository) Update(ctx context.Context, j *job.Job) error {
 		UPDATE jobs SET
 			user_id = ?, collection_id = ?, type = ?, status = ?, progress = ?,
 			input_payload = ?, output_manifest = ?, error_message = ?,
+			archive_count = ?, archive_latest = ?, archived = ?,
 			started_at = ?, finished_at = ?, expired_at = ?
 		WHERE id = ?
 	`,
@@ -244,6 +286,9 @@ func (r *JobRepository) Update(ctx context.Context, j *job.Job) error {
 		j.InputPayload,
 		outputManifest,
 		j.ErrorMessage,
+		j.ArchiveCount,
+		j.ArchiveLatest,
+		j.Archived,
 		j.StartedAt,
 		j.FinishedAt,
 		j.ExpiredAt,

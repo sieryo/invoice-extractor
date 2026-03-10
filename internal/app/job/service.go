@@ -94,7 +94,7 @@ func (s *JobService) GetJobByID(ctx context.Context, id string) (*jobdomain.Job,
 	if err != nil {
 		return nil, err
 	}
-	s.attachArchiveInfo(ctx, j)
+	s.reconcileArchiveMeta(ctx, j)
 	return j, nil
 }
 
@@ -105,38 +105,51 @@ func (s *JobService) ListJobs(ctx context.Context) ([]*jobdomain.Job, error) {
 		return nil, err
 	}
 	for _, j := range jobs {
-		s.attachArchiveInfo(ctx, j)
+		s.reconcileArchiveMeta(ctx, j)
 	}
 	return jobs, nil
 }
 
-func (s *JobService) attachArchiveInfo(ctx context.Context, j *jobdomain.Job) {
+func (s *JobService) reconcileArchiveMeta(ctx context.Context, j *jobdomain.Job) {
+	// Keep it cheap: only reconcile when metadata is missing or claims archived.
+	if j.ArchiveCount > 0 && j.ArchiveLatest != nil && !j.Archived {
+		return
+	}
+
 	archives, err := s.fileStore.ListArchive(ctx, j.ID)
 	if err != nil {
 		return
 	}
-	j.ArchiveCount = len(archives)
-	j.Archived = false
-	if len(archives) == 0 {
-		j.ArchiveLatest = nil
-		return
+
+	count := len(archives)
+	var latest *time.Time
+	if count > 0 {
+		latestTime := archives[0].ModTime
+		for _, a := range archives[1:] {
+			if a.ModTime.After(latestTime) {
+				latestTime = a.ModTime
+			}
+		}
+		latest = &latestTime
 	}
 
-	latest := archives[0].ModTime
-	for _, a := range archives[1:] {
-		if a.ModTime.After(latest) {
-			latest = a.ModTime
+	archived := false
+	if count > 0 {
+		usage, err := s.fileStore.GetJobStorageUsage(ctx, j.ID)
+		if err == nil {
+			archived = usage.FilesBytes == 0 && usage.AuditBytes == 0
 		}
 	}
-	j.ArchiveLatest = &latest
 
-	usage, err := s.fileStore.GetJobStorageUsage(ctx, j.ID)
-	if err != nil {
+	changed := j.ArchiveCount != count || (j.ArchiveLatest == nil && latest != nil) || (j.ArchiveLatest != nil && latest != nil && !j.ArchiveLatest.Equal(*latest)) || j.Archived != archived
+	if !changed {
 		return
 	}
 
-	// Archived means: archive exists but output + audit folders are empty.
-	j.Archived = usage.FilesBytes == 0 && usage.AuditBytes == 0
+	j.ArchiveCount = count
+	j.ArchiveLatest = latest
+	j.Archived = archived
+	_ = s.repo.Update(ctx, j)
 }
 
 func (s *JobService) DeleteJob(ctx context.Context, id string) error {
@@ -240,6 +253,15 @@ func (s *JobService) ArchiveJob(ctx context.Context, jobID string, deleteOrigina
 		}
 	}
 
+	j.ArchiveCount = j.ArchiveCount + 1
+	now := time.Now()
+	j.ArchiveLatest = &now
+	j.Archived = deleteOriginal
+
+	if err := s.repo.Update(ctx, j); err != nil {
+		return ArchiveResult{}, err
+	}
+
 	return ArchiveResult{
 		ArchivePath: archivePath,
 		ArchiveName: filename,
@@ -335,6 +357,11 @@ func (s *JobService) UnarchiveJob(ctx context.Context, jobID string, archiveName
 			return UnarchiveResult{}, err
 		}
 		restoredFiles++
+	}
+
+	j.Archived = false
+	if err := s.repo.Update(ctx, j); err != nil {
+		return UnarchiveResult{}, err
 	}
 
 	return UnarchiveResult{
