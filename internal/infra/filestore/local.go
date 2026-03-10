@@ -117,6 +117,87 @@ func (l *LocalFileStore) SaveAudit(
 	return auditPath, nil
 }
 
+func (l *LocalFileStore) SaveArchive(
+	ctx context.Context,
+	collectionID string,
+	name string,
+	data []byte,
+) (string, error) {
+
+	select {
+	case <-ctx.Done():
+		return "", ctx.Err()
+	default:
+	}
+
+	archiveDir := filepath.Join(l.baseDir, "archive", collectionID)
+	if err := os.MkdirAll(archiveDir, 0755); err != nil {
+		return "", err
+	}
+
+	archivePath := filepath.Join(archiveDir, name)
+	if err := os.WriteFile(archivePath, data, 0644); err != nil {
+		return "", err
+	}
+
+	return archivePath, nil
+}
+
+func (l *LocalFileStore) ReadArchive(
+	ctx context.Context,
+	collectionID string,
+	name string,
+) ([]byte, error) {
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	archivePath := filepath.Join(l.baseDir, "archive", collectionID, name)
+	return os.ReadFile(archivePath)
+}
+
+func (l *LocalFileStore) ListArchive(
+	ctx context.Context,
+	collectionID string,
+) ([]file.ArchiveInfo, error) {
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	archiveDir := filepath.Join(l.baseDir, "archive", collectionID)
+	entries, err := os.ReadDir(archiveDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []file.ArchiveInfo{}, nil
+		}
+		return nil, err
+	}
+
+	infos := make([]file.ArchiveInfo, 0, len(entries))
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			return nil, err
+		}
+		infos = append(infos, file.ArchiveInfo{
+			Name:    e.Name(),
+			Size:    info.Size(),
+			ModTime: info.ModTime(),
+		})
+	}
+
+	return infos, nil
+}
+
 func (l *LocalFileStore) ReadAudit(
 	ctx context.Context,
 	collectionID string,
@@ -162,6 +243,65 @@ func (l *LocalFileStore) ListAudit(
 	}
 
 	return names, nil
+}
+
+func (l *LocalFileStore) WriteFile(
+	ctx context.Context,
+	collectionID string,
+	name string,
+	data []byte,
+) error {
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	filesDir := filepath.Join(l.baseDir, "files", collectionID)
+	if err := os.MkdirAll(filesDir, 0755); err != nil {
+		return err
+	}
+
+	path := filepath.Join(filesDir, filepath.Base(name))
+	return os.WriteFile(path, data, 0644)
+}
+
+func (l *LocalFileStore) GetJobStorageUsage(
+	ctx context.Context,
+	collectionID string,
+) (file.StorageUsage, error) {
+
+	select {
+	case <-ctx.Done():
+		return file.StorageUsage{}, ctx.Err()
+	default:
+	}
+
+	tempDir := filepath.Join(l.baseDir, "temp", collectionID)
+	filesDir := filepath.Join(l.baseDir, "files", collectionID)
+	auditDir := filepath.Join(l.baseDir, "audit", collectionID)
+
+	tempBytes, err := dirSize(ctx, tempDir)
+	if err != nil {
+		return file.StorageUsage{}, err
+	}
+	filesBytes, err := dirSize(ctx, filesDir)
+	if err != nil {
+		return file.StorageUsage{}, err
+	}
+	auditBytes, err := dirSize(ctx, auditDir)
+	if err != nil {
+		return file.StorageUsage{}, err
+	}
+
+	total := tempBytes + filesBytes + auditBytes
+	return file.StorageUsage{
+		TempBytes:  tempBytes,
+		FilesBytes: filesBytes,
+		AuditBytes: auditBytes,
+		TotalBytes: total,
+	}, nil
 }
 
 func (l *LocalFileStore) CleanupTemp(
@@ -252,4 +392,42 @@ func NewLocalFileStore(baseDir string) *LocalFileStore {
 	return &LocalFileStore{
 		baseDir: baseDir,
 	}
+}
+
+func dirSize(ctx context.Context, dir string) (int64, error) {
+	var size int64
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, err
+	}
+
+	for _, e := range entries {
+		select {
+		case <-ctx.Done():
+			return 0, ctx.Err()
+		default:
+		}
+
+		info, err := e.Info()
+		if err != nil {
+			return 0, err
+		}
+
+		if e.IsDir() {
+			subSize, err := dirSize(ctx, filepath.Join(dir, e.Name()))
+			if err != nil {
+				return 0, err
+			}
+			size += subSize
+			continue
+		}
+
+		size += info.Size()
+	}
+
+	return size, nil
 }

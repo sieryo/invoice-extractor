@@ -50,6 +50,8 @@ const (
 type Job struct {
 	ID     string  `json:"id"`
 	UserID *string `json:"user_id,omitempty"`
+	// Optional, set for jobs tied to a collection
+	CollectionID *string `json:"collection_id,omitempty"`
 
 	Type     JobType   `json:"type"`
 	Status   JobStatus `json:"status"`
@@ -69,11 +71,12 @@ type Job struct {
 	ExpiredAt  *time.Time `json:"expired_at,omitempty"`
 }
 
-func NewJob(id string, userID *string, jobType JobType, payload []byte) *Job {
+func NewJob(id string, userID *string, jobType JobType, payload []byte, collectionID *string) *Job {
 	now := time.Now()
 	return &Job{
 		ID:           id,
 		UserID:       userID,
+		CollectionID: collectionID,
 		Type:         jobType,
 		Status:       JobPending,
 		Progress:     0,

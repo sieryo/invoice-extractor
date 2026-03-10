@@ -33,6 +33,36 @@ type FileStore interface {
 		collectionID string,
 	) ([]string, error)
 
+	SaveArchive(
+		ctx context.Context,
+		collectionID string,
+		name string,
+		data []byte,
+	) (string, error)
+
+	ReadArchive(
+		ctx context.Context,
+		collectionID string,
+		name string,
+	) ([]byte, error)
+
+	ListArchive(
+		ctx context.Context,
+		collectionID string,
+	) ([]ArchiveInfo, error)
+
+	WriteFile(
+		ctx context.Context,
+		collectionID string,
+		name string,
+		data []byte,
+	) error
+
+	GetJobStorageUsage(
+		ctx context.Context,
+		collectionID string,
+	) (StorageUsage, error)
+
 	Read(
 		ctx context.Context,
 		collectionID string,

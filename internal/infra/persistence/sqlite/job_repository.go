@@ -19,13 +19,14 @@ func NewJobRepository(db *sql.DB) *JobRepository {
 func (r *JobRepository) Create(ctx context.Context, j *job.Job) error {
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO jobs (
-			id, user_id, type, status, progress, input_payload,
+			id, user_id, collection_id, type, status, progress, input_payload,
 			output_manifest, error_message, created_at, started_at,
 			finished_at, expired_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		j.ID,
 		j.UserID,
+		j.CollectionID,
 		j.Type,
 		j.Status,
 		j.Progress,
@@ -45,6 +46,7 @@ func (r *JobRepository) List(ctx context.Context) ([]*job.Job, error) {
 		SELECT
 			id,
 			user_id,
+			collection_id,
 			type,
 			status,
 			progress,
@@ -70,6 +72,7 @@ func (r *JobRepository) List(ctx context.Context) ([]*job.Job, error) {
 
 		var outputManifest []byte
 		var userID sql.NullString
+		var collectionID sql.NullString
 		var errorMessage sql.NullString
 		var startedAt sql.NullTime
 		var finishedAt sql.NullTime
@@ -78,6 +81,7 @@ func (r *JobRepository) List(ctx context.Context) ([]*job.Job, error) {
 		err := rows.Scan(
 			&j.ID,
 			&userID,
+			&collectionID,
 			&j.Type,
 			&j.Status,
 			&j.Progress,
@@ -95,6 +99,9 @@ func (r *JobRepository) List(ctx context.Context) ([]*job.Job, error) {
 
 		if userID.Valid {
 			j.UserID = &userID.String
+		}
+		if collectionID.Valid {
+			j.CollectionID = &collectionID.String
 		}
 
 		if len(outputManifest) > 0 {
@@ -134,6 +141,7 @@ func (r *JobRepository) FindByID(ctx context.Context, id string) (*job.Job, erro
 		SELECT
 			id,
 			user_id,
+			collection_id,
 			type,
 			status,
 			progress,
@@ -152,6 +160,7 @@ func (r *JobRepository) FindByID(ctx context.Context, id string) (*job.Job, erro
 
 	var (
 		userID         sql.NullString
+		collectionID   sql.NullString
 		errorMessage   sql.NullString
 		startedAt      sql.NullTime
 		finishedAt     sql.NullTime
@@ -162,6 +171,7 @@ func (r *JobRepository) FindByID(ctx context.Context, id string) (*job.Job, erro
 	if err := row.Scan(
 		&j.ID,
 		&userID,
+		&collectionID,
 		&j.Type,
 		&j.Status,
 		&j.Progress,
@@ -178,6 +188,9 @@ func (r *JobRepository) FindByID(ctx context.Context, id string) (*job.Job, erro
 
 	if userID.Valid {
 		j.UserID = &userID.String
+	}
+	if collectionID.Valid {
+		j.CollectionID = &collectionID.String
 	}
 
 	if len(outputManifest) > 0 {
@@ -218,12 +231,13 @@ func (r *JobRepository) Update(ctx context.Context, j *job.Job) error {
 
 	_, err = r.db.ExecContext(ctx, `
 		UPDATE jobs SET
-			user_id = ?, type = ?, status = ?, progress = ?,
+			user_id = ?, collection_id = ?, type = ?, status = ?, progress = ?,
 			input_payload = ?, output_manifest = ?, error_message = ?,
 			started_at = ?, finished_at = ?, expired_at = ?
 		WHERE id = ?
 	`,
 		j.UserID,
+		j.CollectionID,
 		j.Type,
 		j.Status,
 		j.Progress,
