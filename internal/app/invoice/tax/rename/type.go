@@ -15,4 +15,5 @@ type RenamedFile struct {
 type BatchRenameResult struct {
 	Files  []RenamedFile
 	Errors []shared.FileResultError
+	Audits []TaxInvoiceAudit
 }

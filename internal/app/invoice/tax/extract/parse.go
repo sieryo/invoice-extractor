@@ -33,7 +33,7 @@ func normalize(raw string) string {
 	return strings.Join(cleaned, "\n")
 }
 
-func ParseTaxInvoiceText(raw string) (*tax.TaxInvoice, error) {
+func ParseTaxInvoiceText(raw string) (*tax.TaxInvoice, string, error) {
 	text := normalize(raw)
 	lines := strings.Split(text, "\n")
 
@@ -45,7 +45,7 @@ func ParseTaxInvoiceText(raw string) (*tax.TaxInvoice, error) {
 	return &tax.TaxInvoice{
 		Number: number,
 		Buyer:  buyer,
-	}, nil
+	}, text, nil
 }
 
 func parseBuyer(block []string) *invoice.Party {

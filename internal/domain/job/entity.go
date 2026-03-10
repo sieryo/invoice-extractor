@@ -65,6 +65,11 @@ type Job struct {
 
 	ErrorMessage *string `json:"error_message,omitempty"`
 
+	// Archive metadata (computed)
+	ArchiveCount  int        `json:"archive_count"`
+	ArchiveLatest *time.Time `json:"archive_latest,omitempty"`
+	Archived      bool       `json:"archived"`
+
 	CreatedAt  time.Time  `json:"created_at"`
 	StartedAt  *time.Time `json:"started_at,omitempty"`
 	FinishedAt *time.Time `json:"finished_at,omitempty"`

@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
+	"github.com/sieryo/invoice-extractor/internal/app/invoice"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/tax/extract"
 	"github.com/sieryo/invoice-extractor/internal/domain/file"
 	"github.com/sieryo/invoice-extractor/internal/domain/shared"
 	"github.com/sieryo/invoice-extractor/internal/infra/jobrunner"
+	"github.com/sieryo/invoice-extractor/pkg/helper"
 )
 
 type TaxInvoiceRenameService struct {
@@ -31,6 +34,7 @@ func (s *TaxInvoiceRenameService) RenameBatch(
 
 	resultChan := make(chan RenamedFile, len(inputFiles))
 	errChan := make(chan shared.FileResultError, len(inputFiles))
+	auditChan := make(chan TaxInvoiceAudit, len(inputFiles))
 
 	reporter := jobrunner.GetProgressReporter(ctx)
 
@@ -57,6 +61,14 @@ func (s *TaxInvoiceRenameService) RenameBatch(
 				}
 			}()
 
+			audit := TaxInvoiceAudit{
+				SourceFile: invoice.FileRef{
+					ID:   refFile.ID,
+					Name: refFile.Name,
+				},
+				ExtractedAt: time.Now(),
+			}
+
 			info, err := s.extractor.Extract(ctx2, refFile)
 			if err != nil {
 				errChan <- shared.FileResultError{
@@ -64,10 +76,61 @@ func (s *TaxInvoiceRenameService) RenameBatch(
 					FileName: refFile.Name,
 					Error:    err.Error(),
 				}
+				audit.Error = err.Error()
+				auditChan <- audit
 				return
 			}
 
-			newName := fmt.Sprintf("%s - %s.pdf", info.Number, info.Buyer.Name)
+			if info.Invoice != nil {
+				audit.Number = info.Invoice.Number
+				audit.NormalizedText = info.NormalizedText
+
+				if info.Invoice.Number == "" {
+					audit.Warnings = append(audit.Warnings, "missing tax invoice number")
+				}
+
+				if info.Invoice.Buyer != nil {
+					audit.Buyer.ParsedName = info.Invoice.Buyer.Name
+					if info.Invoice.Buyer.Address != nil {
+						audit.Buyer.Address = *info.Invoice.Buyer.Address
+					}
+
+					if info.Invoice.Buyer.Name == "" {
+						audit.Warnings = append(audit.Warnings, "missing buyer name")
+					}
+
+					if info.Invoice.Buyer.TaxID != nil {
+						rawTaxID := *info.Invoice.Buyer.TaxID
+						digits := helper.DigitsOnly(rawTaxID)
+
+						audit.Buyer.ParsedTaxID = rawTaxID
+						audit.Buyer.TaxIDKind = helper.TaxIDKind(digits)
+						audit.Buyer.TaxIDValid = helper.IsValidTaxID(digits)
+
+						if digits == "" {
+							audit.Warnings = append(audit.Warnings, "missing buyer tax id")
+						} else if !audit.Buyer.TaxIDValid {
+							audit.Warnings = append(audit.Warnings, "invalid buyer tax id")
+						}
+					} else {
+						audit.Warnings = append(audit.Warnings, "missing buyer tax id")
+					}
+				} else {
+					audit.Warnings = append(audit.Warnings, "missing buyer block")
+				}
+			}
+
+			number := ""
+			buyerName := ""
+			if info.Invoice != nil {
+				number = info.Invoice.Number
+				if info.Invoice.Buyer != nil {
+					buyerName = info.Invoice.Buyer.Name
+				}
+			}
+
+			newName := fmt.Sprintf("%s - %s.pdf", number, buyerName)
+			audit.RenamedTo = newName
 
 			resultChan <- RenamedFile{
 				ID:         refFile.ID,
@@ -76,6 +139,8 @@ func (s *TaxInvoiceRenameService) RenameBatch(
 				SourceName: refFile.Name,
 				SourceURI:  refFile.Path,
 			}
+
+			auditChan <- audit
 		}(inputFile)
 	}
 
@@ -83,24 +148,42 @@ func (s *TaxInvoiceRenameService) RenameBatch(
 		wg.Wait()
 		close(errChan)
 		close(resultChan)
+		close(auditChan)
 	}()
 
 	result := &BatchRenameResult{}
 
-	for {
+	resultDone := false
+	errorDone := false
+	auditDone := false
+
+	for !(resultDone && errorDone && auditDone) {
 		select {
 		case err, ok := <-errChan:
-			if ok {
-				result.Errors = append(result.Errors, err)
+			if !ok {
+				errorDone = true
+				continue
 			}
+			result.Errors = append(result.Errors, err)
+
 		case file, ok := <-resultChan:
-			if ok {
-				result.Files = append(result.Files, file)
-			} else {
-				return result, nil
+			if !ok {
+				resultDone = true
+				continue
 			}
+			result.Files = append(result.Files, file)
+
+		case audit, ok := <-auditChan:
+			if !ok {
+				auditDone = true
+				continue
+			}
+			result.Audits = append(result.Audits, audit)
+
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
 	}
+
+	return result, nil
 }

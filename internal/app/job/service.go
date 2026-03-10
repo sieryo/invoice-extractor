@@ -90,12 +90,53 @@ func (s *JobService) FinishJob(ctx context.Context, j *jobdomain.Job, success bo
 }
 
 func (s *JobService) GetJobByID(ctx context.Context, id string) (*jobdomain.Job, error) {
-	return s.repo.FindByID(ctx, id)
+	j, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	s.attachArchiveInfo(ctx, j)
+	return j, nil
 }
 
 // TODO HARUS PAKE USER ID
 func (s *JobService) ListJobs(ctx context.Context) ([]*jobdomain.Job, error) {
-	return s.repo.List(ctx)
+	jobs, err := s.repo.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, j := range jobs {
+		s.attachArchiveInfo(ctx, j)
+	}
+	return jobs, nil
+}
+
+func (s *JobService) attachArchiveInfo(ctx context.Context, j *jobdomain.Job) {
+	archives, err := s.fileStore.ListArchive(ctx, j.ID)
+	if err != nil {
+		return
+	}
+	j.ArchiveCount = len(archives)
+	j.Archived = false
+	if len(archives) == 0 {
+		j.ArchiveLatest = nil
+		return
+	}
+
+	latest := archives[0].ModTime
+	for _, a := range archives[1:] {
+		if a.ModTime.After(latest) {
+			latest = a.ModTime
+		}
+	}
+	j.ArchiveLatest = &latest
+
+	usage, err := s.fileStore.GetJobStorageUsage(ctx, j.ID)
+	if err != nil {
+		return
+	}
+
+	// Archived means: archive exists but output + audit folders are empty.
+	j.Archived = usage.FilesBytes == 0 && usage.AuditBytes == 0
 }
 
 func (s *JobService) DeleteJob(ctx context.Context, id string) error {

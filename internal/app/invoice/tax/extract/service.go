@@ -12,6 +12,11 @@ import (
 type TaxInvoiceExtractService struct {
 }
 
+type TaxInvoiceExtractResult struct {
+	Invoice        *tax.TaxInvoice
+	NormalizedText string
+}
+
 func NewTaxInvoiceExtractService() *TaxInvoiceExtractService {
 	return &TaxInvoiceExtractService{}
 }
@@ -19,7 +24,7 @@ func NewTaxInvoiceExtractService() *TaxInvoiceExtractService {
 func (s *TaxInvoiceExtractService) Extract(
 	ctx context.Context,
 	file file.ResolvedFile,
-) (*tax.TaxInvoice, error) {
+) (*TaxInvoiceExtractResult, error) {
 
 	if _, err := os.Stat(file.Path); err != nil {
 		return nil, err
@@ -30,10 +35,13 @@ func (s *TaxInvoiceExtractService) Extract(
 		return nil, err
 	}
 
-	info, err := ParseTaxInvoiceText(text)
+	info, normalized, err := ParseTaxInvoiceText(text)
 	if err != nil {
 		return nil, err
 	}
 
-	return info, nil
+	return &TaxInvoiceExtractResult{
+		Invoice:        info,
+		NormalizedText: normalized,
+	}, nil
 }

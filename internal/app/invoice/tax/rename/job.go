@@ -3,6 +3,7 @@ package rename
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -52,6 +53,19 @@ func (j *TaxInvoiceRenameJob) Handle(ctx context.Context, jb *job.Job) (*job.Out
 	result, err := j.renameService.RenameBatch(ctx, resolved)
 	if err != nil {
 		return nil, err
+	}
+
+	for _, audit := range result.Audits {
+		data, err := json.Marshal(audit)
+		if err != nil {
+			fmt.Printf("failed to marshal audit for %s: %v\n", audit.SourceFile.Name, err)
+			continue
+		}
+
+		name := fmt.Sprintf("audit_%s.json", audit.SourceFile.ID)
+		if _, err := j.fileStore.SaveAudit(ctx, jb.ID, name, data); err != nil {
+			fmt.Printf("failed to save audit for %s: %v\n", audit.SourceFile.Name, err)
+		}
 	}
 
 	var files []job.OutputFile
