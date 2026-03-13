@@ -5,6 +5,7 @@ import (
 	"errors"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/sieryo/invoice-extractor/internal/app/action"
@@ -246,7 +247,7 @@ func (h *ActionHandler) DownloadActionOutput(c *fiber.Ctx) error {
 	if target == nil {
 		return SendError(c, fiber.StatusNotFound, "output not found")
 	}
-	if target.Kind != action.OutputKindFile {
+	if !strings.EqualFold(string(target.Kind), string(action.OutputKindFile)) {
 		return SendError(c, fiber.StatusBadRequest, "output is not downloadable file")
 	}
 
