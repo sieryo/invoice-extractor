@@ -21,15 +21,15 @@ func NewActionHandler(actionService *action.Service) *ActionHandler {
 }
 
 type RunActionRequest struct {
-	ActionType              string          `json:"actionType"`
-	Params                  json.RawMessage `json:"params,omitempty"`
-	DocumentStatuses        []string        `json:"documentStatuses,omitempty"`
-	IdempotencyKey          *string         `json:"idempotencyKey,omitempty"`
-	RerunOfActionID         *string         `json:"rerunOfActionId,omitempty"`
-	LegacyActionType        string          `json:"action_type,omitempty"`
-	LegacyDocumentStatuses  []string        `json:"document_statuses,omitempty"`
-	LegacyIdempotencyKey    *string         `json:"idempotency_key,omitempty"`
-	LegacyRerunOfActionID   *string         `json:"rerun_of_action_id,omitempty"`
+	ActionType             string          `json:"actionType"`
+	Params                 json.RawMessage `json:"params,omitempty"`
+	DocumentStatuses       []string        `json:"documentStatuses,omitempty"`
+	IdempotencyKey         *string         `json:"idempotencyKey,omitempty"`
+	RerunOfActionID        *string         `json:"rerunOfActionId,omitempty"`
+	LegacyActionType       string          `json:"action_type,omitempty"`
+	LegacyDocumentStatuses []string        `json:"document_statuses,omitempty"`
+	LegacyIdempotencyKey   *string         `json:"idempotency_key,omitempty"`
+	LegacyRerunOfActionID  *string         `json:"rerun_of_action_id,omitempty"`
 }
 
 func (h *ActionHandler) RunAction(c *fiber.Ctx) error {

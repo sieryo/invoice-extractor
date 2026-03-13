@@ -5,17 +5,24 @@ import (
 	"strconv"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/sieryo/invoice-extractor/internal/app/document"
 	"github.com/sieryo/invoice-extractor/internal/app/ingest"
+	"github.com/sieryo/invoice-extractor/internal/app/invoice"
 	dcollection "github.com/sieryo/invoice-extractor/internal/domain/collection"
 )
 
 type CollectionPipelineHandler struct {
-	ingestService *ingest.IngestService
+	ingestService  *ingest.IngestService
+	invoiceService *invoice.InvoiceService
 }
 
-func NewCollectionPipelineHandler(ingestService *ingest.IngestService) *CollectionPipelineHandler {
+func NewCollectionPipelineHandler(
+	ingestService *ingest.IngestService,
+	invoiceService *invoice.InvoiceService,
+) *CollectionPipelineHandler {
 	return &CollectionPipelineHandler{
-		ingestService: ingestService,
+		ingestService:  ingestService,
+		invoiceService: invoiceService,
 	}
 }
 
@@ -139,4 +146,45 @@ func (h *CollectionPipelineHandler) ListHistoryItems(c *fiber.Ctx) error {
 	}
 
 	return SendSuccess(c, fiber.StatusOK, items, "history items retrieved")
+}
+
+func (h *CollectionPipelineHandler) GetDocumentInvoice(c *fiber.Ctx) error {
+	ctx := c.Context()
+
+	userID, ok := c.Locals("userId").(string)
+	if !ok {
+		return fiber.ErrUnauthorized
+	}
+
+	collectionID := c.Params("id")
+	if collectionID == "" {
+		return SendError(c, fiber.StatusBadRequest, "collection id is required")
+	}
+	documentID := c.Params("documentId")
+	if documentID == "" {
+		return SendError(c, fiber.StatusBadRequest, "document id is required")
+	}
+
+	doc, err := h.ingestService.GetDocument(ctx, userID, collectionID, documentID)
+	if err != nil {
+		switch {
+		case errors.Is(err, dcollection.ErrCollectionNotFound):
+			return SendError(c, fiber.StatusNotFound, "collection not found")
+		case errors.Is(err, ingest.ErrDocumentNotFound):
+			return SendError(c, fiber.StatusNotFound, "document not found")
+		default:
+			return SendError(c, fiber.StatusInternalServerError, err.Error())
+		}
+	}
+
+	if doc.DocumentType != document.DocumentTypePDFInvoice {
+		return SendError(c, fiber.StatusBadRequest, "invoice view only available for pdf_invoice")
+	}
+
+	inv, err := h.invoiceService.LoadInvoice(ctx, collectionID, doc.NormalizedRef)
+	if err != nil {
+		return SendError(c, fiber.StatusNotFound, "invoice normalized artifact not found")
+	}
+
+	return SendSuccess(c, fiber.StatusOK, inv, "invoice loaded")
 }

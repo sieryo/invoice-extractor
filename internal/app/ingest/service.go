@@ -263,6 +263,27 @@ func (s *IngestService) ListDocuments(
 	return s.documentRepo.ListByCollection(ctx, collectionID, status, limit, offset)
 }
 
+func (s *IngestService) GetDocument(
+	ctx context.Context,
+	userID string,
+	collectionID string,
+	documentID string,
+) (*DocumentRecord, error) {
+	if _, err := s.ensureCollectionOwner(ctx, userID, collectionID); err != nil {
+		return nil, err
+	}
+
+	doc, err := s.documentRepo.FindByID(ctx, documentID)
+	if err != nil {
+		return nil, err
+	}
+	if doc == nil || doc.CollectionID != collectionID {
+		return nil, ErrDocumentNotFound
+	}
+
+	return doc, nil
+}
+
 func (s *IngestService) ListHistory(
 	ctx context.Context,
 	userID string,

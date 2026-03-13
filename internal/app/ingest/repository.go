@@ -24,6 +24,7 @@ type UploadChunkRepository interface {
 }
 
 type DocumentRepository interface {
+	FindByID(ctx context.Context, id string) (*DocumentRecord, error)
 	FindActiveByHash(
 		ctx context.Context,
 		collectionID string,
