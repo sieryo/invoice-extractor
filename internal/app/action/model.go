@@ -77,6 +77,7 @@ type CollectionActionItem struct {
 	ID           string          `json:"id"`
 	ActionID     string          `json:"actionId"`
 	DocumentID   *string         `json:"documentId,omitempty"`
+	SourceName   *string         `json:"sourceName,omitempty"`
 	Status       ItemStatus      `json:"status"`
 	Message      string          `json:"message,omitempty"`
 	WarningsJSON json.RawMessage `json:"warnings,omitempty"`
@@ -107,6 +108,7 @@ type RunRequest struct {
 	CollectionID     string          `json:"collectionId"`
 	ActionType       string          `json:"actionType"`
 	Params           json.RawMessage `json:"params,omitempty"`
+	DocumentIDs      []string        `json:"documentIds,omitempty"`
 	DocumentStatuses []string        `json:"documentStatuses,omitempty"`
 	IdempotencyKey   *string         `json:"idempotencyKey,omitempty"`
 	RerunOfActionID  *string         `json:"rerunOfActionId,omitempty"`

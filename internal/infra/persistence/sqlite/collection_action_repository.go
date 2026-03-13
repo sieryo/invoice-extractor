@@ -185,10 +185,12 @@ func (r *CollectionActionRepository) ListActionItems(
 ) ([]*action.CollectionActionItem, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT
-			id, action_id, document_id, status, message, warnings_json, error, created_at
-		FROM collection_action_items
-		WHERE action_id = ?
-		ORDER BY created_at ASC
+			ai.id, ai.action_id, ai.document_id, d.source_name,
+			ai.status, ai.message, ai.warnings_json, ai.error, ai.created_at
+		FROM collection_action_items ai
+		LEFT JOIN documents d ON d.id = ai.document_id
+		WHERE ai.action_id = ?
+		ORDER BY ai.created_at ASC
 	`, actionID)
 	if err != nil {
 		return nil, err
@@ -435,6 +437,79 @@ func (r *CollectionActionRepository) ListSnapshotDocuments(
 	return out, rows.Err()
 }
 
+func (r *CollectionActionRepository) ListSnapshotDocumentsByIDs(
+	ctx context.Context,
+	collectionID string,
+	documentType document.DocumentType,
+	documentIDs []string,
+) ([]action.SnapshotDocument, error) {
+	if len(documentIDs) == 0 {
+		return []action.SnapshotDocument{}, nil
+	}
+
+	placeholders := make([]string, len(documentIDs))
+	args := make([]any, 0, len(documentIDs)+2)
+	args = append(args, collectionID, documentType)
+	for i, id := range documentIDs {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+
+	query := `
+		SELECT
+			id, source_name, source_order, status, source_sha256, normalized_ref, audit_ref, raw_ref
+		FROM documents
+		WHERE collection_id = ?
+		  AND document_type = ?
+		  AND deleted_at IS NULL
+		  AND id IN (` + strings.Join(placeholders, ",") + `)
+		ORDER BY source_order ASC, id ASC
+	`
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make([]action.SnapshotDocument, 0, len(documentIDs))
+	for rows.Next() {
+		var (
+			doc       action.SnapshotDocument
+			sourceSHA sql.NullString
+			auditRef  sql.NullString
+			rawRef    sql.NullString
+		)
+
+		if err := rows.Scan(
+			&doc.DocumentID,
+			&doc.SourceName,
+			&doc.SourceOrder,
+			&doc.Status,
+			&sourceSHA,
+			&doc.NormalizedRef,
+			&auditRef,
+			&rawRef,
+		); err != nil {
+			return nil, err
+		}
+
+		if sourceSHA.Valid {
+			doc.SourceSHA256 = sourceSHA.String
+		}
+		if auditRef.Valid {
+			doc.AuditRef = auditRef.String
+		}
+		if rawRef.Valid {
+			doc.RawRef = rawRef.String
+		}
+
+		out = append(out, doc)
+	}
+
+	return out, rows.Err()
+}
+
 func scanCollectionAction(row rowScanner) (*action.CollectionAction, error) {
 	var (
 		act action.CollectionAction
@@ -515,6 +590,7 @@ func scanCollectionActionItem(row rowScanner) (*action.CollectionActionItem, err
 	var (
 		item        action.CollectionActionItem
 		docIDRaw    sql.NullString
+		sourceName  sql.NullString
 		statusRaw   string
 		messageRaw  sql.NullString
 		warningsRaw []byte
@@ -525,6 +601,7 @@ func scanCollectionActionItem(row rowScanner) (*action.CollectionActionItem, err
 		&item.ID,
 		&item.ActionID,
 		&docIDRaw,
+		&sourceName,
 		&statusRaw,
 		&messageRaw,
 		&warningsRaw,
@@ -537,6 +614,10 @@ func scanCollectionActionItem(row rowScanner) (*action.CollectionActionItem, err
 	if docIDRaw.Valid {
 		v := docIDRaw.String
 		item.DocumentID = &v
+	}
+	if sourceName.Valid {
+		v := sourceName.String
+		item.SourceName = &v
 	}
 	item.Status = action.ItemStatus(statusRaw)
 	if messageRaw.Valid {

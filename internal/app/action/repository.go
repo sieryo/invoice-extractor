@@ -47,4 +47,10 @@ type Repository interface {
 		documentType document.DocumentType,
 		statuses []string,
 	) ([]SnapshotDocument, error)
+	ListSnapshotDocumentsByIDs(
+		ctx context.Context,
+		collectionID string,
+		documentType document.DocumentType,
+		documentIDs []string,
+	) ([]SnapshotDocument, error)
 }

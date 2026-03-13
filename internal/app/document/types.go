@@ -87,13 +87,25 @@ type IngestResult struct {
 	FinishedAt   time.Time `json:"finished_at"`
 }
 
+type ActionSnapshotDocument struct {
+	DocumentID    string `json:"document_id"`
+	SourceName    string `json:"source_name"`
+	SourceOrder   int    `json:"source_order"`
+	Status        string `json:"status"`
+	SourceSHA256  string `json:"source_sha256,omitempty"`
+	NormalizedRef string `json:"normalized_ref"`
+	AuditRef      string `json:"audit_ref,omitempty"`
+	RawRef        string `json:"raw_ref,omitempty"`
+}
+
 type ActionRequest struct {
-	ActionID      string          `json:"action_id"`
-	UserID        string          `json:"user_id"`
-	CollectionID  string          `json:"collection_id"`
-	DocumentType  DocumentType    `json:"document_type"`
-	ActionType    string          `json:"action_type"`
-	SnapshotDocID []string        `json:"snapshot_doc_ids"`
+	ActionID      string       `json:"action_id"`
+	UserID        string       `json:"user_id"`
+	CollectionID  string       `json:"collection_id"`
+	DocumentType  DocumentType `json:"document_type"`
+	ActionType    string       `json:"action_type"`
+	SnapshotDocID []string     `json:"snapshot_doc_ids"`
+	SnapshotDocs  []ActionSnapshotDocument
 	Params        json.RawMessage `json:"params,omitempty"`
 	RequestedAt   time.Time       `json:"requested_at"`
 }

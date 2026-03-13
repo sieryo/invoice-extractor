@@ -112,7 +112,7 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 	buyerRegistryService := buyer.NewBuyerRegistryService(buyerRegistry, buyerStore, rootDir)
 	templateRegistryService := template.NewTemplateRegistryService(templateRegistry)
 	documentRegistry := document.NewRegistry()
-	documentRegistry.MustRegister(document.NewPDFInvoiceProcessor(invoiceExtractService, fs))
+	documentRegistry.MustRegister(document.NewPDFInvoiceProcessor(invoiceExtractService, invoiceService, fs))
 	documentRegistry.MustRegister(document.NewPDFTaxInvoiceProcessor(taxInvoiceExtractService, fs))
 	documentRegistry.MustRegister(document.NewXLSXCashflowProcessor())
 	ingestService := ingest.NewIngestService(

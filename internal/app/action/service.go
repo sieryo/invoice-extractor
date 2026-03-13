@@ -85,15 +85,49 @@ func (s *Service) RunAction(ctx context.Context, req RunRequest) (*CollectionAct
 		}
 	}
 
-	statuses, err := normalizeSnapshotStatuses(req.DocumentStatuses)
+	docType := document.DocumentType(*coll.DocumentType)
+	selectedDocumentIDs, err := normalizeDocumentIDs(req.DocumentIDs)
 	if err != nil {
 		return nil, err
 	}
 
-	snapshotDocs, err := s.repo.ListSnapshotDocuments(ctx, req.CollectionID, document.DocumentType(*coll.DocumentType), statuses)
-	if err != nil {
-		return nil, err
+	var snapshotDocs []SnapshotDocument
+	if len(selectedDocumentIDs) > 0 {
+		snapshotDocs, err = s.repo.ListSnapshotDocumentsByIDs(ctx, req.CollectionID, docType, selectedDocumentIDs)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(snapshotDocs) != len(selectedDocumentIDs) {
+			return nil, ErrSnapshotDocNotFound
+		}
+
+		if err := validateSnapshotStatuses(snapshotDocs, []string{"ready", "warning"}); err != nil {
+			return nil, err
+		}
+	} else if req.RerunOfActionID != nil && strings.TrimSpace(*req.RerunOfActionID) != "" && len(req.DocumentStatuses) == 0 {
+		baseAction, findErr := s.repo.FindActionByID(ctx, strings.TrimSpace(*req.RerunOfActionID))
+		if findErr != nil {
+			return nil, ErrActionNotFound
+		}
+		if baseAction.CollectionID != req.CollectionID {
+			return nil, ErrActionNotFound
+		}
+		if err := json.Unmarshal(baseAction.SnapshotJSON, &snapshotDocs); err != nil {
+			return nil, ErrEmptySnapshot
+		}
+	} else {
+		statuses, statusErr := normalizeSnapshotStatuses(req.DocumentStatuses)
+		if statusErr != nil {
+			return nil, statusErr
+		}
+
+		snapshotDocs, err = s.repo.ListSnapshotDocuments(ctx, req.CollectionID, docType, statuses)
+		if err != nil {
+			return nil, err
+		}
 	}
+
 	if len(snapshotDocs) == 0 {
 		return nil, ErrEmptySnapshot
 	}
@@ -111,7 +145,7 @@ func (s *Service) RunAction(ctx context.Context, req RunRequest) (*CollectionAct
 		ID:             uuid.NewString(),
 		UserID:         req.UserID,
 		CollectionID:   req.CollectionID,
-		DocumentType:   document.DocumentType(*coll.DocumentType),
+		DocumentType:   docType,
 		ActionType:     actionType,
 		Status:         StatusQueued,
 		ParamsJSON:     req.Params,
@@ -164,6 +198,24 @@ func (s *Service) ListActions(ctx context.Context, req ListRequest) ([]*Collecti
 	}
 
 	return s.repo.ListActions(ctx, req.CollectionID, req.Status, limit, offset)
+}
+
+func (s *Service) GetActionSpec(
+	ctx context.Context,
+	userID string,
+	collectionID string,
+) (*document.DocumentTypeSpec, error) {
+	coll, err := s.getOwnedCollection(ctx, userID, collectionID)
+	if err != nil {
+		return nil, err
+	}
+
+	spec, ok := document.BuildDocumentTypeSpec(document.DocumentType(*coll.DocumentType))
+	if !ok {
+		return nil, ErrSpecNotFound
+	}
+
+	return &spec, nil
 }
 
 func (s *Service) GetActionDetail(
@@ -263,8 +315,19 @@ func (s *Service) process(ctx context.Context, actionID string) error {
 	}
 
 	docIDs := make([]string, 0, len(snapshotDocs))
+	snapshotPayload := make([]document.ActionSnapshotDocument, 0, len(snapshotDocs))
 	for _, doc := range snapshotDocs {
 		docIDs = append(docIDs, doc.DocumentID)
+		snapshotPayload = append(snapshotPayload, document.ActionSnapshotDocument{
+			DocumentID:    doc.DocumentID,
+			SourceName:    doc.SourceName,
+			SourceOrder:   doc.SourceOrder,
+			Status:        doc.Status,
+			SourceSHA256:  doc.SourceSHA256,
+			NormalizedRef: doc.NormalizedRef,
+			AuditRef:      doc.AuditRef,
+			RawRef:        doc.RawRef,
+		})
 	}
 
 	processor, ok := s.processors.Get(action.DocumentType)
@@ -279,6 +342,7 @@ func (s *Service) process(ctx context.Context, actionID string) error {
 		DocumentType:  action.DocumentType,
 		ActionType:    action.ActionType,
 		SnapshotDocID: docIDs,
+		SnapshotDocs:  snapshotPayload,
 		Params:        action.ParamsJSON,
 		RequestedAt:   startedAt,
 	}
@@ -553,4 +617,39 @@ func isActionIdempotencyUniqueError(err error) bool {
 	return strings.Contains(msg, "collection_actions.collection_id") &&
 		strings.Contains(msg, "collection_actions.action_type") &&
 		strings.Contains(msg, "collection_actions.idempotency_key")
+}
+
+func normalizeDocumentIDs(input []string) ([]string, error) {
+	if len(input) == 0 {
+		return nil, nil
+	}
+
+	seen := make(map[string]struct{}, len(input))
+	out := make([]string, 0, len(input))
+	for _, id := range input {
+		normalized := strings.TrimSpace(id)
+		if normalized == "" {
+			return nil, ErrInvalidDocumentIDs
+		}
+		if _, exists := seen[normalized]; exists {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		out = append(out, normalized)
+	}
+	return out, nil
+}
+
+func validateSnapshotStatuses(snapshotDocs []SnapshotDocument, allowed []string) error {
+	allow := make(map[string]struct{}, len(allowed))
+	for _, status := range allowed {
+		allow[status] = struct{}{}
+	}
+	for _, doc := range snapshotDocs {
+		status := strings.ToLower(strings.TrimSpace(doc.Status))
+		if _, ok := allow[status]; !ok {
+			return ErrSnapshotDocStatus
+		}
+	}
+	return nil
 }

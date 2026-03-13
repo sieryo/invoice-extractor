@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -210,6 +211,8 @@ func (i *InvoiceExtractorService) ExtractBatch(
 				}
 			}
 
+			applyTestWarningHooks(inv, refFile.Name)
+
 			audit.Warnings = inv.Metadata.Warnings
 
 			invoiceChan <- inv
@@ -313,4 +316,50 @@ func (i *InvoiceExtractorService) ExtractBatch(
 	}
 
 	return result, nil
+}
+
+func applyTestWarningHooks(inv *invoice.Invoice, sourceFileName string) {
+	if inv == nil || inv.Metadata == nil {
+		return
+	}
+
+	// Force a warning without changing the parsed invoice payload.
+	if isTruthyEnv("INVOICE_TEST_FORCE_WARNING") {
+		appendWarning(inv, "forced warning (test mode)")
+	}
+
+	// Force warning only for selected files (substring match, case-insensitive).
+	pattern := strings.TrimSpace(os.Getenv("INVOICE_TEST_FORCE_WARNING_FILE_CONTAINS"))
+	if pattern != "" && strings.Contains(strings.ToLower(sourceFileName), strings.ToLower(pattern)) {
+		appendWarning(inv, fmt.Sprintf("forced warning for file match: %s", pattern))
+	}
+
+	// Optional test mode: drop parsed items to simulate incomplete extraction.
+	// This changes output intentionally and should only be used in test/local.
+	if isTruthyEnv("INVOICE_TEST_DROP_ITEMS") {
+		inv.Items = nil
+		appendWarning(inv, "no items parsed (forced test mode)")
+	}
+}
+
+func appendWarning(inv *invoice.Invoice, warning string) {
+	if inv == nil || inv.Metadata == nil || warning == "" {
+		return
+	}
+	for _, existing := range inv.Metadata.Warnings {
+		if existing == warning {
+			return
+		}
+	}
+	inv.Metadata.Warnings = append(inv.Metadata.Warnings, warning)
+}
+
+func isTruthyEnv(key string) bool {
+	value := strings.TrimSpace(strings.ToLower(os.Getenv(key)))
+	switch value {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }

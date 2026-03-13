@@ -27,6 +27,9 @@ func main() {
 	dbPath := filepath.Join(appDir, "app.db")
 	logPath := filepath.Join(appDir, "app.log")
 
+	if err := config.LoadDotEnvIfExists(); err != nil {
+		log.Printf("failed to load .env: %v", err)
+	}
 	cfg := config.Load()
 
 	ilogger := logger.Setup(buildinfo.Environment, logPath)

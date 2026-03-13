@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -683,6 +684,10 @@ func (s *IngestService) prepareChunkSources(
 	var payloadSize int64
 
 	for i, f := range filesIn {
+		if !isAllowedUploadBySpec(session.DocumentType, f.Name) {
+			return nil, 0, fmt.Errorf("file %s is not allowed for document type %s", f.Name, session.DocumentType)
+		}
+
 		obj, err := s.fileStore.SaveTemp(ctx, session.CollectionID, f.Name, f.Data)
 		if err != nil {
 			return nil, 0, err
@@ -1030,4 +1035,21 @@ func isDedupUniqueError(err error) bool {
 	return strings.Contains(msg, "documents.collection_id") &&
 		strings.Contains(msg, "documents.document_type") &&
 		strings.Contains(msg, "documents.source_sha256")
+}
+
+func isAllowedUploadBySpec(docType document.DocumentType, fileName string) bool {
+	spec, ok := document.BuildDocumentTypeSpec(docType)
+	if !ok {
+		return true
+	}
+	ext := strings.ToLower(filepath.Ext(fileName))
+	if ext == "" {
+		return false
+	}
+	for _, allowed := range spec.Upload.AcceptExtensions {
+		if strings.EqualFold(ext, allowed) {
+			return true
+		}
+	}
+	return false
 }
