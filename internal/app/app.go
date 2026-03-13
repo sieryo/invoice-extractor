@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"path/filepath"
 
+	actionapp "github.com/sieryo/invoice-extractor/internal/app/action"
 	"github.com/sieryo/invoice-extractor/internal/app/auth"
 	"github.com/sieryo/invoice-extractor/internal/app/buyer"
 	"github.com/sieryo/invoice-extractor/internal/app/collection"
@@ -42,6 +43,7 @@ type App struct {
 	CollectionService *collection.CollectionService
 	FileService       *appfile.FileService
 	IngestService     *ingest.IngestService
+	ActionService     *actionapp.Service
 
 	Logger    *slog.Logger
 	FileStore file.FileStore
@@ -95,6 +97,7 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 	uploadChunkRepo := repository.NewUploadChunkRepository(db)
 	documentRepoV2 := repository.NewDocumentRepositoryV2(db)
 	collectionHistoryRepo := repository.NewCollectionHistoryRepository(db)
+	collectionActionRepo := repository.NewCollectionActionRepository(db)
 
 	// services
 	authService := auth.NewService(userRepo, sessionRepo, logger)
@@ -110,7 +113,7 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 	templateRegistryService := template.NewTemplateRegistryService(templateRegistry)
 	documentRegistry := document.NewRegistry()
 	documentRegistry.MustRegister(document.NewPDFInvoiceProcessor(invoiceExtractService, fs))
-	documentRegistry.MustRegister(document.NewPDFTaxInvoiceProcessor(fs))
+	documentRegistry.MustRegister(document.NewPDFTaxInvoiceProcessor(taxInvoiceExtractService, fs))
 	documentRegistry.MustRegister(document.NewXLSXCashflowProcessor())
 	ingestService := ingest.NewIngestService(
 		uploadSessionRepo,
@@ -123,6 +126,13 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 		1,
 	)
 	ingestService.StartPool(context.Background())
+	actionService := actionapp.NewService(
+		collectionActionRepo,
+		collectionRepo,
+		documentRegistry,
+		1,
+	)
+	actionService.StartPool(context.Background())
 
 	// dispatcher & handler
 	dispatcher := jobrunner.NewDispatcher()
@@ -146,6 +156,7 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 		CollectionService:       collectionService,
 		FileService:             fileService,
 		IngestService:           ingestService,
+		ActionService:           actionService,
 		JobService:              jobService,
 		InvoiceService:          invoiceService,
 		Logger:                  logger,

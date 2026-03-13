@@ -46,28 +46,28 @@ const (
 type Collection struct {
 	ID string `json:"id"`
 
-	UserID string  `json:"user_id"`
+	UserID string  `json:"userId"`
 	Name   string  `json:"name"`
 	Status Status  `json:"status,omitempty"` // legacy field for old FE contracts
-	Parent *string `json:"parent_id,omitempty"`
+	Parent *string `json:"parentId,omitempty"`
 
-	NodeType     NodeType      `json:"node_type"`
-	DocumentType *DocumentType `json:"document_type,omitempty"`
+	NodeType     NodeType      `json:"nodeType"`
+	DocumentType *DocumentType `json:"documentType,omitempty"`
 	Phase        Phase         `json:"phase"`
 
-	TotalCount     int `json:"total_count"`
-	ReadyCount     int `json:"ready_count"`
-	WarningCount   int `json:"warning_count"`
-	FailedCount    int `json:"failed_count"`
-	DuplicateCount int `json:"duplicate_count"`
+	TotalCount     int `json:"totalCount"`
+	ReadyCount     int `json:"readyCount"`
+	WarningCount   int `json:"warningCount"`
+	FailedCount    int `json:"failedCount"`
+	DuplicateCount int `json:"duplicateCount"`
 
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 
-	DeletedAt     *time.Time `json:"deleted_at,omitempty"`
-	DeletedBy     *string    `json:"deleted_by,omitempty"`
-	DeleteReason  *string    `json:"delete_reason,omitempty"`
-	LegacyExpired *time.Time `json:"expired_at,omitempty"` // legacy compatibility
+	DeletedAt     *time.Time `json:"deletedAt,omitempty"`
+	DeletedBy     *string    `json:"deletedBy,omitempty"`
+	DeleteReason  *string    `json:"deleteReason,omitempty"`
+	LegacyExpired *time.Time `json:"expiredAt,omitempty"` // legacy compatibility
 }
 
 func NewCollection(id string, userID string, name string, now time.Time) *Collection {

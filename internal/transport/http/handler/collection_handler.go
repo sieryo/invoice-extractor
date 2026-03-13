@@ -1,6 +1,9 @@
 package handler
 
 import (
+	"errors"
+	"strings"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/sieryo/invoice-extractor/internal/app/collection"
@@ -18,10 +21,24 @@ func NewCollectionHandler(collectionService *collection.CollectionService) *Coll
 }
 
 type CreateCollectionRequest struct {
-	Name string `json:"name"`
+	Name               string  `json:"name"`
+	NodeType           string  `json:"nodeType,omitempty"`
+	ParentID           *string `json:"parentId,omitempty"`
+	DocumentType       *string `json:"documentType,omitempty"`
+	LegacyNodeType     string  `json:"node_type,omitempty"`
+	LegacyParentID     *string `json:"parent_id,omitempty"`
+	LegacyDocumentType *string `json:"document_type,omitempty"`
 }
 
 func (h *CollectionHandler) CreateCollection(c *fiber.Ctx) error {
+	return h.createNode(c, true)
+}
+
+func (h *CollectionHandler) CreateNode(c *fiber.Ctx) error {
+	return h.createNode(c, false)
+}
+
+func (h *CollectionHandler) createNode(c *fiber.Ctx, legacyDefault bool) error {
 	ctx := c.Context()
 	userID, ok := c.Locals("userId").(string)
 	if !ok {
@@ -33,11 +50,60 @@ func (h *CollectionHandler) CreateCollection(c *fiber.Ctx) error {
 		return SendError(c, fiber.StatusBadRequest, "invalid request body")
 	}
 
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		return SendError(c, fiber.StatusBadRequest, "name is required")
+	}
+
+	nodeType := req.NodeType
+	if strings.TrimSpace(nodeType) == "" {
+		nodeType = req.LegacyNodeType
+	}
+	nodeTypeRaw := strings.ToLower(strings.TrimSpace(nodeType))
+	if nodeTypeRaw == "" {
+		if legacyDefault {
+			nodeTypeRaw = string(dcollection.NodeTypeCollection)
+		} else {
+			nodeTypeRaw = string(dcollection.NodeTypeCollection)
+		}
+	}
+
 	newID := uuid.NewString()
 
-	coll, err := h.collectionService.Create(ctx, newID, req.Name, userID)
+	var (
+		coll *dcollection.Collection
+		err  error
+	)
+
+	parentID := req.ParentID
+	if parentID == nil {
+		parentID = req.LegacyParentID
+	}
+
+	switch dcollection.NodeType(nodeTypeRaw) {
+	case dcollection.NodeTypeFolder:
+		coll, err = h.collectionService.CreateFolder(ctx, newID, name, userID, parentID)
+	case dcollection.NodeTypeCollection:
+		docType := dcollection.DocumentTypePDFInvoice
+		documentType := req.DocumentType
+		if documentType == nil {
+			documentType = req.LegacyDocumentType
+		}
+		if documentType != nil && strings.TrimSpace(*documentType) != "" {
+			docType = dcollection.DocumentType(strings.ToLower(strings.TrimSpace(*documentType)))
+		}
+		coll, err = h.collectionService.CreateTypedCollection(ctx, newID, name, userID, parentID, docType)
+	default:
+		return SendError(c, fiber.StatusBadRequest, "invalid node_type")
+	}
+
 	if err != nil {
-		return SendError(c, fiber.StatusInternalServerError, err.Error())
+		switch {
+		case errors.Is(err, dcollection.ErrInvalidDocumentType):
+			return SendError(c, fiber.StatusBadRequest, "invalid document_type")
+		default:
+			return SendError(c, fiber.StatusInternalServerError, err.Error())
+		}
 	}
 
 	return SendSuccess(c, fiber.StatusCreated, coll, "collection created successfully")
@@ -70,6 +136,30 @@ func (h *CollectionHandler) ListUserCollections(c *fiber.Ctx) error {
 	}
 
 	collections, err := h.collectionService.ListByUser(ctx, userID)
+	if err != nil {
+		return SendError(c, fiber.StatusInternalServerError, err.Error())
+	}
+
+	if len(collections) == 0 {
+		return SendSuccess(c, fiber.StatusOK, []dcollection.Collection{}, "collections retrieved successfully")
+	}
+
+	return SendSuccess(c, fiber.StatusOK, collections, "collections retrieved successfully")
+}
+
+func (h *CollectionHandler) ListChildren(c *fiber.Ctx) error {
+	ctx := c.Context()
+	userID, ok := c.Locals("userId").(string)
+	if !ok {
+		return fiber.ErrUnauthorized
+	}
+
+	var parentID *string
+	if rawParent := strings.TrimSpace(c.Query("parent_id")); rawParent != "" {
+		parentID = &rawParent
+	}
+
+	collections, err := h.collectionService.ListChildren(ctx, userID, parentID)
 	if err != nil {
 		return SendError(c, fiber.StatusInternalServerError, err.Error())
 	}

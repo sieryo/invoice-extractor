@@ -60,6 +60,32 @@ func (r *UploadSessionRepository) FindByID(ctx context.Context, id string) (*ing
 	return scanUploadSession(row)
 }
 
+func (r *UploadSessionRepository) ListActive(ctx context.Context) ([]*ingest.UploadSession, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT
+			id, user_id, collection_id, document_type, status,
+			total_chunks, uploaded_chunks, processed_chunks, failed_chunks, duplicate_chunks,
+			last_heartbeat_at, started_at, finished_at, expires_at, client_session_key, metadata_json
+		FROM upload_sessions
+		WHERE status IN ('created', 'receiving', 'processing', 'finalized')
+		ORDER BY started_at DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []*ingest.UploadSession
+	for rows.Next() {
+		s, err := scanUploadSession(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
 func (r *UploadSessionRepository) ListActiveByCollection(ctx context.Context, collectionID string) ([]*ingest.UploadSession, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT

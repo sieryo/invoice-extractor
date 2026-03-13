@@ -19,7 +19,8 @@ func NewUploadSessionHandler(ingestService *ingest.IngestService) *UploadSession
 }
 
 type StartUploadSessionRequest struct {
-	ClientSessionKey *string `json:"client_session_key,omitempty"`
+	ClientSessionKey       *string `json:"clientSessionKey,omitempty"`
+	LegacyClientSessionKey *string `json:"client_session_key,omitempty"`
 }
 
 func (h *UploadSessionHandler) StartSession(c *fiber.Ctx) error {
@@ -40,7 +41,12 @@ func (h *UploadSessionHandler) StartSession(c *fiber.Ctx) error {
 		return SendError(c, fiber.StatusBadRequest, "invalid request body")
 	}
 
-	session, err := h.ingestService.CreateSession(ctx, userID, collectionID, req.ClientSessionKey)
+	clientSessionKey := req.ClientSessionKey
+	if clientSessionKey == nil {
+		clientSessionKey = req.LegacyClientSessionKey
+	}
+
+	session, err := h.ingestService.CreateSession(ctx, userID, collectionID, clientSessionKey)
 	if err != nil {
 		return SendError(c, fiber.StatusBadRequest, err.Error())
 	}

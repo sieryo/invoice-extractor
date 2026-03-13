@@ -32,6 +32,11 @@ type IngestService struct {
 	once    sync.Once
 }
 
+const (
+	sessionHeartbeatTimeout = 2 * time.Minute
+	sessionSweepInterval    = 30 * time.Second
+)
+
 func NewIngestService(
 	sessionRepo UploadSessionRepository,
 	chunkRepo UploadChunkRepository,
@@ -64,6 +69,8 @@ func (s *IngestService) StartPool(ctx context.Context) {
 		for i := 0; i < s.workers; i++ {
 			go s.worker(ctx)
 		}
+		_ = s.recoverActiveSessions(ctx, true)
+		go s.reconcileLoop(ctx)
 	})
 }
 
@@ -231,6 +238,89 @@ func (s *IngestService) GetSessionDetail(ctx context.Context, sessionID string) 
 	}, nil
 }
 
+func (s *IngestService) ListDocuments(
+	ctx context.Context,
+	userID string,
+	collectionID string,
+	status string,
+	limit int,
+	offset int,
+) ([]*DocumentRecord, error) {
+	if _, err := s.ensureCollectionOwner(ctx, userID, collectionID); err != nil {
+		return nil, err
+	}
+
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	return s.documentRepo.ListByCollection(ctx, collectionID, status, limit, offset)
+}
+
+func (s *IngestService) ListHistory(
+	ctx context.Context,
+	userID string,
+	collectionID string,
+	limit int,
+	offset int,
+) ([]*CollectionHistory, error) {
+	if _, err := s.ensureCollectionOwner(ctx, userID, collectionID); err != nil {
+		return nil, err
+	}
+
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	return s.historyRepo.ListByCollection(ctx, collectionID, limit, offset)
+}
+
+func (s *IngestService) ListHistoryItems(
+	ctx context.Context,
+	userID string,
+	collectionID string,
+	historyID string,
+	status string,
+	limit int,
+	offset int,
+) ([]*CollectionHistoryItem, error) {
+	if _, err := s.ensureCollectionOwner(ctx, userID, collectionID); err != nil {
+		return nil, err
+	}
+
+	history, err := s.historyRepo.FindByID(ctx, historyID)
+	if err != nil {
+		return nil, err
+	}
+	if history.CollectionID != collectionID {
+		return nil, ErrHistoryNotFound
+	}
+
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	return s.historyRepo.ListItems(ctx, historyID, status, limit, offset)
+}
+
 func (s *IngestService) enqueueChunk(ctx context.Context, chunkID string) error {
 	if err := s.chunkRepo.UpdateStatus(ctx, chunkID, ChunkStatusQueued, nil); err != nil {
 		return err
@@ -245,6 +335,23 @@ func (s *IngestService) enqueueChunk(ctx context.Context, chunkID string) error 
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+func (s *IngestService) ensureCollectionOwner(
+	ctx context.Context,
+	userID string,
+	collectionID string,
+) (*collection.Collection, error) {
+	coll, err := s.collectionRepo.FindByID(ctx, collectionID)
+	if err != nil {
+		return nil, collection.ErrCollectionNotFound
+	}
+
+	if coll.UserID != userID {
+		return nil, collection.ErrCollectionNotFound
+	}
+
+	return coll, nil
 }
 
 func (s *IngestService) worker(ctx context.Context) {
@@ -379,26 +486,20 @@ func (s *IngestService) tryCompleteSession(ctx context.Context, session *UploadS
 		return err
 	}
 
-	if len(chunks) == 0 {
-		return nil
-	}
-
-	for _, ch := range chunks {
-		if !isTerminalChunkStatus(ch.Status) {
-			return nil
+	if len(chunks) > 0 {
+		for _, ch := range chunks {
+			if !isTerminalChunkStatus(ch.Status) {
+				return nil
+			}
 		}
 	}
 
 	finalStatus := SessionStatusCompleted
-	if session.FailedChunks > 0 && session.FailedChunks == len(chunks) {
+	if len(chunks) > 0 && session.FailedChunks > 0 && session.FailedChunks == len(chunks) {
 		finalStatus = SessionStatusFailed
 	}
 
 	if err := s.sessionRepo.SetFinished(ctx, session.ID, finalStatus); err != nil {
-		return err
-	}
-
-	if err := s.collectionRepo.UpdatePhase(ctx, session.CollectionID, collection.PhaseReady); err != nil {
 		return err
 	}
 
@@ -414,7 +515,141 @@ func (s *IngestService) tryCompleteSession(ctx context.Context, session *UploadS
 		_ = s.historyRepo.SetStatus(ctx, history.ID, historyStatus)
 	}
 
+	return s.reconcileCollectionPhase(ctx, session.CollectionID)
+}
+
+func (s *IngestService) reconcileLoop(ctx context.Context) {
+	ticker := time.NewTicker(sessionSweepInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			_ = s.recoverActiveSessions(ctx, false)
+		}
+	}
+}
+
+func (s *IngestService) recoverActiveSessions(ctx context.Context, requeuePending bool) error {
+	sessions, err := s.sessionRepo.ListActive(ctx)
+	if err != nil {
+		return err
+	}
+
+	collections := make(map[string]struct{}, len(sessions))
+	var firstErr error
+
+	for _, session := range sessions {
+		collections[session.CollectionID] = struct{}{}
+		if err := s.recoverSession(ctx, session, requeuePending); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+
+	for collectionID := range collections {
+		if err := s.reconcileCollectionPhase(ctx, collectionID); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+
+	return firstErr
+}
+
+func (s *IngestService) recoverSession(ctx context.Context, session *UploadSession, requeuePending bool) error {
+	chunks, err := s.chunkRepo.ListBySession(ctx, session.ID)
+	if err != nil {
+		return err
+	}
+
+	if requeuePending {
+		for _, chunk := range chunks {
+			if isTerminalChunkStatus(chunk.Status) {
+				continue
+			}
+
+			if len(chunk.PayloadJSON) == 0 {
+				msg := "chunk payload missing for recovery"
+				_ = s.chunkRepo.UpdateStatus(ctx, chunk.ID, ChunkStatusFailed, &msg)
+				_ = s.sessionRepo.IncrementProcessedChunk(ctx, session.ID, 1, 0)
+				continue
+			}
+
+			if err := s.enqueueChunk(ctx, chunk.ID); err != nil {
+				return err
+			}
+		}
+	}
+
+	latest, err := s.sessionRepo.FindByID(ctx, session.ID)
+	if err != nil {
+		return err
+	}
+
+	if latest.Status == SessionStatusFinalized {
+		if err := s.tryCompleteSession(ctx, latest); err != nil {
+			return err
+		}
+		latest, err = s.sessionRepo.FindByID(ctx, session.ID)
+		if err != nil {
+			return err
+		}
+	}
+
+	latestChunks, err := s.chunkRepo.ListBySession(ctx, session.ID)
+	if err != nil {
+		return err
+	}
+
+	if shouldInterruptSession(latest, latestChunks, time.Now()) {
+		if err := s.markSessionInterrupted(ctx, latest); err != nil {
+			return err
+		}
+	}
+
 	return nil
+}
+
+func (s *IngestService) markSessionInterrupted(ctx context.Context, session *UploadSession) error {
+	if err := s.sessionRepo.SetFinished(ctx, session.ID, SessionStatusInterrupted); err != nil {
+		return err
+	}
+
+	history, err := s.historyRepo.EnsureUploadHistory(ctx, session.UserID, session.CollectionID, session.ID)
+	if err == nil {
+		historyStatus := "failed"
+		if session.ProcessedChunks > 0 {
+			historyStatus = "partial"
+		}
+		_ = s.historyRepo.SetStatus(ctx, history.ID, historyStatus)
+	}
+
+	return nil
+}
+
+func (s *IngestService) reconcileCollectionPhase(ctx context.Context, collectionID string) error {
+	activeSessions, err := s.sessionRepo.ListActiveByCollection(ctx, collectionID)
+	if err != nil {
+		return err
+	}
+
+	targetPhase := collection.PhaseReady
+	if len(activeSessions) > 0 {
+		targetPhase = collection.PhaseUploading
+		for _, session := range activeSessions {
+			chunks, chunkErr := s.chunkRepo.ListBySession(ctx, session.ID)
+			if chunkErr != nil {
+				return chunkErr
+			}
+			if session.Status == SessionStatusProcessing || hasPendingChunks(chunks) {
+				targetPhase = collection.PhaseProcessing
+				break
+			}
+		}
+	}
+
+	return s.collectionRepo.UpdatePhase(ctx, collectionID, targetPhase)
 }
 
 func (s *IngestService) prepareChunkSources(
@@ -713,6 +948,41 @@ func isTerminalChunkStatus(status ChunkStatus) bool {
 	default:
 		return false
 	}
+}
+
+func hasPendingChunks(chunks []*UploadChunk) bool {
+	for _, chunk := range chunks {
+		if !isTerminalChunkStatus(chunk.Status) {
+			return true
+		}
+	}
+	return false
+}
+
+func isTerminalSessionStatus(status SessionStatus) bool {
+	switch status {
+	case SessionStatusCompleted, SessionStatusFailed, SessionStatusInterrupted, SessionStatusExpired:
+		return true
+	default:
+		return false
+	}
+}
+
+func shouldInterruptSession(session *UploadSession, chunks []*UploadChunk, now time.Time) bool {
+	if session == nil || isTerminalSessionStatus(session.Status) || session.Status == SessionStatusFinalized {
+		return false
+	}
+
+	if hasPendingChunks(chunks) {
+		return false
+	}
+
+	last := session.StartedAt
+	if session.LastHeartbeatAt != nil {
+		last = *session.LastHeartbeatAt
+	}
+
+	return now.Sub(last) >= sessionHeartbeatTimeout
 }
 
 func pickArtifactRef(artifacts []document.Artifact, kind string) string {

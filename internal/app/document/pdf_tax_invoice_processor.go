@@ -8,15 +8,22 @@ import (
 	"path/filepath"
 	"time"
 
+	taxextract "github.com/sieryo/invoice-extractor/internal/app/invoice/tax/extract"
 	dfile "github.com/sieryo/invoice-extractor/internal/domain/file"
+	"github.com/sieryo/invoice-extractor/internal/domain/shared"
 )
 
 type PDFTaxInvoiceProcessor struct {
+	extractor *taxextract.TaxInvoiceExtractService
 	fileStore dfile.FileStore
 }
 
-func NewPDFTaxInvoiceProcessor(fileStore dfile.FileStore) *PDFTaxInvoiceProcessor {
+func NewPDFTaxInvoiceProcessor(
+	extractor *taxextract.TaxInvoiceExtractService,
+	fileStore dfile.FileStore,
+) *PDFTaxInvoiceProcessor {
 	return &PDFTaxInvoiceProcessor{
+		extractor: extractor,
 		fileStore: fileStore,
 	}
 }
@@ -26,90 +33,89 @@ func (p *PDFTaxInvoiceProcessor) Type() DocumentType {
 }
 
 func (p *PDFTaxInvoiceProcessor) Ingest(ctx context.Context, req IngestRequest) (IngestResult, error) {
-	now := time.Now()
+	startedAt := time.Now()
 	result := IngestResult{
 		BatchID:      req.RequestID,
 		CollectionID: req.CollectionID,
 		DocumentType: string(req.DocumentType),
 		Items:        make([]IngestItemResult, 0, len(req.Sources)),
-		StartedAt:    now,
+		StartedAt:    startedAt,
 	}
 
+	sourceByID := make(map[string]IngestSource, len(req.Sources))
+	resolved := make([]dfile.ResolvedFile, 0, len(req.Sources))
 	for _, source := range req.Sources {
-		item := IngestItemResult{
-			SourceID:     source.SourceID,
-			OriginalName: source.OriginalName,
-			SHA256:       source.SHA256,
-		}
-
-		data, err := os.ReadFile(source.TempPath)
-		if err != nil {
-			item.Status = IngestStatusFailed
-			item.Message = "failed to read temporary source"
-			item.Errors = []string{err.Error()}
-			result.Items = append(result.Items, item)
-			result.Failed++
-			continue
-		}
-
-		rawName := source.SourceID + filepath.Ext(source.OriginalName)
-		if err := p.fileStore.WriteFile(ctx, req.CollectionID, rawName, data); err != nil {
-			item.Status = IngestStatusFailed
-			item.Message = "failed to persist raw file"
-			item.Errors = []string{err.Error()}
-			result.Items = append(result.Items, item)
-			result.Failed++
-			continue
-		}
-
-		normalizedName := fmt.Sprintf("normalized_%s.json", source.SourceID)
-		normalized := map[string]any{
-			"source_id":     source.SourceID,
-			"source_name":   source.OriginalName,
-			"source_sha256": source.SHA256,
-			"document_type": string(req.DocumentType),
-			"processed_at":  time.Now().UTC(),
-			"status":        "ingested",
-		}
-		normBytes, _ := json.Marshal(normalized)
-		if err := p.fileStore.WriteFile(ctx, req.CollectionID, normalizedName, normBytes); err != nil {
-			item.Status = IngestStatusFailed
-			item.Message = "failed to persist normalized data"
-			item.Errors = []string{err.Error()}
-			result.Items = append(result.Items, item)
-			result.Failed++
-			continue
-		}
-
-		auditName := fmt.Sprintf("audit_%s.json", source.SourceID)
-		auditRef, _ := p.fileStore.SaveAudit(ctx, req.CollectionID, auditName, normBytes)
-
-		item.Status = IngestStatusReady
-		item.Message = "tax invoice ingested"
-		item.Artifacts = []Artifact{
-			{
-				Kind:     "raw",
-				ObjectID: rawName,
-				MimeType: "application/pdf",
-				Size:     int64(len(data)),
+		sourceByID[source.SourceID] = source
+		resolved = append(resolved, dfile.ResolvedFile{
+			FileRef: dfile.FileRef{
+				ID:           source.SourceID,
+				CollectionID: req.CollectionID,
+				Name:         source.OriginalName,
 			},
-			{
-				Kind:     "normalized",
-				ObjectID: normalizedName,
-				MimeType: "application/json",
-				Size:     int64(len(normBytes)),
-			},
+			Path: source.TempPath,
+		})
+	}
+
+	batch, err := p.extractor.ExtractBatch(ctx, resolved)
+	if err != nil {
+		result.FinishedAt = time.Now()
+		return result, err
+	}
+
+	seen := make(map[string]bool, len(req.Sources))
+	for _, parsed := range batch.Items {
+		source, ok := sourceByID[parsed.SourceFile.ID]
+		if !ok {
+			continue
 		}
-		if auditRef != "" {
-			item.Artifacts = append(item.Artifacts, Artifact{
-				Kind:     "audit",
-				ObjectID: auditRef,
-				MimeType: "application/json",
-			})
+
+		item, buildErr := p.buildSuccessItem(ctx, req.CollectionID, source, parsed)
+		if buildErr != nil {
+			item = IngestItemResult{
+				SourceID:     source.SourceID,
+				OriginalName: source.OriginalName,
+				SHA256:       source.SHA256,
+				Status:       IngestStatusFailed,
+				Message:      "failed to persist tax invoice artifacts",
+				Errors:       []string{buildErr.Error()},
+			}
 		}
 
 		result.Items = append(result.Items, item)
-		result.Success++
+		seen[source.SourceID] = true
+	}
+
+	for _, e := range batch.Errors {
+		result.Items = append(result.Items, buildTaxExtractFailedItem(sourceByID, e))
+		seen[e.FileID] = true
+	}
+
+	for _, source := range req.Sources {
+		if seen[source.SourceID] {
+			continue
+		}
+
+		result.Items = append(result.Items, IngestItemResult{
+			SourceID:     source.SourceID,
+			OriginalName: source.OriginalName,
+			SHA256:       source.SHA256,
+			Status:       IngestStatusFailed,
+			Message:      "processor did not return output for source",
+			Errors:       []string{"missing result item"},
+		})
+	}
+
+	for _, item := range result.Items {
+		switch item.Status {
+		case IngestStatusReady:
+			result.Success++
+		case IngestStatusWarning:
+			result.Warning++
+		case IngestStatusDuplicate:
+			result.Duplicate++
+		default:
+			result.Failed++
+		}
 	}
 
 	result.Total = len(result.Items)
@@ -125,4 +131,112 @@ func (p *PDFTaxInvoiceProcessor) RunAction(ctx context.Context, req ActionReques
 		StartedAt:  req.RequestedAt,
 		FinishedAt: time.Now(),
 	}, fmt.Errorf("%w: action %s for %s", ErrProcessorNotImplemented, req.ActionType, p.Type())
+}
+
+func (p *PDFTaxInvoiceProcessor) buildSuccessItem(
+	ctx context.Context,
+	collectionID string,
+	source IngestSource,
+	parsed taxextract.BatchExtractItem,
+) (IngestItemResult, error) {
+	rawBytes, err := os.ReadFile(source.TempPath)
+	if err != nil {
+		return IngestItemResult{}, err
+	}
+
+	rawName := source.SourceID + filepath.Ext(source.OriginalName)
+	if err := p.fileStore.WriteFile(ctx, collectionID, rawName, rawBytes); err != nil {
+		return IngestItemResult{}, err
+	}
+
+	normalizedName := fmt.Sprintf("normalized_%s.json", source.SourceID)
+	normalizedPayload := map[string]any{
+		"source_id":       source.SourceID,
+		"source_name":     source.OriginalName,
+		"source_sha256":   source.SHA256,
+		"document_type":   string(DocumentTypePDFTaxInvoice),
+		"normalized_text": parsed.NormalizedText,
+		"invoice":         parsed.Invoice,
+		"warnings":        parsed.Warnings,
+		"processed_at":    time.Now().UTC(),
+	}
+	normalizedBytes, err := json.Marshal(normalizedPayload)
+	if err != nil {
+		return IngestItemResult{}, err
+	}
+	if err := p.fileStore.WriteFile(ctx, collectionID, normalizedName, normalizedBytes); err != nil {
+		return IngestItemResult{}, err
+	}
+
+	auditPayload := map[string]any{
+		"source_file": parsed.SourceFile,
+		"warnings":    parsed.Warnings,
+		"invoice":     parsed.Invoice,
+	}
+	auditBytes, _ := json.Marshal(auditPayload)
+	auditName := fmt.Sprintf("audit_%s.json", source.SourceID)
+	auditRef, _ := p.fileStore.SaveAudit(ctx, collectionID, auditName, auditBytes)
+
+	status := IngestStatusReady
+	if len(parsed.Warnings) > 0 {
+		status = IngestStatusWarning
+	}
+
+	artifacts := []Artifact{
+		{
+			Kind:     "raw",
+			ObjectID: rawName,
+			MimeType: "application/pdf",
+			Size:     int64(len(rawBytes)),
+		},
+		{
+			Kind:     "normalized",
+			ObjectID: normalizedName,
+			MimeType: "application/json",
+			Size:     int64(len(normalizedBytes)),
+		},
+	}
+	if auditRef != "" {
+		artifacts = append(artifacts, Artifact{
+			Kind:     "audit",
+			ObjectID: auditRef,
+			MimeType: "application/json",
+			Size:     int64(len(auditBytes)),
+		})
+	}
+
+	return IngestItemResult{
+		SourceID:     source.SourceID,
+		OriginalName: source.OriginalName,
+		SHA256:       source.SHA256,
+		Status:       status,
+		Message:      "tax invoice parsed",
+		Warnings:     parsed.Warnings,
+		Artifacts:    artifacts,
+	}, nil
+}
+
+func buildTaxExtractFailedItem(
+	sourceByID map[string]IngestSource,
+	e shared.FileResultError,
+) IngestItemResult {
+	source, ok := sourceByID[e.FileID]
+	if !ok {
+		return IngestItemResult{
+			SourceID:     e.FileID,
+			OriginalName: e.FileName,
+			Status:       IngestStatusFailed,
+			Message:      "extract failed",
+			Errors:       []string{e.Error},
+		}
+	}
+
+	return IngestItemResult{
+		SourceID:     source.SourceID,
+		OriginalName: source.OriginalName,
+		SHA256:       source.SHA256,
+		Status:       IngestStatusFailed,
+		Message:      "extract failed",
+		Errors:       []string{e.Error},
+	}
 }

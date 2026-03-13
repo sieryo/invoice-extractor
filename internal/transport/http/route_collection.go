@@ -9,6 +9,11 @@ func (s *Server) registerCollectionRoutes(protected fiber.Router) {
 	collectionHandler := handler.NewCollectionHandler(s.appCtx.CollectionService)
 	fileHandler := handler.NewFileHandler(s.appCtx.FileService)
 
+	protected.Post("/collections", collectionHandler.CreateNode)
+	protected.Get("/collections", collectionHandler.ListChildren)
+	protected.Get("/collections/:id", collectionHandler.GetCollectionByID)
+	protected.Delete("/collections/:id", collectionHandler.DeleteCollection)
+
 	protected.Post("/collection/create", collectionHandler.CreateCollection)
 	protected.Get("/collection/list", collectionHandler.ListUserCollections)
 

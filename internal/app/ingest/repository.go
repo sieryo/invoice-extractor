@@ -5,6 +5,7 @@ import "context"
 type UploadSessionRepository interface {
 	Create(ctx context.Context, session *UploadSession) error
 	FindByID(ctx context.Context, id string) (*UploadSession, error)
+	ListActive(ctx context.Context) ([]*UploadSession, error)
 	ListActiveByCollection(ctx context.Context, collectionID string) ([]*UploadSession, error)
 	UpdateStatus(ctx context.Context, id string, status SessionStatus) error
 	TouchHeartbeat(ctx context.Context, id string) error
@@ -30,6 +31,13 @@ type DocumentRepository interface {
 		sha256 string,
 	) (*DocumentRecord, error)
 	Create(ctx context.Context, doc *DocumentRecord) error
+	ListByCollection(
+		ctx context.Context,
+		collectionID string,
+		status string,
+		limit int,
+		offset int,
+	) ([]*DocumentRecord, error)
 }
 
 type CollectionHistoryRepository interface {
@@ -50,4 +58,18 @@ type CollectionHistoryRepository interface {
 		duplicate int,
 	) error
 	SetStatus(ctx context.Context, historyID string, status string) error
+	FindByID(ctx context.Context, historyID string) (*CollectionHistory, error)
+	ListByCollection(
+		ctx context.Context,
+		collectionID string,
+		limit int,
+		offset int,
+	) ([]*CollectionHistory, error)
+	ListItems(
+		ctx context.Context,
+		historyID string,
+		status string,
+		limit int,
+		offset int,
+	) ([]*CollectionHistoryItem, error)
 }

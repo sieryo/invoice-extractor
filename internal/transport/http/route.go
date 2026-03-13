@@ -17,6 +17,8 @@ func (s *Server) registerRoutes() {
 	s.registerCollectionRoutes(protected)
 	s.registerTemplateRoutes(protected)
 	s.registerUploadRoutes(protected)
+	s.registerActionRoutes(protected)
+	s.registerPipelineRoutes(protected)
 
 	// Register fe route
 	s.registerFrontendRoute(s.app)

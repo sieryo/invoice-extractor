@@ -9,6 +9,7 @@ func (s *Server) registerUploadRoutes(protected fiber.Router) {
 	uploadHandler := handler.NewUploadSessionHandler(s.appCtx.IngestService)
 
 	protected.Post("/collection/:id/upload/session", uploadHandler.StartSession)
+	protected.Post("/collections/:id/upload/session", uploadHandler.StartSession)
 	protected.Post("/upload/session/:id/chunk", uploadHandler.UploadChunk)
 	protected.Post("/upload/session/:id/finalize", uploadHandler.FinalizeSession)
 	protected.Get("/upload/session/:id", uploadHandler.GetSession)

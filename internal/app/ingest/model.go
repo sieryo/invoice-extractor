@@ -32,94 +32,94 @@ const (
 )
 
 type UploadSession struct {
-	ID               string
-	UserID           string
-	CollectionID     string
-	DocumentType     document.DocumentType
-	Status           SessionStatus
-	TotalChunks      int
-	UploadedChunks   int
-	ProcessedChunks  int
-	FailedChunks     int
-	DuplicateChunks  int
-	LastHeartbeatAt  *time.Time
-	StartedAt        time.Time
-	FinishedAt       *time.Time
-	ExpiresAt        *time.Time
-	ClientSessionKey *string
-	MetadataJSON     json.RawMessage
+	ID               string                `json:"id"`
+	UserID           string                `json:"userId"`
+	CollectionID     string                `json:"collectionId"`
+	DocumentType     document.DocumentType `json:"documentType"`
+	Status           SessionStatus         `json:"status"`
+	TotalChunks      int                   `json:"totalChunks"`
+	UploadedChunks   int                   `json:"uploadedChunks"`
+	ProcessedChunks  int                   `json:"processedChunks"`
+	FailedChunks     int                   `json:"failedChunks"`
+	DuplicateChunks  int                   `json:"duplicateChunks"`
+	LastHeartbeatAt  *time.Time            `json:"lastHeartbeatAt,omitempty"`
+	StartedAt        time.Time             `json:"startedAt"`
+	FinishedAt       *time.Time            `json:"finishedAt,omitempty"`
+	ExpiresAt        *time.Time            `json:"expiresAt,omitempty"`
+	ClientSessionKey *string               `json:"clientSessionKey,omitempty"`
+	MetadataJSON     json.RawMessage       `json:"metadata,omitempty"`
 }
 
 type UploadChunk struct {
-	ID              string
-	SessionID       string
-	ChunkIndex      int
-	Status          ChunkStatus
-	IdempotencyKey  string
-	RequestChecksum *string
-	FileCount       int
-	SizeBytes       int64
-	JobID           *string
-	ErrorMessage    *string
-	PayloadJSON     json.RawMessage
-	CreatedAt       time.Time
-	StartedAt       *time.Time
-	FinishedAt      *time.Time
+	ID              string          `json:"id"`
+	SessionID       string          `json:"sessionId"`
+	ChunkIndex      int             `json:"chunkIndex"`
+	Status          ChunkStatus     `json:"status"`
+	IdempotencyKey  string          `json:"idempotencyKey"`
+	RequestChecksum *string         `json:"requestChecksum,omitempty"`
+	FileCount       int             `json:"fileCount"`
+	SizeBytes       int64           `json:"sizeBytes"`
+	JobID           *string         `json:"jobId,omitempty"`
+	ErrorMessage    *string         `json:"errorMessage,omitempty"`
+	PayloadJSON     json.RawMessage `json:"payload,omitempty"`
+	CreatedAt       time.Time       `json:"createdAt"`
+	StartedAt       *time.Time      `json:"startedAt,omitempty"`
+	FinishedAt      *time.Time      `json:"finishedAt,omitempty"`
 }
 
 type DocumentRecord struct {
-	ID              string
-	UserID          string
-	CollectionID    string
-	DocumentType    document.DocumentType
-	SourceName      string
-	SourceSizeBytes int64
-	SourceMIME      string
-	SourceSHA256    string
-	SourceOrder     int
-	Status          string
-	Message         string
-	NormalizedRef   string
-	AuditRef        *string
-	RawRef          *string
+	ID              string                `json:"id"`
+	UserID          string                `json:"userId"`
+	CollectionID    string                `json:"collectionId"`
+	DocumentType    document.DocumentType `json:"documentType"`
+	SourceName      string                `json:"sourceName"`
+	SourceSizeBytes int64                 `json:"sourceSizeBytes"`
+	SourceMIME      string                `json:"sourceMime"`
+	SourceSHA256    string                `json:"sourceSha256"`
+	SourceOrder     int                   `json:"sourceOrder"`
+	Status          string                `json:"status"`
+	Message         string                `json:"message"`
+	NormalizedRef   string                `json:"normalizedRef"`
+	AuditRef        *string               `json:"auditRef,omitempty"`
+	RawRef          *string               `json:"rawRef,omitempty"`
 }
 
 type CollectionHistory struct {
-	ID             string
-	UserID         string
-	CollectionID   string
-	ActionType     string
-	SessionID      *string
-	TriggeredBy    string
-	Status         string
-	StartedAt      time.Time
-	FinishedAt     *time.Time
-	TotalCount     int
-	ReadyCount     int
-	WarningCount   int
-	FailedCount    int
-	DuplicateCount int
-	MetadataJSON   json.RawMessage
+	ID             string          `json:"id"`
+	UserID         string          `json:"userId"`
+	CollectionID   string          `json:"collectionId"`
+	ActionType     string          `json:"actionType"`
+	SessionID      *string         `json:"sessionId,omitempty"`
+	TriggeredBy    string          `json:"triggeredBy"`
+	Status         string          `json:"status"`
+	StartedAt      time.Time       `json:"startedAt"`
+	FinishedAt     *time.Time      `json:"finishedAt,omitempty"`
+	TotalCount     int             `json:"totalCount"`
+	ReadyCount     int             `json:"readyCount"`
+	WarningCount   int             `json:"warningCount"`
+	FailedCount    int             `json:"failedCount"`
+	DuplicateCount int             `json:"duplicateCount"`
+	MetadataJSON   json.RawMessage `json:"metadata,omitempty"`
 }
 
 type CollectionHistoryItem struct {
-	ID              string
-	HistoryID       string
-	UserID          string
-	CollectionID    string
-	DocumentType    document.DocumentType
-	SourceName      string
-	SourceSizeBytes int64
-	SourceMIME      string
-	SourceSHA256    string
-	SourceOrder     int
-	ItemStatus      string
-	Message         string
-	DocumentID      *string
-	DuplicateOfID   *string
-	DuplicateKey    *string
-	WarningsJSON    json.RawMessage
-	ErrorsJSON      json.RawMessage
+	ID              string                `json:"id"`
+	HistoryID       string                `json:"historyId"`
+	UserID          string                `json:"userId"`
+	CollectionID    string                `json:"collectionId"`
+	DocumentType    document.DocumentType `json:"documentType"`
+	SourceName      string                `json:"sourceName"`
+	SourceSizeBytes int64                 `json:"sourceSizeBytes"`
+	SourceMIME      string                `json:"sourceMime"`
+	SourceSHA256    string                `json:"sourceSha256"`
+	SourceOrder     int                   `json:"sourceOrder"`
+	ItemStatus      string                `json:"itemStatus"`
+	Message         string                `json:"message"`
+	DocumentID      *string               `json:"documentId,omitempty"`
+	DuplicateOfID   *string               `json:"duplicateOfId,omitempty"`
+	DuplicateKey    *string               `json:"duplicateKey,omitempty"`
+	WarningsJSON    json.RawMessage       `json:"warnings,omitempty"`
+	ErrorsJSON      json.RawMessage       `json:"errors,omitempty"`
 }
 
 type ChunkUploadInput struct {
@@ -135,6 +135,6 @@ type SourceUploadFile struct {
 }
 
 type SessionDetail struct {
-	Session *UploadSession
-	Chunks  []*UploadChunk
+	Session *UploadSession `json:"session"`
+	Chunks  []*UploadChunk `json:"chunks"`
 }
