@@ -10,7 +10,9 @@ import (
 	"github.com/sieryo/invoice-extractor/internal/app/auth"
 	"github.com/sieryo/invoice-extractor/internal/app/buyer"
 	"github.com/sieryo/invoice-extractor/internal/app/collection"
+	"github.com/sieryo/invoice-extractor/internal/app/document"
 	appfile "github.com/sieryo/invoice-extractor/internal/app/file"
+	"github.com/sieryo/invoice-extractor/internal/app/ingest"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/exporter/excel"
 	invoiceextract "github.com/sieryo/invoice-extractor/internal/app/invoice/extract"
@@ -39,6 +41,7 @@ type App struct {
 	InvoiceService    *invoice.InvoiceService
 	CollectionService *collection.CollectionService
 	FileService       *appfile.FileService
+	IngestService     *ingest.IngestService
 
 	Logger    *slog.Logger
 	FileStore file.FileStore
@@ -48,6 +51,7 @@ type App struct {
 	BuyerRegistryService *buyer.BuyerRegistryService
 
 	TemplateRegistryService *template.TemplateRegistryService
+	DocumentProcessors      *document.Registry
 
 	JobRunner *jobrunner.JobQueueRunner
 }
@@ -87,6 +91,10 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 	jobRepo := repository.NewJobRepository(db)
 	collectionRepo := repository.NewCollectionRepository(db)
 	fileRepo := repository.NewFileRepository(db)
+	uploadSessionRepo := repository.NewUploadSessionRepository(db)
+	uploadChunkRepo := repository.NewUploadChunkRepository(db)
+	documentRepoV2 := repository.NewDocumentRepositoryV2(db)
+	collectionHistoryRepo := repository.NewCollectionHistoryRepository(db)
 
 	// services
 	authService := auth.NewService(userRepo, sessionRepo, logger)
@@ -100,6 +108,21 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 	// registry services
 	buyerRegistryService := buyer.NewBuyerRegistryService(buyerRegistry, buyerStore, rootDir)
 	templateRegistryService := template.NewTemplateRegistryService(templateRegistry)
+	documentRegistry := document.NewRegistry()
+	documentRegistry.MustRegister(document.NewPDFInvoiceProcessor(invoiceExtractService, fs))
+	documentRegistry.MustRegister(document.NewPDFTaxInvoiceProcessor(fs))
+	documentRegistry.MustRegister(document.NewXLSXCashflowProcessor())
+	ingestService := ingest.NewIngestService(
+		uploadSessionRepo,
+		uploadChunkRepo,
+		documentRepoV2,
+		collectionHistoryRepo,
+		collectionRepo,
+		fs,
+		documentRegistry,
+		1,
+	)
+	ingestService.StartPool(context.Background())
 
 	// dispatcher & handler
 	dispatcher := jobrunner.NewDispatcher()
@@ -122,6 +145,7 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 		AuthService:             authService,
 		CollectionService:       collectionService,
 		FileService:             fileService,
+		IngestService:           ingestService,
 		JobService:              jobService,
 		InvoiceService:          invoiceService,
 		Logger:                  logger,
@@ -131,5 +155,6 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 		BuyerStore:              buyerStore,
 		BuyerRegistryService:    buyerRegistryService,
 		TemplateRegistryService: templateRegistryService,
+		DocumentProcessors:      documentRegistry,
 	}
 }
