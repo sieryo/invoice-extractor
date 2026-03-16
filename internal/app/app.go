@@ -25,6 +25,7 @@ import (
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/template/seamakeup"
 	"github.com/sieryo/invoice-extractor/internal/app/job"
 	jobapp "github.com/sieryo/invoice-extractor/internal/app/job"
+	"github.com/sieryo/invoice-extractor/internal/app/spreadsheet"
 	"github.com/sieryo/invoice-extractor/internal/domain/file"
 	jobdomain "github.com/sieryo/invoice-extractor/internal/domain/job"
 	"github.com/sieryo/invoice-extractor/internal/infra/filestore"
@@ -37,13 +38,14 @@ import (
 type App struct {
 	RootDir string
 
-	AuthService       *auth.AuthService
-	JobService        *job.JobService
-	InvoiceService    *invoice.InvoiceService
-	CollectionService *collection.CollectionService
-	FileService       *appfile.FileService
-	IngestService     *ingest.IngestService
-	ActionService     *actionapp.Service
+	AuthService        *auth.AuthService
+	JobService         *job.JobService
+	InvoiceService     *invoice.InvoiceService
+	CollectionService  *collection.CollectionService
+	SpreadsheetService *spreadsheet.Service
+	FileService        *appfile.FileService
+	IngestService      *ingest.IngestService
+	ActionService      *actionapp.Service
 
 	Logger    *slog.Logger
 	FileStore file.FileStore
@@ -114,7 +116,7 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 	documentRegistry := document.NewRegistry()
 	documentRegistry.MustRegister(document.NewPDFInvoiceProcessor(invoiceExtractService, invoiceService, fs))
 	documentRegistry.MustRegister(document.NewPDFTaxInvoiceProcessor(taxInvoiceExtractService, fs))
-	documentRegistry.MustRegister(document.NewXLSXCashflowProcessor())
+	documentRegistry.MustRegister(document.NewXLSXCashflowProcessor(fs))
 	ingestService := ingest.NewIngestService(
 		uploadSessionRepo,
 		uploadChunkRepo,
@@ -126,6 +128,7 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 		1,
 	)
 	ingestService.StartPool(context.Background())
+	spreadsheetService := spreadsheet.NewService(ingestService, fs)
 	actionService := actionapp.NewService(
 		collectionActionRepo,
 		collectionRepo,
@@ -154,6 +157,7 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 		RootDir:                 rootDir,
 		AuthService:             authService,
 		CollectionService:       collectionService,
+		SpreadsheetService:      spreadsheetService,
 		FileService:             fileService,
 		IngestService:           ingestService,
 		ActionService:           actionService,

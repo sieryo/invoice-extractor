@@ -1,14 +1,19 @@
 package handler
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
 	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	"github.com/sieryo/invoice-extractor/internal/app/action"
+	"github.com/sieryo/invoice-extractor/internal/app/document"
 	dcollection "github.com/sieryo/invoice-extractor/internal/domain/collection"
 	"github.com/sieryo/invoice-extractor/internal/domain/file"
 )
@@ -282,4 +287,196 @@ func (h *ActionHandler) DownloadActionOutput(c *fiber.Ctx) error {
 	c.Set("Content-Type", contentType)
 	c.Set("Content-Disposition", "attachment; filename=\""+filename+"\"")
 	return c.Send(data)
+}
+
+type UploadActionArtifactResponse struct {
+	ActionType   string `json:"actionType"`
+	ArtifactKey  string `json:"artifactKey"`
+	Ref          string `json:"ref"`
+	OriginalName string `json:"originalName"`
+	MimeType     string `json:"mimeType"`
+	SizeBytes    int64  `json:"sizeBytes"`
+}
+
+func (h *ActionHandler) UploadActionArtifact(c *fiber.Ctx) error {
+	ctx := c.Context()
+	userID, ok := c.Locals("userId").(string)
+	if !ok {
+		return fiber.ErrUnauthorized
+	}
+
+	collectionID := c.Params("id")
+	if strings.TrimSpace(collectionID) == "" {
+		return SendError(c, fiber.StatusBadRequest, "collection id is required")
+	}
+
+	actionType := strings.TrimSpace(c.FormValue("actionType"))
+	artifactKey := strings.TrimSpace(c.FormValue("artifactKey"))
+	if actionType == "" || artifactKey == "" {
+		return SendError(c, fiber.StatusBadRequest, "actionType and artifactKey are required")
+	}
+
+	docSpec, err := h.actionService.GetActionSpec(ctx, userID, collectionID)
+	if err != nil {
+		switch {
+		case errors.Is(err, dcollection.ErrCollectionNotFound):
+			return SendError(c, fiber.StatusNotFound, "collection not found")
+		case errors.Is(err, dcollection.ErrInvalidNodeType):
+			return SendError(c, fiber.StatusBadRequest, "target must be a typed collection")
+		case errors.Is(err, action.ErrSpecNotFound):
+			return SendError(c, fiber.StatusNotFound, "action spec not found")
+		default:
+			return SendError(c, fiber.StatusInternalServerError, err.Error())
+		}
+	}
+
+	actionSpec, found := docSpec.FindActionSpec(actionType)
+	if !found {
+		return SendError(c, fiber.StatusBadRequest, "action type is not available for this collection")
+	}
+
+	artifactSpec, found := findArtifactInputSpec(actionSpec.ArtifactInputs, artifactKey)
+	if !found {
+		return SendError(c, fiber.StatusBadRequest, "artifact input key is not defined in action spec")
+	}
+
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		return SendError(c, fiber.StatusBadRequest, "file is required")
+	}
+
+	stream, err := fileHeader.Open()
+	if err != nil {
+		return SendError(c, fiber.StatusBadRequest, "failed to read file")
+	}
+	defer stream.Close()
+
+	data, err := io.ReadAll(stream)
+	if err != nil {
+		return SendError(c, fiber.StatusBadRequest, "failed to read file content")
+	}
+
+	originalName := filepath.Base(strings.TrimSpace(fileHeader.Filename))
+	if originalName == "" {
+		originalName = "artifact_upload"
+	}
+	ext := strings.ToLower(filepath.Ext(originalName))
+
+	mimeType := strings.ToLower(strings.TrimSpace(fileHeader.Header.Get("Content-Type")))
+	if mimeType == "" && len(data) > 0 {
+		sniff := data
+		if len(sniff) > 512 {
+			sniff = sniff[:512]
+		}
+		mimeType = strings.ToLower(http.DetectContentType(sniff))
+	}
+
+	if len(artifactSpec.AcceptExtensions) > 0 && !containsFolded(artifactSpec.AcceptExtensions, ext) {
+		return SendError(c, fiber.StatusBadRequest, "file extension is not allowed for this artifact input")
+	}
+	if len(artifactSpec.AcceptMIMETypes) > 0 && mimeType != "" && !containsFolded(artifactSpec.AcceptMIMETypes, mimeType) {
+		return SendError(c, fiber.StatusBadRequest, "file mime type is not allowed for this artifact input")
+	}
+
+	ref := filepath.ToSlash(filepath.Join(
+		"inputs",
+		sanitizeArtifactSegment(actionType),
+		sanitizeArtifactSegment(artifactKey),
+		uuid.NewString()+"_"+sanitizeArtifactFilename(originalName),
+	))
+
+	_, saveErr := h.fileStore.SaveArchive(ctx, collectionID, ref, data)
+	if saveErr != nil {
+		return SendError(c, fiber.StatusInternalServerError, "failed to save artifact file")
+	}
+
+	return SendSuccess(c, fiber.StatusOK, UploadActionArtifactResponse{
+		ActionType:   actionType,
+		ArtifactKey:  artifactKey,
+		Ref:          ref,
+		OriginalName: originalName,
+		MimeType:     mimeType,
+		SizeBytes:    int64(len(data)),
+	}, "artifact uploaded")
+}
+
+func findArtifactInputSpec(
+	inputs []document.ActionArtifactInputSpec,
+	key string,
+) (document.ActionArtifactInputSpec, bool) {
+	target := strings.TrimSpace(key)
+	if target == "" {
+		return document.ActionArtifactInputSpec{}, false
+	}
+	for _, item := range inputs {
+		if strings.EqualFold(strings.TrimSpace(item.Key), target) {
+			return item, true
+		}
+	}
+	return document.ActionArtifactInputSpec{}, false
+}
+
+func containsFolded(items []string, value string) bool {
+	target := strings.ToLower(strings.TrimSpace(value))
+	if target == "" {
+		return false
+	}
+	for _, item := range items {
+		if strings.EqualFold(strings.TrimSpace(item), target) {
+			return true
+		}
+	}
+	return false
+}
+
+func sanitizeArtifactSegment(raw string) string {
+	segment := strings.TrimSpace(strings.ToLower(raw))
+	if segment == "" {
+		return "unknown"
+	}
+
+	b := strings.Builder{}
+	for _, r := range segment {
+		switch {
+		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
+			b.WriteRune(r)
+		case r == '_' || r == '-':
+			b.WriteRune(r)
+		default:
+			b.WriteRune('_')
+		}
+	}
+	out := strings.Trim(b.String(), "_-")
+	if out == "" {
+		return "unknown"
+	}
+	return out
+}
+
+func sanitizeArtifactFilename(raw string) string {
+	name := strings.TrimSpace(filepath.Base(raw))
+	if name == "" {
+		return "artifact.txt"
+	}
+
+	name = strings.ReplaceAll(name, "\\", "_")
+	name = strings.ReplaceAll(name, "/", "_")
+	name = strings.ReplaceAll(name, ":", "_")
+	name = strings.ReplaceAll(name, "..", "_")
+
+	if strings.TrimSpace(name) == "" {
+		return "artifact.txt"
+	}
+
+	// If a control character sneaks in, replace with underscore.
+	buf := bytes.NewBuffer(nil)
+	for i := 0; i < len(name); i++ {
+		ch := name[i]
+		if ch < 32 || ch == 127 {
+			buf.WriteByte('_')
+			continue
+		}
+		buf.WriteByte(ch)
+	}
+	return buf.String()
 }
