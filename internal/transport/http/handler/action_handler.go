@@ -95,10 +95,20 @@ func (h *ActionHandler) RunAction(c *fiber.Ctx) error {
 			return SendError(c, fiber.StatusBadRequest, "target must be a typed collection")
 		case errors.Is(err, action.ErrInvalidActionType):
 			return SendError(c, fiber.StatusBadRequest, "action_type is required")
+		case errors.Is(err, action.ErrActionNotSupported):
+			return SendError(c, fiber.StatusBadRequest, "action_type is not available for this document type")
+		case errors.Is(err, action.ErrActionDisabled):
+			return SendError(c, fiber.StatusBadRequest, "action is disabled for this document type")
+		case errors.Is(err, action.ErrInvalidActionParams):
+			return SendError(c, fiber.StatusBadRequest, err.Error())
+		case errors.Is(err, action.ErrInvalidActionSpec):
+			return SendError(c, fiber.StatusBadRequest, "action spec is invalid")
 		case errors.Is(err, action.ErrInvalidDocumentIDs):
 			return SendError(c, fiber.StatusBadRequest, "invalid document_ids")
 		case errors.Is(err, action.ErrInvalidDocumentStatus):
 			return SendError(c, fiber.StatusBadRequest, "invalid document_statuses filter")
+		case errors.Is(err, action.ErrMinDocumentsRequired):
+			return SendError(c, fiber.StatusBadRequest, "minimum selected documents for action is not met")
 		case errors.Is(err, action.ErrSnapshotDocStatus):
 			return SendError(c, fiber.StatusBadRequest, "selected documents must be ready or warning")
 		case errors.Is(err, action.ErrSnapshotDocNotFound):

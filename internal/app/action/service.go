@@ -1,10 +1,13 @@
 package action
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"sync"
@@ -86,6 +89,34 @@ func (s *Service) RunAction(ctx context.Context, req RunRequest) (*CollectionAct
 	}
 
 	docType := document.DocumentType(*coll.DocumentType)
+	docTypeSpec, ok := document.BuildDocumentTypeSpec(docType)
+	if !ok {
+		return nil, ErrSpecNotFound
+	}
+
+	actionSpec, ok := docTypeSpec.FindActionSpec(actionType)
+	if !ok {
+		return nil, ErrActionNotSupported
+	}
+	if !actionSpec.Enabled {
+		return nil, ErrActionDisabled
+	}
+
+	allowedStatuses, err := normalizeAllowedStatuses(actionSpec.Selection.AllowedStatus)
+	if err != nil {
+		return nil, err
+	}
+
+	paramsJSON, err := normalizeAndValidateActionParams(req.Params, actionSpec.Params)
+	if err != nil {
+		return nil, err
+	}
+
+	minDocumentCnt := actionSpec.Selection.MinDocumentCnt
+	if minDocumentCnt <= 0 {
+		minDocumentCnt = 1
+	}
+
 	selectedDocumentIDs, err := normalizeDocumentIDs(req.DocumentIDs)
 	if err != nil {
 		return nil, err
@@ -102,7 +133,7 @@ func (s *Service) RunAction(ctx context.Context, req RunRequest) (*CollectionAct
 			return nil, ErrSnapshotDocNotFound
 		}
 
-		if err := validateSnapshotStatuses(snapshotDocs, []string{"ready", "warning"}); err != nil {
+		if err := validateSnapshotStatuses(snapshotDocs, allowedStatuses); err != nil {
 			return nil, err
 		}
 	} else if req.RerunOfActionID != nil && strings.TrimSpace(*req.RerunOfActionID) != "" && len(req.DocumentStatuses) == 0 {
@@ -117,7 +148,7 @@ func (s *Service) RunAction(ctx context.Context, req RunRequest) (*CollectionAct
 			return nil, ErrEmptySnapshot
 		}
 	} else {
-		statuses, statusErr := normalizeSnapshotStatuses(req.DocumentStatuses)
+		statuses, statusErr := normalizeSnapshotStatuses(req.DocumentStatuses, allowedStatuses)
 		if statusErr != nil {
 			return nil, statusErr
 		}
@@ -130,6 +161,9 @@ func (s *Service) RunAction(ctx context.Context, req RunRequest) (*CollectionAct
 
 	if len(snapshotDocs) == 0 {
 		return nil, ErrEmptySnapshot
+	}
+	if len(snapshotDocs) < minDocumentCnt {
+		return nil, ErrMinDocumentsRequired
 	}
 
 	snapshotJSON, err := json.Marshal(snapshotDocs)
@@ -148,7 +182,7 @@ func (s *Service) RunAction(ctx context.Context, req RunRequest) (*CollectionAct
 		DocumentType:   docType,
 		ActionType:     actionType,
 		Status:         StatusQueued,
-		ParamsJSON:     req.Params,
+		ParamsJSON:     paramsJSON,
 		SnapshotJSON:   snapshotJSON,
 		SnapshotHash:   hash,
 		SnapshotTotal:  len(snapshotDocs),
@@ -551,30 +585,260 @@ func isTerminalActionStatus(status Status) bool {
 	}
 }
 
-func normalizeSnapshotStatuses(input []string) ([]string, error) {
+func normalizeAllowedStatuses(input []string) ([]string, error) {
 	if len(input) == 0 {
-		return []string{"ready", "warning"}, nil
+		return nil, ErrInvalidActionSpec
+	}
+	out := make([]string, 0, len(input))
+	seen := make(map[string]struct{}, len(input))
+	for _, raw := range input {
+		status := strings.ToLower(strings.TrimSpace(raw))
+		switch status {
+		case "ready", "warning":
+		default:
+			return nil, ErrInvalidActionSpec
+		}
+		if _, exists := seen[status]; exists {
+			continue
+		}
+		seen[status] = struct{}{}
+		out = append(out, status)
+	}
+	if len(out) == 0 {
+		return nil, ErrInvalidActionSpec
+	}
+	return out, nil
+}
+
+func normalizeSnapshotStatuses(input []string, allowed []string) ([]string, error) {
+	if len(allowed) == 0 {
+		return nil, ErrInvalidActionSpec
 	}
 
-	set := map[string]struct{}{}
+	if len(input) == 0 {
+		return append([]string(nil), allowed...), nil
+	}
+
+	allowedSet := make(map[string]struct{}, len(allowed))
+	for _, status := range allowed {
+		allowedSet[status] = struct{}{}
+	}
+
+	selected := make(map[string]struct{}, len(input))
 	for _, status := range input {
 		normalized := strings.ToLower(strings.TrimSpace(status))
-		switch normalized {
-		case "ready", "warning":
-			set[normalized] = struct{}{}
-		default:
+		if _, ok := allowedSet[normalized]; !ok {
 			return nil, ErrInvalidDocumentStatus
+		}
+		selected[normalized] = struct{}{}
+	}
+
+	out := make([]string, 0, len(selected))
+	for _, status := range allowed {
+		if _, ok := selected[status]; ok {
+			out = append(out, status)
+		}
+	}
+	return out, nil
+}
+
+func normalizeAndValidateActionParams(
+	raw json.RawMessage,
+	paramSpecs []document.ActionParamFieldSpec,
+) (json.RawMessage, error) {
+	specByKey := make(map[string]document.ActionParamFieldSpec, len(paramSpecs))
+	for _, spec := range paramSpecs {
+		key := strings.TrimSpace(spec.Key)
+		if key == "" {
+			return nil, fmt.Errorf("%w: param key cannot be empty", ErrInvalidActionSpec)
+		}
+		specByKey[key] = spec
+	}
+
+	trimmed := bytes.TrimSpace(raw)
+	payload := map[string]any{}
+	if !(len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null"))) {
+		if err := json.Unmarshal(trimmed, &payload); err != nil {
+			return nil, fmt.Errorf("%w: params must be a JSON object", ErrInvalidActionParams)
+		}
+		if payload == nil {
+			payload = map[string]any{}
 		}
 	}
 
-	out := make([]string, 0, len(set))
-	if _, ok := set["ready"]; ok {
-		out = append(out, "ready")
+	for key := range payload {
+		if _, ok := specByKey[key]; !ok {
+			return nil, fmt.Errorf("%w: unknown param %q", ErrInvalidActionParams, key)
+		}
 	}
-	if _, ok := set["warning"]; ok {
-		out = append(out, "warning")
+
+	normalized := make(map[string]any, len(payload))
+	for _, spec := range paramSpecs {
+		value, exists := payload[spec.Key]
+		if (!exists || value == nil) && spec.Default != nil {
+			value = spec.Default
+			exists = true
+		}
+		if !exists || value == nil {
+			if spec.Required {
+				return nil, fmt.Errorf("%w: missing required param %q", ErrInvalidActionParams, spec.Key)
+			}
+			continue
+		}
+
+		normalizedValue, normalizeErr := normalizeActionParamValue(spec, value)
+		if normalizeErr != nil {
+			return nil, normalizeErr
+		}
+		if spec.Required && isEmptyActionParamValue(normalizedValue) {
+			return nil, fmt.Errorf("%w: param %q cannot be empty", ErrInvalidActionParams, spec.Key)
+		}
+		if !spec.Required && isEmptyActionParamValue(normalizedValue) {
+			continue
+		}
+		if optionsErr := validateActionParamOptions(spec, normalizedValue); optionsErr != nil {
+			return nil, optionsErr
+		}
+
+		normalized[spec.Key] = normalizedValue
 	}
-	return out, nil
+
+	if ruleErr := validateActionParamRules(normalized, paramSpecs); ruleErr != nil {
+		return nil, ruleErr
+	}
+
+	if len(normalized) == 0 {
+		return nil, nil
+	}
+
+	b, err := json.Marshal(normalized)
+	if err != nil {
+		return nil, fmt.Errorf("%w: failed to encode normalized params", ErrInvalidActionParams)
+	}
+	return b, nil
+}
+
+func normalizeActionParamValue(spec document.ActionParamFieldSpec, value any) (any, error) {
+	switch strings.ToLower(strings.TrimSpace(spec.Type)) {
+	case document.ActionParamTypeString:
+		s, ok := value.(string)
+		if !ok {
+			return nil, fmt.Errorf("%w: param %q must be string", ErrInvalidActionParams, spec.Key)
+		}
+		return strings.TrimSpace(s), nil
+
+	case document.ActionParamTypeInt:
+		switch n := value.(type) {
+		case float64:
+			if math.Trunc(n) != n {
+				return nil, fmt.Errorf("%w: param %q must be integer", ErrInvalidActionParams, spec.Key)
+			}
+			return int64(n), nil
+		case int:
+			return int64(n), nil
+		case int64:
+			return n, nil
+		case json.Number:
+			i, err := n.Int64()
+			if err != nil {
+				return nil, fmt.Errorf("%w: param %q must be integer", ErrInvalidActionParams, spec.Key)
+			}
+			return i, nil
+		default:
+			return nil, fmt.Errorf("%w: param %q must be integer", ErrInvalidActionParams, spec.Key)
+		}
+
+	case document.ActionParamTypeFloat:
+		switch n := value.(type) {
+		case float64:
+			return n, nil
+		case int:
+			return float64(n), nil
+		case int64:
+			return float64(n), nil
+		case json.Number:
+			f, err := n.Float64()
+			if err != nil {
+				return nil, fmt.Errorf("%w: param %q must be number", ErrInvalidActionParams, spec.Key)
+			}
+			return f, nil
+		default:
+			return nil, fmt.Errorf("%w: param %q must be number", ErrInvalidActionParams, spec.Key)
+		}
+
+	case document.ActionParamTypeBoolean, "bool":
+		b, ok := value.(bool)
+		if !ok {
+			return nil, fmt.Errorf("%w: param %q must be boolean", ErrInvalidActionParams, spec.Key)
+		}
+		return b, nil
+
+	default:
+		return nil, fmt.Errorf("%w: unsupported param type %q for key %q", ErrInvalidActionSpec, spec.Type, spec.Key)
+	}
+}
+
+func validateActionParamOptions(spec document.ActionParamFieldSpec, value any) error {
+	if len(spec.Options) == 0 {
+		return nil
+	}
+	current := fmt.Sprint(value)
+	for _, option := range spec.Options {
+		if option.Value == current {
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: param %q has unsupported value %q", ErrInvalidActionParams, spec.Key, current)
+}
+
+func validateActionParamRules(params map[string]any, specs []document.ActionParamFieldSpec) error {
+	for _, spec := range specs {
+		for _, rule := range spec.Rules {
+			switch strings.ToLower(strings.TrimSpace(rule.Type)) {
+			case document.ActionParamRuleRequiredIf:
+				if !isActionParamRuleConditionMet(params, rule) {
+					continue
+				}
+				value, exists := params[spec.Key]
+				if !exists || isEmptyActionParamValue(value) {
+					msg := strings.TrimSpace(rule.Message)
+					if msg == "" {
+						msg = fmt.Sprintf("param %q is required by rule", spec.Key)
+					}
+					return fmt.Errorf("%w: %s", ErrInvalidActionParams, msg)
+				}
+			default:
+				return fmt.Errorf("%w: unsupported rule type %q for key %q", ErrInvalidActionSpec, rule.Type, spec.Key)
+			}
+		}
+	}
+	return nil
+}
+
+func isActionParamRuleConditionMet(params map[string]any, rule document.ActionParamRuleSpec) bool {
+	field := strings.TrimSpace(rule.Field)
+	if field == "" {
+		return false
+	}
+	left, ok := params[field]
+	if !ok {
+		return false
+	}
+	expected := strings.TrimSpace(rule.Equals)
+	if expected == "" {
+		return !isEmptyActionParamValue(left)
+	}
+	return strings.EqualFold(strings.TrimSpace(fmt.Sprint(left)), expected)
+}
+
+func isEmptyActionParamValue(value any) bool {
+	if value == nil {
+		return true
+	}
+	if s, ok := value.(string); ok {
+		return strings.TrimSpace(s) == ""
+	}
+	return false
 }
 
 func normalizeItemStatus(raw string, errText string) ItemStatus {
