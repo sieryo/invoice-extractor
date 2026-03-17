@@ -14,6 +14,13 @@ type CollectionHandler struct {
 	collectionService *collection.CollectionService
 }
 
+type CollectionPathNode struct {
+	ID       string  `json:"id"`
+	Name     string  `json:"name"`
+	NodeType string  `json:"nodeType"`
+	ParentID *string `json:"parentId,omitempty"`
+}
+
 func NewCollectionHandler(collectionService *collection.CollectionService) *CollectionHandler {
 	return &CollectionHandler{
 		collectionService: collectionService,
@@ -169,6 +176,42 @@ func (h *CollectionHandler) ListChildren(c *fiber.Ctx) error {
 	}
 
 	return SendSuccess(c, fiber.StatusOK, collections, "collections retrieved successfully")
+}
+
+func (h *CollectionHandler) GetCollectionPath(c *fiber.Ctx) error {
+	ctx := c.Context()
+	userID, ok := c.Locals("userId").(string)
+	if !ok {
+		return fiber.ErrUnauthorized
+	}
+
+	id := strings.TrimSpace(c.Params("id"))
+	if id == "" {
+		return SendError(c, fiber.StatusBadRequest, "id is required")
+	}
+
+	path, err := h.collectionService.GetPath(ctx, userID, id)
+	if err != nil {
+		if err == dcollection.ErrCollectionNotFound {
+			return SendError(c, fiber.StatusNotFound, "collection not found")
+		}
+		return SendError(c, fiber.StatusInternalServerError, err.Error())
+	}
+
+	nodes := make([]CollectionPathNode, 0, len(path))
+	for _, item := range path {
+		if item == nil {
+			continue
+		}
+		nodes = append(nodes, CollectionPathNode{
+			ID:       item.ID,
+			Name:     item.Name,
+			NodeType: string(item.NodeType),
+			ParentID: item.Parent,
+		})
+	}
+
+	return SendSuccess(c, fiber.StatusOK, nodes, "collection path retrieved successfully")
 }
 
 func (h *CollectionHandler) DeleteCollection(c *fiber.Ctx) error {

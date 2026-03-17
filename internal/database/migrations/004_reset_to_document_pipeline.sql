@@ -37,7 +37,7 @@ CREATE TABLE collections (
 	parent_id TEXT,
 	name TEXT NOT NULL,
 	node_type TEXT NOT NULL CHECK (node_type IN ('folder', 'collection')),
-	document_type TEXT CHECK (document_type IN ('pdf_invoice', 'pdf_tax_invoice', 'pdf_bukpot_bppu', 'pdf_bukpot_bp21', 'pdf_bukpot_bpa1')),
+	document_type TEXT CHECK (document_type IN ('pdf_invoice', 'pdf_tax_invoice', 'pdf_bppu', 'pdf_bp21', 'pdf_bpa1')),
 	phase TEXT NOT NULL DEFAULT 'ready' CHECK (phase IN ('ready', 'uploading', 'processing')),
 	total_count INTEGER NOT NULL DEFAULT 0,
 	ready_count INTEGER NOT NULL DEFAULT 0,
@@ -72,7 +72,7 @@ CREATE TABLE documents (
 	id TEXT PRIMARY KEY,
 	user_id TEXT NOT NULL,
 	collection_id TEXT NOT NULL,
-	document_type TEXT NOT NULL CHECK (document_type IN ('pdf_invoice', 'pdf_tax_invoice', 'pdf_bukpot_bppu', 'pdf_bukpot_bp21', 'pdf_bukpot_bpa1')),
+	document_type TEXT NOT NULL CHECK (document_type IN ('pdf_invoice', 'pdf_tax_invoice', 'pdf_bppu', 'pdf_bp21', 'pdf_bpa1')),
 	document_tag TEXT,
 	source_name TEXT NOT NULL,
 	source_size_bytes INTEGER,
@@ -107,7 +107,7 @@ CREATE TABLE upload_sessions (
 	id TEXT PRIMARY KEY,
 	user_id TEXT NOT NULL,
 	collection_id TEXT NOT NULL,
-	document_type TEXT NOT NULL CHECK (document_type IN ('pdf_invoice', 'pdf_tax_invoice', 'pdf_bukpot_bppu', 'pdf_bukpot_bp21', 'pdf_bukpot_bpa1')),
+	document_type TEXT NOT NULL CHECK (document_type IN ('pdf_invoice', 'pdf_tax_invoice', 'pdf_bppu', 'pdf_bp21', 'pdf_bpa1')),
 	status TEXT NOT NULL CHECK (
 		status IN (
 			'created',
@@ -202,7 +202,7 @@ CREATE TABLE collection_history_items (
 	history_id TEXT NOT NULL,
 	user_id TEXT NOT NULL,
 	collection_id TEXT NOT NULL,
-	document_type TEXT NOT NULL CHECK (document_type IN ('pdf_invoice', 'pdf_tax_invoice', 'pdf_bukpot_bppu', 'pdf_bukpot_bp21', 'pdf_bukpot_bpa1')),
+	document_type TEXT NOT NULL CHECK (document_type IN ('pdf_invoice', 'pdf_tax_invoice', 'pdf_bppu', 'pdf_bp21', 'pdf_bpa1')),
 	source_name TEXT NOT NULL,
 	source_size_bytes INTEGER,
 	source_mime TEXT,
@@ -235,7 +235,7 @@ CREATE TABLE collection_actions (
 	id TEXT PRIMARY KEY,
 	user_id TEXT NOT NULL,
 	collection_id TEXT NOT NULL,
-	document_type TEXT NOT NULL CHECK (document_type IN ('pdf_invoice', 'pdf_tax_invoice', 'pdf_bukpot_bppu', 'pdf_bukpot_bp21', 'pdf_bukpot_bpa1')),
+	document_type TEXT NOT NULL CHECK (document_type IN ('pdf_invoice', 'pdf_tax_invoice', 'pdf_bppu', 'pdf_bp21', 'pdf_bpa1')),
 	action_type TEXT NOT NULL,
 	status TEXT NOT NULL DEFAULT 'queued' CHECK (
 		status IN ('queued', 'running', 'success', 'warning', 'partial', 'failed', 'canceled')

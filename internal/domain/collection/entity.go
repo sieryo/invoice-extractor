@@ -23,9 +23,9 @@ type DocumentType string
 const (
 	DocumentTypePDFInvoice    DocumentType = "pdf_invoice"
 	DocumentTypePDFTaxInvoice DocumentType = "pdf_tax_invoice"
-	DocumentTypePDFBukpotBPPU DocumentType = "pdf_bukpot_bppu"
-	DocumentTypePDFBukpotBP21 DocumentType = "pdf_bukpot_bp21"
-	DocumentTypePDFBukpotBPA1 DocumentType = "pdf_bukpot_bpa1"
+	DocumentTypePDFBukpotBPPU DocumentType = "pdf_bppu"
+	DocumentTypePDFBukpotBP21 DocumentType = "pdf_bp21"
+	DocumentTypePDFBukpotBPA1 DocumentType = "pdf_bpa1"
 )
 
 func (d DocumentType) IsValid() bool {

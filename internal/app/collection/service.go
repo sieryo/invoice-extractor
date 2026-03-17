@@ -2,6 +2,8 @@ package collection
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"time"
 
 	domain "github.com/sieryo/invoice-extractor/internal/domain/collection"
@@ -132,4 +134,50 @@ func (s *CollectionService) Delete(
 	}
 
 	return s.collectionRepo.Delete(ctx, id)
+}
+
+func (s *CollectionService) GetPath(
+	ctx context.Context,
+	userID string,
+	id string,
+) ([]*domain.Collection, error) {
+	currentID := strings.TrimSpace(id)
+	if currentID == "" {
+		return nil, domain.ErrCollectionNotFound
+	}
+
+	path := make([]*domain.Collection, 0, 8)
+	visited := make(map[string]struct{}, 8)
+
+	for currentID != "" {
+		if _, exists := visited[currentID]; exists {
+			return nil, fmt.Errorf("collection path cycle detected at id %s", currentID)
+		}
+		visited[currentID] = struct{}{}
+
+		coll, err := s.collectionRepo.FindByID(ctx, currentID)
+		if err != nil || coll == nil {
+			return nil, domain.ErrCollectionNotFound
+		}
+		if coll.UserID != userID || coll.DeletedAt != nil {
+			return nil, domain.ErrCollectionNotFound
+		}
+
+		path = append(path, coll)
+
+		if coll.Parent == nil {
+			break
+		}
+		parentID := strings.TrimSpace(*coll.Parent)
+		if parentID == "" {
+			break
+		}
+		currentID = parentID
+	}
+
+	for i, j := 0, len(path)-1; i < j; i, j = i+1, j-1 {
+		path[i], path[j] = path[j], path[i]
+	}
+
+	return path, nil
 }

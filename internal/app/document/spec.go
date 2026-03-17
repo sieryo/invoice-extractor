@@ -276,19 +276,19 @@ func BuildDocumentTypeSpec(docType DocumentType) (DocumentTypeSpec, bool) {
 	case DocumentTypePDFBukpotBPPU:
 		return buildBukpotDocumentTypeSpec(
 			docType,
-			"Bukpot BPPU",
+			"BPPU",
 			"Dokumen PDF bukti potong BPPU untuk ekstraksi data bukpot.",
 		), true
 	case DocumentTypePDFBukpotBP21:
 		return buildBukpotDocumentTypeSpec(
 			docType,
-			"Bukpot BP21",
+			"BP21",
 			"Dokumen PDF bukti potong BP21 untuk ekstraksi data bukpot.",
 		), true
 	case DocumentTypePDFBukpotBPA1:
 		return buildBukpotDocumentTypeSpec(
 			docType,
-			"Bukpot BPA1",
+			"BPA1",
 			"Dokumen PDF bukti potong BPA1 untuk ekstraksi data bukpot.",
 		), true
 	default:
@@ -301,6 +301,78 @@ func buildBukpotDocumentTypeSpec(
 	label string,
 	description string,
 ) DocumentTypeSpec {
+	actions := []ActionSpec{}
+	actions = append(actions, ActionSpec{
+		ActionType:  "rename_bukpot",
+		Label:       "Rename Bukpot",
+		Description: "Ganti nama file bukpot berdasarkan template placeholder dan hasilkan ZIP.",
+		Enabled:     true,
+		Selection: ActionSelectionSpec{
+			Mode:           "manual",
+			AllowCheckAll:  true,
+			AllowedStatus:  []string{"ready", "warning"},
+			MinDocumentCnt: 1,
+		},
+		Params: []ActionParamFieldSpec{
+			{
+				Key:      "filenameTemplate",
+				Type:     ActionParamTypeString,
+				Label:    "Template Nama File",
+				Required: true,
+				Default:  "{{nomorBuktiPotong}} - {{namaPenerima}}",
+				UI: &ActionParamUISpec{
+					Editor: "template",
+				},
+				Suggestions: []ActionParamSuggestion{
+					{Token: "nomorBuktiPotong", Label: "Nomor Bukti Potong", Example: "{{nomorBuktiPotong}}"},
+					{Token: "namaPenerima", Label: "Nama Penerima", Example: "{{namaPenerima}}"},
+					{Token: "dokumenReferensiNomor", Label: "Nomor Dokumen Referensi", Example: "{{dokumenReferensiNomor}}"},
+					{Token: "masaPajak", Label: "Masa Pajak", Example: "{{masaPajak}}"},
+					{Token: "sifatPemotongan", Label: "Sifat Pemotongan", Example: "{{sifatPemotongan}}"},
+					{Token: "statusBukti", Label: "Status Bukti", Example: "{{statusBukti}}"},
+					{Token: "namaPemotong", Label: "Nama Pemotong", Example: "{{namaPemotong}}"},
+					{Token: "npwpNikPemotong", Label: "NPWP/NIK Pemotong", Example: "{{npwpNikPemotong}}"},
+					{Token: "documentTag", Label: "Tag Dokumen", Example: "{{documentTag}}"},
+					{Token: "sourceName", Label: "Nama File Asal", Example: "{{sourceName}}"},
+				},
+				Description: "Gunakan placeholder yang tersedia. Ekstensi .pdf akan ditambahkan otomatis.",
+				Placeholder: "{{nomorBuktiPotong}} - {{namaPenerima}}",
+			},
+		},
+		Outputs: []ActionOutputSpec{
+			{
+				Kind:       "file",
+				MimeType:   "application/zip",
+				Ext:        "zip",
+				DownloadOK: true,
+			},
+		},
+	})
+
+	if docType == DocumentTypePDFBukpotBPPU || docType == DocumentTypePDFBukpotBP21 {
+		actions = append(actions, ActionSpec{
+			ActionType:  "rename_by_category",
+			Label:       "Rename by Category",
+			Description: "Kelompokkan bukpot ke folder kategori dari Dokumen Referensi Nomor lalu hasilkan ZIP.",
+			Enabled:     true,
+			Selection: ActionSelectionSpec{
+				Mode:           "manual",
+				AllowCheckAll:  true,
+				AllowedStatus:  []string{"ready", "warning"},
+				MinDocumentCnt: 1,
+			},
+			Params: []ActionParamFieldSpec{},
+			Outputs: []ActionOutputSpec{
+				{
+					Kind:       "file",
+					MimeType:   "application/zip",
+					Ext:        "zip",
+					DownloadOK: true,
+				},
+			},
+		})
+	}
+
 	return DocumentTypeSpec{
 		DocumentType: docType,
 		Label:        label,
@@ -320,6 +392,6 @@ func buildBukpotDocumentTypeSpec(
 				{Kind: "audit", Required: false},
 			},
 		},
-		Actions: []ActionSpec{},
+		Actions: actions,
 	}
 }
