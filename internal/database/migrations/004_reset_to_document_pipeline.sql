@@ -37,7 +37,7 @@ CREATE TABLE collections (
 	parent_id TEXT,
 	name TEXT NOT NULL,
 	node_type TEXT NOT NULL CHECK (node_type IN ('folder', 'collection')),
-	document_type TEXT CHECK (document_type IN ('pdf_invoice', 'pdf_tax_invoice', 'xlsx_cashflow')),
+	document_type TEXT CHECK (document_type IN ('pdf_invoice', 'pdf_tax_invoice')),
 	phase TEXT NOT NULL DEFAULT 'ready' CHECK (phase IN ('ready', 'uploading', 'processing')),
 	total_count INTEGER NOT NULL DEFAULT 0,
 	ready_count INTEGER NOT NULL DEFAULT 0,
@@ -72,7 +72,7 @@ CREATE TABLE documents (
 	id TEXT PRIMARY KEY,
 	user_id TEXT NOT NULL,
 	collection_id TEXT NOT NULL,
-	document_type TEXT NOT NULL CHECK (document_type IN ('pdf_invoice', 'pdf_tax_invoice', 'xlsx_cashflow')),
+	document_type TEXT NOT NULL CHECK (document_type IN ('pdf_invoice', 'pdf_tax_invoice')),
 	source_name TEXT NOT NULL,
 	source_size_bytes INTEGER,
 	source_mime TEXT,
@@ -106,7 +106,7 @@ CREATE TABLE upload_sessions (
 	id TEXT PRIMARY KEY,
 	user_id TEXT NOT NULL,
 	collection_id TEXT NOT NULL,
-	document_type TEXT NOT NULL CHECK (document_type IN ('pdf_invoice', 'pdf_tax_invoice', 'xlsx_cashflow')),
+	document_type TEXT NOT NULL CHECK (document_type IN ('pdf_invoice', 'pdf_tax_invoice')),
 	status TEXT NOT NULL CHECK (
 		status IN (
 			'created',
@@ -201,7 +201,7 @@ CREATE TABLE collection_history_items (
 	history_id TEXT NOT NULL,
 	user_id TEXT NOT NULL,
 	collection_id TEXT NOT NULL,
-	document_type TEXT NOT NULL CHECK (document_type IN ('pdf_invoice', 'pdf_tax_invoice', 'xlsx_cashflow')),
+	document_type TEXT NOT NULL CHECK (document_type IN ('pdf_invoice', 'pdf_tax_invoice')),
 	source_name TEXT NOT NULL,
 	source_size_bytes INTEGER,
 	source_mime TEXT,
@@ -234,7 +234,7 @@ CREATE TABLE collection_actions (
 	id TEXT PRIMARY KEY,
 	user_id TEXT NOT NULL,
 	collection_id TEXT NOT NULL,
-	document_type TEXT NOT NULL CHECK (document_type IN ('pdf_invoice', 'pdf_tax_invoice', 'xlsx_cashflow')),
+	document_type TEXT NOT NULL CHECK (document_type IN ('pdf_invoice', 'pdf_tax_invoice')),
 	action_type TEXT NOT NULL,
 	status TEXT NOT NULL DEFAULT 'queued' CHECK (
 		status IN ('queued', 'running', 'success', 'warning', 'partial', 'failed', 'canceled')

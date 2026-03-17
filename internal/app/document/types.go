@@ -13,7 +13,6 @@ type DocumentType = dcollection.DocumentType
 const (
 	DocumentTypePDFInvoice    = dcollection.DocumentTypePDFInvoice
 	DocumentTypePDFTaxInvoice = dcollection.DocumentTypePDFTaxInvoice
-	DocumentTypeXLSXCashflow  = dcollection.DocumentTypeXLSXCashflow
 )
 
 type Artifact struct {
