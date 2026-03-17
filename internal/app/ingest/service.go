@@ -793,12 +793,14 @@ func (s *IngestService) persistChunkResult(
 
 			auditRef := ptrIfNotEmpty(pickArtifactRef(item.Artifacts, "audit"))
 			rawRef := ptrIfNotEmpty(pickArtifactRef(item.Artifacts, "raw"))
+			documentTag := strings.TrimSpace(item.DocumentTag)
 			newDocID := uuid.NewString()
 			doc := &DocumentRecord{
 				ID:              newDocID,
 				UserID:          session.UserID,
 				CollectionID:    session.CollectionID,
 				DocumentType:    session.DocumentType,
+				DocumentTag:     documentTag,
 				SourceName:      src.OriginalName,
 				SourceSizeBytes: src.SizeBytes,
 				SourceMIME:      src.MimeType,
@@ -945,7 +947,10 @@ func normalizeIngestItems(
 
 func defaultIngestPolicy(docType document.DocumentType) document.IngestPolicy {
 	switch docType {
-	case document.DocumentTypePDFTaxInvoice:
+	case document.DocumentTypePDFTaxInvoice,
+		document.DocumentTypePDFBukpotBPPU,
+		document.DocumentTypePDFBukpotBP21,
+		document.DocumentTypePDFBukpotBPA1:
 		return document.IngestPolicy{
 			KeepRaw:            true,
 			DeleteTempAfterRun: true,

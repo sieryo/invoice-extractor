@@ -42,6 +42,7 @@ type SnapshotDocument struct {
 	SourceName    string `json:"sourceName"`
 	SourceOrder   int    `json:"sourceOrder"`
 	Status        string `json:"status"`
+	DocumentTag   string `json:"documentTag,omitempty"`
 	SourceSHA256  string `json:"sourceSha256,omitempty"`
 	NormalizedRef string `json:"normalizedRef"`
 	AuditRef      string `json:"auditRef,omitempty"`

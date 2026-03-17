@@ -23,11 +23,18 @@ type DocumentType string
 const (
 	DocumentTypePDFInvoice    DocumentType = "pdf_invoice"
 	DocumentTypePDFTaxInvoice DocumentType = "pdf_tax_invoice"
+	DocumentTypePDFBukpotBPPU DocumentType = "pdf_bukpot_bppu"
+	DocumentTypePDFBukpotBP21 DocumentType = "pdf_bukpot_bp21"
+	DocumentTypePDFBukpotBPA1 DocumentType = "pdf_bukpot_bpa1"
 )
 
 func (d DocumentType) IsValid() bool {
 	switch d {
-	case DocumentTypePDFInvoice, DocumentTypePDFTaxInvoice:
+	case DocumentTypePDFInvoice,
+		DocumentTypePDFTaxInvoice,
+		DocumentTypePDFBukpotBPPU,
+		DocumentTypePDFBukpotBP21,
+		DocumentTypePDFBukpotBPA1:
 		return true
 	default:
 		return false

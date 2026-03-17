@@ -211,8 +211,7 @@ func (p *PDFInvoiceProcessor) RunAction(ctx context.Context, req ActionRequest) 
 			sellerTaxSource = doc.SourceName
 		} else if sellerTaxID != currentTaxID {
 			msg := fmt.Sprintf(
-				"%s: seller tax id mismatch (expected %s from %s, got %s)",
-				doc.SourceName,
+				"seller tax id mismatch (expected %s from %s, got %s)",
 				sellerTaxID,
 				sellerTaxSource,
 				currentTaxID,
@@ -367,6 +366,7 @@ func (p *PDFInvoiceProcessor) buildSuccessItem(
 		SourceID:     source.SourceID,
 		OriginalName: source.OriginalName,
 		SHA256:       source.SHA256,
+		DocumentTag:  deriveInvoiceDocumentTag(inv),
 		Status:       itemStatus,
 		Message:      "invoice parsed",
 		Warnings:     warnings,
@@ -424,4 +424,19 @@ func extractSellerTaxID(inv *invoice.Invoice) (string, error) {
 		return "", fmt.Errorf("seller tax id is empty")
 	}
 	return digits, nil
+}
+
+func deriveInvoiceDocumentTag(inv *invoice.Invoice) string {
+	if inv == nil {
+		return ""
+	}
+	if inv.Seller != nil {
+		if sellerName := strings.TrimSpace(inv.Seller.Name); sellerName != "" {
+			return sellerName
+		}
+	}
+	if inv.Metadata != nil {
+		return strings.TrimSpace(inv.Metadata.TemplateID)
+	}
+	return ""
 }

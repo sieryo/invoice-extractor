@@ -9,6 +9,8 @@ import (
 
 	actionapp "github.com/sieryo/invoice-extractor/internal/app/action"
 	"github.com/sieryo/invoice-extractor/internal/app/auth"
+	appbukpot "github.com/sieryo/invoice-extractor/internal/app/bukpot"
+	"github.com/sieryo/invoice-extractor/internal/app/bukpot/parsers"
 	"github.com/sieryo/invoice-extractor/internal/app/buyer"
 	"github.com/sieryo/invoice-extractor/internal/app/collection"
 	"github.com/sieryo/invoice-extractor/internal/app/document"
@@ -105,6 +107,16 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 	invoiceService := invoice.NewInvoiceService(invoiceExporter, fs)
 	taxInvoiceExtractService := extract.NewTaxInvoiceExtractService()
 	renameTaxInvoiceService := rename.NewTaxInvoiceRenameService(taxInvoiceExtractService)
+	bukpotService := appbukpot.NewService(appbukpot.NewPDFToolExtractor())
+	if err := bukpotService.RegisterParser(parsers.NewBPPUParser()); err != nil {
+		panic(err)
+	}
+	if err := bukpotService.RegisterParser(parsers.NewBP21Parser()); err != nil {
+		panic(err)
+	}
+	if err := bukpotService.RegisterParser(parsers.NewBPA1Parser()); err != nil {
+		panic(err)
+	}
 	collectionService := collection.NewCollectionService(collectionRepo, fs)
 	fileService := appfile.NewFileService(fs, fileRepo, collectionRepo)
 
@@ -114,6 +126,9 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 	documentRegistry := document.NewRegistry()
 	documentRegistry.MustRegister(document.NewPDFInvoiceProcessor(invoiceExtractService, invoiceService, fs))
 	documentRegistry.MustRegister(document.NewPDFTaxInvoiceProcessor(taxInvoiceExtractService, fs))
+	documentRegistry.MustRegister(document.NewPDFBukpotProcessor(document.DocumentTypePDFBukpotBPPU, bukpotService, fs))
+	documentRegistry.MustRegister(document.NewPDFBukpotProcessor(document.DocumentTypePDFBukpotBP21, bukpotService, fs))
+	documentRegistry.MustRegister(document.NewPDFBukpotProcessor(document.DocumentTypePDFBukpotBPA1, bukpotService, fs))
 	ingestService := ingest.NewIngestService(
 		uploadSessionRepo,
 		uploadChunkRepo,

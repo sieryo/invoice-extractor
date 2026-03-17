@@ -357,6 +357,7 @@ func (s *Service) process(ctx context.Context, actionID string) error {
 			SourceName:    doc.SourceName,
 			SourceOrder:   doc.SourceOrder,
 			Status:        doc.Status,
+			DocumentTag:   doc.DocumentTag,
 			SourceSHA256:  doc.SourceSHA256,
 			NormalizedRef: doc.NormalizedRef,
 			AuditRef:      doc.AuditRef,

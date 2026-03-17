@@ -13,6 +13,9 @@ type DocumentType = dcollection.DocumentType
 const (
 	DocumentTypePDFInvoice    = dcollection.DocumentTypePDFInvoice
 	DocumentTypePDFTaxInvoice = dcollection.DocumentTypePDFTaxInvoice
+	DocumentTypePDFBukpotBPPU = dcollection.DocumentTypePDFBukpotBPPU
+	DocumentTypePDFBukpotBP21 = dcollection.DocumentTypePDFBukpotBP21
+	DocumentTypePDFBukpotBPA1 = dcollection.DocumentTypePDFBukpotBPA1
 )
 
 type Artifact struct {
@@ -63,6 +66,7 @@ type IngestItemResult struct {
 	SourceID      string           `json:"source_id"`
 	OriginalName  string           `json:"original_name"`
 	SHA256        string           `json:"sha256,omitempty"`
+	DocumentTag   string           `json:"document_tag,omitempty"`
 	Status        IngestItemStatus `json:"status"`
 	Message       string           `json:"message,omitempty"`
 	DocumentID    *string          `json:"document_id,omitempty"`
@@ -91,6 +95,7 @@ type ActionSnapshotDocument struct {
 	SourceName    string `json:"source_name"`
 	SourceOrder   int    `json:"source_order"`
 	Status        string `json:"status"`
+	DocumentTag   string `json:"document_tag,omitempty"`
 	SourceSHA256  string `json:"source_sha256,omitempty"`
 	NormalizedRef string `json:"normalized_ref"`
 	AuditRef      string `json:"audit_ref,omitempty"`

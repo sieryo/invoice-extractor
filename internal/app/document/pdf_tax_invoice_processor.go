@@ -394,6 +394,7 @@ func (p *PDFTaxInvoiceProcessor) buildSuccessItem(
 		SourceID:     source.SourceID,
 		OriginalName: source.OriginalName,
 		SHA256:       source.SHA256,
+		DocumentTag:  deriveTaxInvoiceDocumentTag(parsed.Invoice),
 		Status:       status,
 		Message:      "tax invoice parsed",
 		Warnings:     parsed.Warnings,
@@ -562,6 +563,7 @@ func buildTaxInvoiceTemplateMap(
 	values["sellername"] = strings.TrimSpace(inv.SellerName)
 	values["sellernpwp"] = strings.TrimSpace(inv.SellerNPWP)
 	values["invoicedate"] = invoiceDate
+	values["documenttag"] = deriveTaxInvoiceDocumentTag(inv)
 
 	if inv.Buyer != nil {
 		if values["buyername"] == "" {
@@ -652,6 +654,24 @@ func uniqueStrings(input []string) []string {
 		out = append(out, value)
 	}
 	return out
+}
+
+func deriveTaxInvoiceDocumentTag(inv *tax.TaxInvoice) string {
+	if inv == nil {
+		return ""
+	}
+	if sellerName := strings.TrimSpace(inv.SellerName); sellerName != "" {
+		return sellerName
+	}
+	if inv.Buyer != nil {
+		if buyerName := strings.TrimSpace(inv.Buyer.Name); buyerName != "" {
+			return buyerName
+		}
+	}
+	if buyerName := strings.TrimSpace(inv.BuyerName); buyerName != "" {
+		return buyerName
+	}
+	return strings.TrimSpace(inv.References)
 }
 
 func errorText(err error, fallback string) string {

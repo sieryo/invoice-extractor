@@ -384,7 +384,7 @@ func (r *CollectionActionRepository) ListSnapshotDocuments(
 
 	query := `
 		SELECT
-			id, source_name, source_order, status, source_sha256, normalized_ref, audit_ref, raw_ref
+			id, source_name, source_order, status, document_tag, source_sha256, normalized_ref, audit_ref, raw_ref
 		FROM documents
 		WHERE collection_id = ?
 		  AND document_type = ?
@@ -402,10 +402,11 @@ func (r *CollectionActionRepository) ListSnapshotDocuments(
 	out := make([]action.SnapshotDocument, 0)
 	for rows.Next() {
 		var (
-			doc       action.SnapshotDocument
-			sourceSHA sql.NullString
-			auditRef  sql.NullString
-			rawRef    sql.NullString
+			doc         action.SnapshotDocument
+			documentTag sql.NullString
+			sourceSHA   sql.NullString
+			auditRef    sql.NullString
+			rawRef      sql.NullString
 		)
 
 		if err := rows.Scan(
@@ -413,6 +414,7 @@ func (r *CollectionActionRepository) ListSnapshotDocuments(
 			&doc.SourceName,
 			&doc.SourceOrder,
 			&doc.Status,
+			&documentTag,
 			&sourceSHA,
 			&doc.NormalizedRef,
 			&auditRef,
@@ -421,6 +423,9 @@ func (r *CollectionActionRepository) ListSnapshotDocuments(
 			return nil, err
 		}
 
+		if documentTag.Valid {
+			doc.DocumentTag = documentTag.String
+		}
 		if sourceSHA.Valid {
 			doc.SourceSHA256 = sourceSHA.String
 		}
@@ -457,7 +462,7 @@ func (r *CollectionActionRepository) ListSnapshotDocumentsByIDs(
 
 	query := `
 		SELECT
-			id, source_name, source_order, status, source_sha256, normalized_ref, audit_ref, raw_ref
+			id, source_name, source_order, status, document_tag, source_sha256, normalized_ref, audit_ref, raw_ref
 		FROM documents
 		WHERE collection_id = ?
 		  AND document_type = ?
@@ -475,10 +480,11 @@ func (r *CollectionActionRepository) ListSnapshotDocumentsByIDs(
 	out := make([]action.SnapshotDocument, 0, len(documentIDs))
 	for rows.Next() {
 		var (
-			doc       action.SnapshotDocument
-			sourceSHA sql.NullString
-			auditRef  sql.NullString
-			rawRef    sql.NullString
+			doc         action.SnapshotDocument
+			documentTag sql.NullString
+			sourceSHA   sql.NullString
+			auditRef    sql.NullString
+			rawRef      sql.NullString
 		)
 
 		if err := rows.Scan(
@@ -486,6 +492,7 @@ func (r *CollectionActionRepository) ListSnapshotDocumentsByIDs(
 			&doc.SourceName,
 			&doc.SourceOrder,
 			&doc.Status,
+			&documentTag,
 			&sourceSHA,
 			&doc.NormalizedRef,
 			&auditRef,
@@ -494,6 +501,9 @@ func (r *CollectionActionRepository) ListSnapshotDocumentsByIDs(
 			return nil, err
 		}
 
+		if documentTag.Valid {
+			doc.DocumentTag = documentTag.String
+		}
 		if sourceSHA.Valid {
 			doc.SourceSHA256 = sourceSHA.String
 		}

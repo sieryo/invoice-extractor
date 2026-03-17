@@ -241,6 +241,7 @@ func BuildDocumentTypeSpec(docType DocumentType) (DocumentTypeSpec, bool) {
 								{Token: "sellerNPWP", Label: "NPWP Penjual", Description: "NPWP PKP penjual", Example: "{{sellerNPWP}}"},
 								{Token: "invoiceDate", Label: "Tanggal Faktur", Description: "Tanggal faktur (format YYYY-MM-DD)", Example: "{{invoiceDate}}"},
 								{Token: "sourceName", Label: "Nama File Asal", Description: "Nama file upload tanpa ekstensi", Example: "{{sourceName}}"},
+								{Token: "documentTag", Label: "Tag Dokumen", Description: "Tag hasil ekstraksi dokumen", Example: "{{documentTag}}"},
 							},
 							Description: "Gunakan placeholder seperti {{references}} - {{buyerName}}. Ekstensi .pdf akan ditambahkan otomatis.",
 							Placeholder: "{{references}} - {{buyerName}}",
@@ -272,7 +273,53 @@ func BuildDocumentTypeSpec(docType DocumentType) (DocumentTypeSpec, bool) {
 				},
 			},
 		}, true
+	case DocumentTypePDFBukpotBPPU:
+		return buildBukpotDocumentTypeSpec(
+			docType,
+			"Bukpot BPPU",
+			"Dokumen PDF bukti potong BPPU untuk ekstraksi data bukpot.",
+		), true
+	case DocumentTypePDFBukpotBP21:
+		return buildBukpotDocumentTypeSpec(
+			docType,
+			"Bukpot BP21",
+			"Dokumen PDF bukti potong BP21 untuk ekstraksi data bukpot.",
+		), true
+	case DocumentTypePDFBukpotBPA1:
+		return buildBukpotDocumentTypeSpec(
+			docType,
+			"Bukpot BPA1",
+			"Dokumen PDF bukti potong BPA1 untuk ekstraksi data bukpot.",
+		), true
 	default:
 		return DocumentTypeSpec{}, false
+	}
+}
+
+func buildBukpotDocumentTypeSpec(
+	docType DocumentType,
+	label string,
+	description string,
+) DocumentTypeSpec {
+	return DocumentTypeSpec{
+		DocumentType: docType,
+		Label:        label,
+		Description:  description,
+		Upload: UploadRuleSpec{
+			AcceptExtensions: []string{".pdf"},
+			AcceptMIMETypes:  []string{"application/pdf"},
+			MaxChunkMB:       15,
+			MaxFilesPerBatch: 2000,
+		},
+		Ingest: IngestRuleSpec{
+			KeepRaw:            true,
+			DeleteTempAfterRun: true,
+			Artifacts: []ArtifactRuleSpec{
+				{Kind: "raw", Required: false},
+				{Kind: "normalized", Required: true},
+				{Kind: "audit", Required: false},
+			},
+		},
+		Actions: []ActionSpec{},
 	}
 }

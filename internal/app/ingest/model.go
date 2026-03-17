@@ -72,6 +72,7 @@ type DocumentRecord struct {
 	UserID          string                `json:"userId"`
 	CollectionID    string                `json:"collectionId"`
 	DocumentType    document.DocumentType `json:"documentType"`
+	DocumentTag     string                `json:"documentTag,omitempty"`
 	SourceName      string                `json:"sourceName"`
 	SourceSizeBytes int64                 `json:"sourceSizeBytes"`
 	SourceMIME      string                `json:"sourceMime"`

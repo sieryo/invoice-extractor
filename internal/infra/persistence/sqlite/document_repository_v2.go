@@ -24,7 +24,7 @@ func (r *DocumentRepositoryV2) FindByID(
 	row := r.db.QueryRowContext(ctx, `
 		SELECT
 			id, user_id, collection_id, document_type,
-			source_name, source_size_bytes, source_mime, source_sha256, source_order,
+			document_tag, source_name, source_size_bytes, source_mime, source_sha256, source_order,
 			status, message, normalized_ref, audit_ref, raw_ref
 		FROM documents
 		WHERE id = ?
@@ -34,11 +34,12 @@ func (r *DocumentRepositoryV2) FindByID(
 	var (
 		doc ingest.DocumentRecord
 
-		sourceSize sql.NullInt64
-		sourceMime sql.NullString
-		message    sql.NullString
-		auditRef   sql.NullString
-		rawRef     sql.NullString
+		documentTag sql.NullString
+		sourceSize  sql.NullInt64
+		sourceMime  sql.NullString
+		message     sql.NullString
+		auditRef    sql.NullString
+		rawRef      sql.NullString
 	)
 
 	if err := row.Scan(
@@ -46,6 +47,7 @@ func (r *DocumentRepositoryV2) FindByID(
 		&doc.UserID,
 		&doc.CollectionID,
 		&doc.DocumentType,
+		&documentTag,
 		&doc.SourceName,
 		&sourceSize,
 		&sourceMime,
@@ -65,6 +67,9 @@ func (r *DocumentRepositoryV2) FindByID(
 
 	if sourceSize.Valid {
 		doc.SourceSizeBytes = sourceSize.Int64
+	}
+	if documentTag.Valid {
+		doc.DocumentTag = documentTag.String
 	}
 	if sourceMime.Valid {
 		doc.SourceMIME = sourceMime.String
@@ -93,7 +98,7 @@ func (r *DocumentRepositoryV2) FindActiveByHash(
 	row := r.db.QueryRowContext(ctx, `
 		SELECT
 			id, user_id, collection_id, document_type,
-			source_name, source_size_bytes, source_mime, source_sha256, source_order,
+			document_tag, source_name, source_size_bytes, source_mime, source_sha256, source_order,
 			status, message, normalized_ref, audit_ref, raw_ref
 		FROM documents
 		WHERE collection_id = ?
@@ -106,11 +111,12 @@ func (r *DocumentRepositoryV2) FindActiveByHash(
 	var (
 		doc ingest.DocumentRecord
 
-		sourceSize sql.NullInt64
-		sourceMime sql.NullString
-		message    sql.NullString
-		auditRef   sql.NullString
-		rawRef     sql.NullString
+		documentTag sql.NullString
+		sourceSize  sql.NullInt64
+		sourceMime  sql.NullString
+		message     sql.NullString
+		auditRef    sql.NullString
+		rawRef      sql.NullString
 	)
 
 	if err := row.Scan(
@@ -118,6 +124,7 @@ func (r *DocumentRepositoryV2) FindActiveByHash(
 		&doc.UserID,
 		&doc.CollectionID,
 		&doc.DocumentType,
+		&documentTag,
 		&doc.SourceName,
 		&sourceSize,
 		&sourceMime,
@@ -137,6 +144,9 @@ func (r *DocumentRepositoryV2) FindActiveByHash(
 
 	if sourceSize.Valid {
 		doc.SourceSizeBytes = sourceSize.Int64
+	}
+	if documentTag.Valid {
+		doc.DocumentTag = documentTag.String
 	}
 	if sourceMime.Valid {
 		doc.SourceMIME = sourceMime.String
@@ -160,14 +170,15 @@ func (r *DocumentRepositoryV2) Create(ctx context.Context, doc *ingest.DocumentR
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO documents (
 			id, user_id, collection_id, document_type,
-			source_name, source_size_bytes, source_mime, source_sha256, source_order,
+			document_tag, source_name, source_size_bytes, source_mime, source_sha256, source_order,
 			status, message, normalized_ref, audit_ref, raw_ref
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		doc.ID,
 		doc.UserID,
 		doc.CollectionID,
 		doc.DocumentType,
+		doc.DocumentTag,
 		doc.SourceName,
 		doc.SourceSizeBytes,
 		doc.SourceMIME,
@@ -192,7 +203,7 @@ func (r *DocumentRepositoryV2) ListByCollection(
 	query := `
 		SELECT
 			id, user_id, collection_id, document_type,
-			source_name, source_size_bytes, source_mime, source_sha256, source_order,
+			document_tag, source_name, source_size_bytes, source_mime, source_sha256, source_order,
 			status, message, normalized_ref, audit_ref, raw_ref
 		FROM documents
 		WHERE collection_id = ?
@@ -220,11 +231,12 @@ func (r *DocumentRepositoryV2) ListByCollection(
 		var (
 			doc ingest.DocumentRecord
 
-			sourceSize sql.NullInt64
-			sourceMime sql.NullString
-			message    sql.NullString
-			auditRef   sql.NullString
-			rawRef     sql.NullString
+			documentTag sql.NullString
+			sourceSize  sql.NullInt64
+			sourceMime  sql.NullString
+			message     sql.NullString
+			auditRef    sql.NullString
+			rawRef      sql.NullString
 		)
 
 		if err := rows.Scan(
@@ -232,6 +244,7 @@ func (r *DocumentRepositoryV2) ListByCollection(
 			&doc.UserID,
 			&doc.CollectionID,
 			&doc.DocumentType,
+			&documentTag,
 			&doc.SourceName,
 			&sourceSize,
 			&sourceMime,
@@ -248,6 +261,9 @@ func (r *DocumentRepositoryV2) ListByCollection(
 
 		if sourceSize.Valid {
 			doc.SourceSizeBytes = sourceSize.Int64
+		}
+		if documentTag.Valid {
+			doc.DocumentTag = documentTag.String
 		}
 		if sourceMime.Valid {
 			doc.SourceMIME = sourceMime.String
