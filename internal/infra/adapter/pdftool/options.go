@@ -10,7 +10,7 @@ type ExtractOptions struct {
 func DefaultOptions() ExtractOptions {
 	return ExtractOptions{
 		Layout:   true,
-		Table:    false,
+		Table:    true,
 		NoPgBrk:  true,
 		Encoding: "UTF-8",
 	}
