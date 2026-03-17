@@ -153,7 +153,7 @@ func (s *TaxInvoiceExtractService) extractOne(
 		return BatchExtractItem{}, err
 	}
 
-	info, normalized, err := ParseTaxInvoiceText(text)
+	info, normalized, err := ParseTaxInvoiceText(file.Name, text)
 	if err != nil {
 		return BatchExtractItem{}, err
 	}
@@ -174,7 +174,8 @@ func buildWarnings(info *tax.TaxInvoice) []string {
 		return []string{"missing tax invoice payload"}
 	}
 
-	warnings := make([]string, 0, 4)
+	warnings := make([]string, 0, 8)
+	warnings = append(warnings, info.Anomalies...)
 	if info.Number == "" {
 		warnings = append(warnings, "missing tax invoice number")
 	}

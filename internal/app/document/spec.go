@@ -37,6 +37,8 @@ type ActionParamFieldSpec struct {
 	Default     any                     `json:"default,omitempty"`
 	Options     []ActionParamOptionSpec `json:"options,omitempty"`
 	Rules       []ActionParamRuleSpec   `json:"rules,omitempty"`
+	UI          *ActionParamUISpec      `json:"ui,omitempty"`
+	Suggestions []ActionParamSuggestion `json:"suggestions,omitempty"`
 	Description string                  `json:"description,omitempty"`
 	Placeholder string                  `json:"placeholder,omitempty"`
 }
@@ -44,6 +46,17 @@ type ActionParamFieldSpec struct {
 type ActionParamOptionSpec struct {
 	Label string `json:"label"`
 	Value string `json:"value"`
+}
+
+type ActionParamSuggestion struct {
+	Token       string `json:"token"`
+	Label       string `json:"label,omitempty"`
+	Description string `json:"description,omitempty"`
+	Example     string `json:"example,omitempty"`
+}
+
+type ActionParamUISpec struct {
+	Editor string `json:"editor,omitempty"`
 }
 
 type ActionParamRuleSpec struct {
@@ -180,8 +193,8 @@ func BuildDocumentTypeSpec(docType DocumentType) (DocumentTypeSpec, bool) {
 	case DocumentTypePDFTaxInvoice:
 		return DocumentTypeSpec{
 			DocumentType: docType,
-			Label:        "Tax Invoice",
-			Description:  "PDF tax invoice for extraction and future export actions.",
+			Label:        "Faktur Pajak",
+			Description:  "Dokumen PDF faktur pajak Coretax untuk ekstraksi dan action lanjutan.",
 			Upload: UploadRuleSpec{
 				AcceptExtensions: []string{".pdf"},
 				AcceptMIMETypes:  []string{"application/pdf"},
@@ -198,6 +211,50 @@ func BuildDocumentTypeSpec(docType DocumentType) (DocumentTypeSpec, bool) {
 				},
 			},
 			Actions: []ActionSpec{
+				{
+					ActionType:  "rename_tax_invoice",
+					Label:       "Rename Faktur Pajak",
+					Description: "Ganti nama file faktur pajak berdasarkan template placeholder dan hasilkan ZIP.",
+					Enabled:     true,
+					Selection: ActionSelectionSpec{
+						Mode:           "manual",
+						AllowCheckAll:  true,
+						AllowedStatus:  []string{"ready", "warning"},
+						MinDocumentCnt: 1,
+					},
+					Params: []ActionParamFieldSpec{
+						{
+							Key:      "filenameTemplate",
+							Type:     ActionParamTypeString,
+							Label:    "Template Nama File",
+							Required: true,
+							Default:  "{{references}} - {{buyerName}}",
+							UI: &ActionParamUISpec{
+								Editor: "template",
+							},
+							Suggestions: []ActionParamSuggestion{
+								{Token: "references", Label: "Referensi", Description: "Nilai referensi dari faktur pajak", Example: "{{references}}"},
+								{Token: "invoiceNumber", Label: "Nomor Faktur", Description: "Nomor seri faktur pajak", Example: "{{invoiceNumber}}"},
+								{Token: "buyerName", Label: "Nama Pembeli", Description: "Nama pembeli dari faktur pajak", Example: "{{buyerName}}"},
+								{Token: "buyerNPWP", Label: "NPWP Pembeli", Description: "NPWP pembeli", Example: "{{buyerNPWP}}"},
+								{Token: "sellerName", Label: "Nama Penjual", Description: "Nama PKP penjual", Example: "{{sellerName}}"},
+								{Token: "sellerNPWP", Label: "NPWP Penjual", Description: "NPWP PKP penjual", Example: "{{sellerNPWP}}"},
+								{Token: "invoiceDate", Label: "Tanggal Faktur", Description: "Tanggal faktur (format YYYY-MM-DD)", Example: "{{invoiceDate}}"},
+								{Token: "sourceName", Label: "Nama File Asal", Description: "Nama file upload tanpa ekstensi", Example: "{{sourceName}}"},
+							},
+							Description: "Gunakan placeholder seperti {{references}} - {{buyerName}}. Ekstensi .pdf akan ditambahkan otomatis.",
+							Placeholder: "{{references}} - {{buyerName}}",
+						},
+					},
+					Outputs: []ActionOutputSpec{
+						{
+							Kind:       "file",
+							MimeType:   "application/zip",
+							Ext:        "zip",
+							DownloadOK: true,
+						},
+					},
+				},
 				{
 					ActionType:  "export_tax_invoice_zip",
 					Label:       "Export Tax Invoice ZIP",

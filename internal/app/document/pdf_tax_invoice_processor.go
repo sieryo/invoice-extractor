@@ -1,13 +1,21 @@
 package document
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
 
+	"github.com/sieryo/invoice-extractor/internal/app/invoice/tax"
 	taxextract "github.com/sieryo/invoice-extractor/internal/app/invoice/tax/extract"
 	dfile "github.com/sieryo/invoice-extractor/internal/domain/file"
 	"github.com/sieryo/invoice-extractor/internal/domain/shared"
@@ -16,6 +24,30 @@ import (
 type PDFTaxInvoiceProcessor struct {
 	extractor *taxextract.TaxInvoiceExtractService
 	fileStore dfile.FileStore
+}
+
+const (
+	taxInvoiceRenameActionType       = "rename_tax_invoice"
+	defaultTaxInvoiceNameTemplate    = "{{references}} - {{buyerName}}"
+	taxInvoiceDefaultFallbackName    = "tax-invoice"
+	taxInvoiceNormalizedReadFallback = "invalid normalized tax invoice payload"
+)
+
+var taxInvoiceTemplateTokenRegex = regexp.MustCompile(`\{\{\s*([a-zA-Z0-9_]+)\s*\}\}`)
+var taxInvoiceInvalidFilenameCharRegex = regexp.MustCompile(`[<>:"/\\|?*\x00-\x1F]`)
+
+type taxInvoiceRenameParams struct {
+	FilenameTemplate string `json:"filenameTemplate"`
+}
+
+type taxInvoiceNormalizedPayload struct {
+	Invoice  *tax.TaxInvoice `json:"invoice"`
+	Warnings []string        `json:"warnings,omitempty"`
+}
+
+type renamedTaxInvoiceFile struct {
+	Name string
+	Data []byte
 }
 
 func NewPDFTaxInvoiceProcessor(
@@ -124,13 +156,166 @@ func (p *PDFTaxInvoiceProcessor) Ingest(ctx context.Context, req IngestRequest) 
 }
 
 func (p *PDFTaxInvoiceProcessor) RunAction(ctx context.Context, req ActionRequest) (ActionResult, error) {
-	return ActionResult{
-		ActionID:   req.ActionID,
-		ActionType: req.ActionType,
-		Status:     "failed",
-		StartedAt:  req.RequestedAt,
-		FinishedAt: time.Now(),
-	}, fmt.Errorf("%w: action %s for %s", ErrProcessorNotImplemented, req.ActionType, p.Type())
+	result := ActionResult{
+		ActionID:    req.ActionID,
+		ActionType:  req.ActionType,
+		StartedAt:   req.RequestedAt,
+		ItemResults: make([]ActionItemResult, 0, len(req.SnapshotDocs)),
+		Outputs:     make([]ActionOutput, 0, 1),
+	}
+
+	if strings.TrimSpace(req.ActionType) != taxInvoiceRenameActionType {
+		result.Status = "failed"
+		result.Message = "unsupported action for pdf_tax_invoice"
+		result.FinishedAt = time.Now()
+		return result, fmt.Errorf("%w: action %s for %s", ErrProcessorNotImplemented, req.ActionType, p.Type())
+	}
+
+	if len(req.SnapshotDocs) == 0 {
+		result.Status = "failed"
+		result.Message = "snapshot is empty"
+		result.FinishedAt = time.Now()
+		return result, fmt.Errorf("snapshot is empty")
+	}
+
+	params, err := parseTaxInvoiceRenameParams(req.Params)
+	if err != nil {
+		result.Status = "failed"
+		result.Message = "invalid action params"
+		result.FinishedAt = time.Now()
+		return result, err
+	}
+
+	hasWarning := false
+	outputNameSet := make(map[string]struct{}, len(req.SnapshotDocs))
+	renamedFiles := make([]renamedTaxInvoiceFile, 0, len(req.SnapshotDocs))
+
+	for _, doc := range req.SnapshotDocs {
+		if strings.TrimSpace(doc.NormalizedRef) == "" {
+			result.ItemResults = append(result.ItemResults, ActionItemResult{
+				DocumentID: doc.DocumentID,
+				Status:     "failed",
+				Message:    fmt.Sprintf("%s: normalized artifact is missing", doc.SourceName),
+				Error:      "normalized artifact is missing",
+			})
+			continue
+		}
+		if strings.TrimSpace(doc.RawRef) == "" {
+			result.ItemResults = append(result.ItemResults, ActionItemResult{
+				DocumentID: doc.DocumentID,
+				Status:     "failed",
+				Message:    fmt.Sprintf("%s: raw artifact is missing", doc.SourceName),
+				Error:      "raw artifact is missing",
+			})
+			continue
+		}
+
+		payload, loadErr := p.loadTaxInvoiceNormalizedPayload(ctx, req.CollectionID, doc.NormalizedRef)
+		if loadErr != nil || payload.Invoice == nil {
+			result.ItemResults = append(result.ItemResults, ActionItemResult{
+				DocumentID: doc.DocumentID,
+				Status:     "failed",
+				Message:    fmt.Sprintf("%s: failed to read normalized tax invoice", doc.SourceName),
+				Error:      errorText(loadErr, taxInvoiceNormalizedReadFallback),
+			})
+			continue
+		}
+
+		filename, templateWarnings := renderTaxInvoiceFilename(
+			params.FilenameTemplate,
+			payload.Invoice,
+			doc.SourceName,
+		)
+		filename = ensureUniqueArchiveFilename(filename, outputNameSet)
+
+		rawBytes, readErr := p.fileStore.Read(ctx, req.CollectionID, doc.RawRef)
+		if readErr != nil {
+			result.ItemResults = append(result.ItemResults, ActionItemResult{
+				DocumentID: doc.DocumentID,
+				Status:     "failed",
+				Message:    fmt.Sprintf("%s: failed to read raw source file", doc.SourceName),
+				Error:      readErr.Error(),
+			})
+			continue
+		}
+
+		itemWarnings := uniqueStrings(append(payload.Warnings, templateWarnings...))
+		itemStatus := "success"
+		itemMessage := fmt.Sprintf("renamed to %s", filename)
+		if len(itemWarnings) > 0 {
+			itemStatus = "warning"
+			itemMessage = fmt.Sprintf("renamed with warnings to %s", filename)
+			hasWarning = true
+		}
+
+		result.ItemResults = append(result.ItemResults, ActionItemResult{
+			DocumentID: doc.DocumentID,
+			Status:     itemStatus,
+			Message:    itemMessage,
+			Warnings:   itemWarnings,
+		})
+
+		renamedFiles = append(renamedFiles, renamedTaxInvoiceFile{
+			Name: filename,
+			Data: rawBytes,
+		})
+	}
+
+	result.Total = len(req.SnapshotDocs)
+	result.Success, result.Warning, result.Failed, result.Skipped = summarizeActionItems(result.ItemResults)
+
+	if result.Success == 0 && result.Warning == 0 {
+		result.Status = "failed"
+		result.Message = "rename failed for all selected documents"
+		result.FinishedAt = time.Now()
+		return result, errors.New("no tax invoice document was renamed successfully")
+	}
+
+	zipBytes, zipErr := buildTaxInvoiceZipArchive(renamedFiles)
+	if zipErr != nil {
+		result.Status = "failed"
+		result.Message = "failed to build zip output"
+		result.FinishedAt = time.Now()
+		return result, zipErr
+	}
+
+	zipName := fmt.Sprintf("renamed_tax_invoices_%s.zip", time.Now().Format("20060102_150405"))
+	outputRef, saveErr := p.fileStore.SaveArchive(ctx, req.CollectionID, zipName, zipBytes)
+	if saveErr != nil {
+		result.Status = "failed"
+		result.Message = "failed to save zip output"
+		result.FinishedAt = time.Now()
+		return result, saveErr
+	}
+
+	zipSum := sha256.Sum256(zipBytes)
+	result.Outputs = append(result.Outputs, ActionOutput{
+		Kind:      "file",
+		Name:      zipName,
+		ObjectRef: outputRef,
+		MimeType:  "application/zip",
+		SizeBytes: int64(len(zipBytes)),
+		Checksum:  hex.EncodeToString(zipSum[:]),
+	})
+
+	if result.Failed > 0 {
+		result.Status = "partial"
+		result.Message = fmt.Sprintf(
+			"rename completed with partial results (%d success, %d warning, %d failed)",
+			result.Success,
+			result.Warning,
+			result.Failed,
+		)
+	} else if hasWarning {
+		result.Status = "warning"
+		result.Message = "rename completed with warnings"
+	} else {
+		result.Status = "success"
+		result.Message = "rename completed"
+	}
+
+	result.FinishedAt = time.Now()
+	return result, nil
 }
 
 func (p *PDFTaxInvoiceProcessor) buildSuccessItem(
@@ -239,4 +424,274 @@ func buildTaxExtractFailedItem(
 		Message:      "extract failed",
 		Errors:       []string{e.Error},
 	}
+}
+
+func parseTaxInvoiceRenameParams(raw json.RawMessage) (taxInvoiceRenameParams, error) {
+	params := taxInvoiceRenameParams{
+		FilenameTemplate: defaultTaxInvoiceNameTemplate,
+	}
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed == "" || strings.EqualFold(trimmed, "null") {
+		return params, nil
+	}
+
+	if err := json.Unmarshal(raw, &params); err != nil {
+		return params, fmt.Errorf("invalid rename params: %w", err)
+	}
+
+	params.FilenameTemplate = strings.TrimSpace(params.FilenameTemplate)
+	if params.FilenameTemplate == "" {
+		params.FilenameTemplate = defaultTaxInvoiceNameTemplate
+	}
+	return params, nil
+}
+
+func (p *PDFTaxInvoiceProcessor) loadTaxInvoiceNormalizedPayload(
+	ctx context.Context,
+	collectionID string,
+	ref string,
+) (*taxInvoiceNormalizedPayload, error) {
+	b, err := p.fileStore.Read(ctx, collectionID, ref)
+	if err != nil {
+		return nil, err
+	}
+
+	var payload taxInvoiceNormalizedPayload
+	if err := json.Unmarshal(b, &payload); err == nil && payload.Invoice != nil {
+		payload.Warnings = uniqueStrings(payload.Warnings)
+		return &payload, nil
+	}
+
+	var inv tax.TaxInvoice
+	if err := json.Unmarshal(b, &inv); err == nil {
+		if strings.TrimSpace(inv.InvoiceNumber) == "" &&
+			strings.TrimSpace(inv.References) == "" &&
+			strings.TrimSpace(inv.BuyerName) == "" &&
+			strings.TrimSpace(inv.Number) == "" {
+			return nil, errors.New(taxInvoiceNormalizedReadFallback)
+		}
+		return &taxInvoiceNormalizedPayload{
+			Invoice:  &inv,
+			Warnings: nil,
+		}, nil
+	}
+
+	return nil, errors.New(taxInvoiceNormalizedReadFallback)
+}
+
+func renderTaxInvoiceFilename(
+	filenameTemplate string,
+	inv *tax.TaxInvoice,
+	sourceName string,
+) (string, []string) {
+	template := strings.TrimSpace(filenameTemplate)
+	if template == "" {
+		template = defaultTaxInvoiceNameTemplate
+	}
+
+	values := buildTaxInvoiceTemplateMap(inv, sourceName)
+	missingTokens := make([]string, 0, 2)
+
+	rendered := taxInvoiceTemplateTokenRegex.ReplaceAllStringFunc(template, func(match string) string {
+		sub := taxInvoiceTemplateTokenRegex.FindStringSubmatch(match)
+		if len(sub) < 2 {
+			return ""
+		}
+
+		token := sub[1]
+		value, ok := lookupTaxInvoiceTemplateValue(values, token)
+		if !ok {
+			missingTokens = append(missingTokens, token)
+			return ""
+		}
+		return value
+	})
+
+	cleanName := sanitizeTaxInvoiceFilename(rendered)
+	warnings := make([]string, 0, 2)
+	if cleanName == "" {
+		fallbackName := sanitizeTaxInvoiceFilename(values["references"] + " - " + values["buyername"])
+		if fallbackName == "" {
+			fallbackName = sanitizeTaxInvoiceFilename(values["sourcename"])
+		}
+		if fallbackName == "" {
+			fallbackName = taxInvoiceDefaultFallbackName
+		}
+		cleanName = fallbackName
+		warnings = append(warnings, "template resolved to empty filename, fallback name was used")
+	}
+
+	if len(missingTokens) > 0 {
+		warnings = append(
+			warnings,
+			fmt.Sprintf(
+				"unknown template placeholder(s): %s",
+				strings.Join(uniqueStrings(missingTokens), ", "),
+			),
+		)
+	}
+
+	if !strings.HasSuffix(strings.ToLower(cleanName), ".pdf") {
+		cleanName += ".pdf"
+	}
+
+	return cleanName, uniqueStrings(warnings)
+}
+
+func buildTaxInvoiceTemplateMap(
+	inv *tax.TaxInvoice,
+	sourceName string,
+) map[string]string {
+	values := map[string]string{
+		"sourcename": sanitizeTaxInvoiceFilename(strings.TrimSuffix(sourceName, filepath.Ext(sourceName))),
+	}
+	if inv == nil {
+		return values
+	}
+
+	invoiceDate := ""
+	if !inv.InvoiceDate.IsZero() {
+		invoiceDate = inv.InvoiceDate.Format("2006-01-02")
+	}
+
+	values["reference"] = strings.TrimSpace(inv.References)
+	values["references"] = strings.TrimSpace(inv.References)
+	values["invoicenumber"] = strings.TrimSpace(inv.InvoiceNumber)
+	values["buyername"] = strings.TrimSpace(inv.BuyerName)
+	values["buyernpwp"] = strings.TrimSpace(inv.BuyerNPWP)
+	values["sellername"] = strings.TrimSpace(inv.SellerName)
+	values["sellernpwp"] = strings.TrimSpace(inv.SellerNPWP)
+	values["invoicedate"] = invoiceDate
+
+	if inv.Buyer != nil {
+		if values["buyername"] == "" {
+			values["buyername"] = strings.TrimSpace(inv.Buyer.Name)
+		}
+		if inv.Buyer.TaxID != nil && values["buyernpwp"] == "" {
+			values["buyernpwp"] = strings.TrimSpace(*inv.Buyer.TaxID)
+		}
+	}
+
+	if inv.Number != "" && values["references"] == "" {
+		values["references"] = strings.TrimSpace(inv.Number)
+		values["reference"] = strings.TrimSpace(inv.Number)
+	}
+
+	return values
+}
+
+func lookupTaxInvoiceTemplateValue(values map[string]string, rawToken string) (string, bool) {
+	token := normalizeTaxInvoiceTemplateToken(rawToken)
+	value, ok := values[token]
+	if !ok {
+		return "", false
+	}
+	return strings.TrimSpace(value), true
+}
+
+func normalizeTaxInvoiceTemplateToken(token string) string {
+	normalized := strings.ToLower(strings.TrimSpace(token))
+	normalized = strings.ReplaceAll(normalized, "_", "")
+	return normalized
+}
+
+func sanitizeTaxInvoiceFilename(raw string) string {
+	value := strings.TrimSpace(raw)
+	value = taxInvoiceInvalidFilenameCharRegex.ReplaceAllString(value, " ")
+	value = strings.ReplaceAll(value, "..", " ")
+	value = strings.Join(strings.Fields(value), " ")
+	value = strings.Trim(value, ".-_ ")
+	return value
+}
+
+func ensureUniqueArchiveFilename(name string, used map[string]struct{}) string {
+	candidate := strings.TrimSpace(name)
+	if candidate == "" {
+		candidate = taxInvoiceDefaultFallbackName + ".pdf"
+	}
+
+	ext := filepath.Ext(candidate)
+	base := strings.TrimSuffix(candidate, ext)
+	if ext == "" {
+		ext = ".pdf"
+	}
+
+	lowered := strings.ToLower(candidate)
+	if _, exists := used[lowered]; !exists {
+		used[lowered] = struct{}{}
+		return candidate
+	}
+
+	for i := 2; ; i++ {
+		next := fmt.Sprintf("%s (%d)%s", base, i, ext)
+		key := strings.ToLower(next)
+		if _, exists := used[key]; exists {
+			continue
+		}
+		used[key] = struct{}{}
+		return next
+	}
+}
+
+func uniqueStrings(input []string) []string {
+	if len(input) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(input))
+	seen := make(map[string]struct{}, len(input))
+	for _, raw := range input {
+		value := strings.TrimSpace(raw)
+		if value == "" {
+			continue
+		}
+		key := strings.ToLower(value)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, value)
+	}
+	return out
+}
+
+func errorText(err error, fallback string) string {
+	if err == nil {
+		return fallback
+	}
+	msg := strings.TrimSpace(err.Error())
+	if msg == "" {
+		return fallback
+	}
+	return msg
+}
+
+func buildTaxInvoiceZipArchive(files []renamedTaxInvoiceFile) ([]byte, error) {
+	if len(files) == 0 {
+		return nil, errors.New("no renamed tax invoice files to archive")
+	}
+
+	buf := bytes.NewBuffer(nil)
+	zipWriter := zip.NewWriter(buf)
+
+	for _, item := range files {
+		entryName := strings.TrimSpace(item.Name)
+		if entryName == "" {
+			entryName = taxInvoiceDefaultFallbackName + ".pdf"
+		}
+
+		entry, err := zipWriter.Create(filepath.Base(entryName))
+		if err != nil {
+			_ = zipWriter.Close()
+			return nil, err
+		}
+		if _, err := entry.Write(item.Data); err != nil {
+			_ = zipWriter.Close()
+			return nil, err
+		}
+	}
+
+	if err := zipWriter.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
