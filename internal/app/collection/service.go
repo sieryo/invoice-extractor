@@ -31,10 +31,21 @@ func (s *CollectionService) Create(
 	name string,
 	userID string,
 ) (*domain.Collection, error) {
+	normalizedName, err := normalizeCollectionName(name)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.ensureUniqueName(ctx, userID, nil, normalizedName, nil); err != nil {
+		return nil, err
+	}
+
 	now := time.Now()
-	coll := domain.NewCollection(id, userID, name, now)
+	coll := domain.NewCollection(id, userID, normalizedName, now)
 
 	if err := s.collectionRepo.Create(ctx, coll); err != nil {
+		if isUniqueCollectionNameConstraint(err) {
+			return nil, domain.ErrCollectionNameConflict
+		}
 		return nil, err
 	}
 
@@ -48,10 +59,21 @@ func (s *CollectionService) CreateFolder(
 	userID string,
 	parentID *string,
 ) (*domain.Collection, error) {
+	normalizedName, err := normalizeCollectionName(name)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.ensureUniqueName(ctx, userID, parentID, normalizedName, nil); err != nil {
+		return nil, err
+	}
+
 	now := time.Now()
-	folder := domain.NewFolder(id, userID, parentID, name, now)
+	folder := domain.NewFolder(id, userID, parentID, normalizedName, now)
 
 	if err := s.collectionRepo.Create(ctx, folder); err != nil {
+		if isUniqueCollectionNameConstraint(err) {
+			return nil, domain.ErrCollectionNameConflict
+		}
 		return nil, err
 	}
 
@@ -69,18 +91,28 @@ func (s *CollectionService) CreateTypedCollection(
 	if !documentType.IsValid() {
 		return nil, domain.ErrInvalidDocumentType
 	}
+	normalizedName, err := normalizeCollectionName(name)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.ensureUniqueName(ctx, userID, parentID, normalizedName, nil); err != nil {
+		return nil, err
+	}
 
 	now := time.Now()
 	coll := domain.NewTypedCollection(
 		id,
 		userID,
 		parentID,
-		name,
+		normalizedName,
 		documentType,
 		now,
 	)
 
 	if err := s.collectionRepo.Create(ctx, coll); err != nil {
+		if isUniqueCollectionNameConstraint(err) {
+			return nil, domain.ErrCollectionNameConflict
+		}
 		return nil, err
 	}
 
@@ -136,6 +168,48 @@ func (s *CollectionService) Delete(
 	return s.collectionRepo.Delete(ctx, id)
 }
 
+func (s *CollectionService) Rename(
+	ctx context.Context,
+	id string,
+	userID string,
+	name string,
+) (*domain.Collection, error) {
+	normalizedName, err := normalizeCollectionName(name)
+	if err != nil {
+		return nil, err
+	}
+
+	current, err := s.collectionRepo.FindByID(ctx, id)
+	if err != nil || current == nil {
+		return nil, domain.ErrCollectionNotFound
+	}
+	if current.UserID != userID || current.DeletedAt != nil {
+		return nil, domain.ErrCollectionNotFound
+	}
+
+	if strings.EqualFold(strings.TrimSpace(current.Name), normalizedName) {
+		return current, nil
+	}
+
+	if err := s.ensureUniqueName(ctx, userID, current.Parent, normalizedName, &id); err != nil {
+		return nil, err
+	}
+
+	if err := s.collectionRepo.UpdateName(ctx, id, normalizedName); err != nil {
+		if isUniqueCollectionNameConstraint(err) {
+			return nil, domain.ErrCollectionNameConflict
+		}
+		return nil, err
+	}
+
+	updated, err := s.collectionRepo.FindByID(ctx, id)
+	if err != nil || updated == nil {
+		return nil, domain.ErrCollectionNotFound
+	}
+
+	return updated, nil
+}
+
 func (s *CollectionService) GetPath(
 	ctx context.Context,
 	userID string,
@@ -180,4 +254,51 @@ func (s *CollectionService) GetPath(
 	}
 
 	return path, nil
+}
+
+func (s *CollectionService) ensureUniqueName(
+	ctx context.Context,
+	userID string,
+	parentID *string,
+	name string,
+	excludeID *string,
+) error {
+	children, err := s.collectionRepo.ListChildren(ctx, userID, parentID)
+	if err != nil {
+		return err
+	}
+	exclude := ""
+	if excludeID != nil {
+		exclude = strings.TrimSpace(*excludeID)
+	}
+	for _, child := range children {
+		if child == nil || child.DeletedAt != nil {
+			continue
+		}
+		if exclude != "" && child.ID == exclude {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(child.Name), name) {
+			return domain.ErrCollectionNameConflict
+		}
+	}
+	return nil
+}
+
+func normalizeCollectionName(name string) (string, error) {
+	normalized := strings.TrimSpace(name)
+	if normalized == "" {
+		return "", domain.ErrInvalidCollectionName
+	}
+	return normalized, nil
+}
+
+func isUniqueCollectionNameConstraint(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "idx_collections_unique_name_active") ||
+		(strings.Contains(message, "unique constraint failed") &&
+			strings.Contains(message, "collections"))
 }

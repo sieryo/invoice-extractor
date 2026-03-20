@@ -80,6 +80,15 @@ type ActionOutputSpec struct {
 	DownloadOK bool   `json:"downloadable"`
 }
 
+type ActionRequirementSpec struct {
+	Key       string `json:"key"`
+	Label     string `json:"label"`
+	Required  bool   `json:"required"`
+	Satisfied bool   `json:"satisfied"`
+	Code      string `json:"code,omitempty"`
+	Message   string `json:"message,omitempty"`
+}
+
 type ActionArtifactInputSpec struct {
 	Key              string   `json:"key"`
 	ValueType        string   `json:"valueType,omitempty"`
@@ -108,6 +117,7 @@ type ActionSpec struct {
 	Reason         string                    `json:"reason,omitempty"`
 	Selection      ActionSelectionSpec       `json:"selection"`
 	Params         []ActionParamFieldSpec    `json:"params"`
+	Requirements   []ActionRequirementSpec   `json:"requirements,omitempty"`
 	ArtifactInputs []ActionArtifactInputSpec `json:"artifactInputs,omitempty"`
 	Columns        []ActionColumnSpec        `json:"columns,omitempty"`
 	Outputs        []ActionOutputSpec        `json:"outputs"`
@@ -160,7 +170,7 @@ func BuildDocumentTypeSpec(docType DocumentType) (DocumentTypeSpec, bool) {
 				{
 					ActionType:  "export_faktur_keluaran",
 					Label:       "Export e-Faktur",
-					Description: "Export selected invoices to e-Faktur Excel format.",
+					Description: "Export invoice terpilih ke format e-Faktur keluaran Coretax.",
 					Enabled:     true,
 					Selection: ActionSelectionSpec{
 						Mode:           "manual",
@@ -177,6 +187,13 @@ func BuildDocumentTypeSpec(docType DocumentType) (DocumentTypeSpec, bool) {
 							Default:     "faktur-keluaran",
 							Description: "Optional prefix for exported file name.",
 							Placeholder: "faktur-keluaran",
+						},
+					},
+					Requirements: []ActionRequirementSpec{
+						{
+							Key:      "buyerRegistry",
+							Label:    "Buyer Registry",
+							Required: true,
 						},
 					},
 					Outputs: []ActionOutputSpec{

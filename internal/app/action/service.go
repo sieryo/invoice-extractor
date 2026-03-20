@@ -14,14 +14,20 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	appbuyer "github.com/sieryo/invoice-extractor/internal/app/buyer"
 	"github.com/sieryo/invoice-extractor/internal/app/document"
 	dcollection "github.com/sieryo/invoice-extractor/internal/domain/collection"
 )
+
+type BuyerRegistryStatusProvider interface {
+	Status() appbuyer.BuyerRegistryStatus
+}
 
 type Service struct {
 	repo           Repository
 	collectionRepo dcollection.Repository
 	processors     *document.Registry
+	buyerRegistry  BuyerRegistryStatusProvider
 
 	queue   chan string
 	workers int
@@ -40,6 +46,7 @@ func NewService(
 	repo Repository,
 	collectionRepo dcollection.Repository,
 	processors *document.Registry,
+	buyerRegistry BuyerRegistryStatusProvider,
 	workers int,
 ) *Service {
 	if workers < 1 {
@@ -50,6 +57,7 @@ func NewService(
 		repo:           repo,
 		collectionRepo: collectionRepo,
 		processors:     processors,
+		buyerRegistry:  buyerRegistry,
 		queue:          make(chan string, 64),
 		workers:        workers,
 	}
@@ -93,13 +101,21 @@ func (s *Service) RunAction(ctx context.Context, req RunRequest) (*CollectionAct
 	if !ok {
 		return nil, ErrSpecNotFound
 	}
+	docTypeSpec = s.applyRuntimeRequirements(docTypeSpec)
 
 	actionSpec, ok := docTypeSpec.FindActionSpec(actionType)
 	if !ok {
 		return nil, ErrActionNotSupported
 	}
 	if !actionSpec.Enabled {
+		reason := strings.TrimSpace(actionSpec.Reason)
+		if reason != "" {
+			return nil, &DisabledActionError{Reason: reason}
+		}
 		return nil, ErrActionDisabled
+	}
+	if reqErr := validateActionRequirements(actionSpec.Requirements); reqErr != nil {
+		return nil, reqErr
 	}
 
 	allowedStatuses, err := normalizeAllowedStatuses(actionSpec.Selection.AllowedStatus)
@@ -248,6 +264,7 @@ func (s *Service) GetActionSpec(
 	if !ok {
 		return nil, ErrSpecNotFound
 	}
+	spec = s.applyRuntimeRequirements(spec)
 
 	return &spec, nil
 }
@@ -914,6 +931,81 @@ func validateSnapshotStatuses(snapshotDocs []SnapshotDocument, allowed []string)
 		status := strings.ToLower(strings.TrimSpace(doc.Status))
 		if _, ok := allow[status]; !ok {
 			return ErrSnapshotDocStatus
+		}
+	}
+	return nil
+}
+
+func (s *Service) applyRuntimeRequirements(spec document.DocumentTypeSpec) document.DocumentTypeSpec {
+	actions := make([]document.ActionSpec, 0, len(spec.Actions))
+	for _, item := range spec.Actions {
+		actionSpec := item
+		actionSpec.Requirements = append([]document.ActionRequirementSpec(nil), item.Requirements...)
+
+		if spec.DocumentType == document.DocumentTypePDFInvoice &&
+			strings.EqualFold(strings.TrimSpace(actionSpec.ActionType), "export_faktur_keluaran") {
+			actionSpec = s.applyBuyerRegistryRequirement(actionSpec)
+		}
+
+		actions = append(actions, actionSpec)
+	}
+	spec.Actions = actions
+	return spec
+}
+
+func (s *Service) applyBuyerRegistryRequirement(actionSpec document.ActionSpec) document.ActionSpec {
+	status := appbuyer.BuyerRegistryStatus{
+		Loaded:  false,
+		Code:    "BUYER_REGISTRY_STATUS_UNAVAILABLE",
+		Message: "Buyer registry checker tidak tersedia.",
+	}
+	if s.buyerRegistry != nil {
+		status = s.buyerRegistry.Status()
+	}
+
+	updated := false
+	for idx, requirement := range actionSpec.Requirements {
+		if !strings.EqualFold(strings.TrimSpace(requirement.Key), "buyerRegistry") {
+			continue
+		}
+		requirement.Satisfied = status.Loaded
+		requirement.Code = strings.TrimSpace(status.Code)
+		requirement.Message = strings.TrimSpace(status.Message)
+		actionSpec.Requirements[idx] = requirement
+		updated = true
+	}
+
+	if !updated {
+		actionSpec.Requirements = append(actionSpec.Requirements, document.ActionRequirementSpec{
+			Key:       "buyerRegistry",
+			Label:     "Buyer Registry",
+			Required:  true,
+			Satisfied: status.Loaded,
+			Code:      strings.TrimSpace(status.Code),
+			Message:   strings.TrimSpace(status.Message),
+		})
+	}
+
+	if !status.Loaded {
+		actionSpec.Enabled = false
+		reason := strings.TrimSpace(status.Message)
+		if reason == "" {
+			reason = "Buyer registry belum siap."
+		}
+		actionSpec.Reason = reason
+	}
+
+	return actionSpec
+}
+
+func validateActionRequirements(requirements []document.ActionRequirementSpec) error {
+	for _, requirement := range requirements {
+		if !requirement.Required || requirement.Satisfied {
+			continue
+		}
+		return &RequirementError{
+			Code:    strings.TrimSpace(requirement.Code),
+			Message: strings.TrimSpace(requirement.Message),
 		}
 	}
 	return nil

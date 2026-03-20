@@ -8,4 +8,6 @@ var (
 	ErrCollectionNotFound      = errors.New("collection not found")
 	ErrInvalidNodeType         = errors.New("invalid collection node type")
 	ErrInvalidDocumentType     = errors.New("invalid collection document type")
+	ErrInvalidCollectionName   = errors.New("invalid collection name")
+	ErrCollectionNameConflict  = errors.New("collection name already exists")
 )

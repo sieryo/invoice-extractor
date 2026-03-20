@@ -144,6 +144,7 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 		collectionActionRepo,
 		collectionRepo,
 		documentRegistry,
+		buyerRegistryService,
 		1,
 	)
 	actionService.StartPool(context.Background())

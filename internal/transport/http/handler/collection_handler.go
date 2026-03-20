@@ -37,6 +37,10 @@ type CreateCollectionRequest struct {
 	LegacyDocumentType *string `json:"document_type,omitempty"`
 }
 
+type RenameCollectionRequest struct {
+	Name string `json:"name"`
+}
+
 func (h *CollectionHandler) CreateCollection(c *fiber.Ctx) error {
 	return h.createNode(c, true)
 }
@@ -108,8 +112,12 @@ func (h *CollectionHandler) createNode(c *fiber.Ctx, legacyDefault bool) error {
 		switch {
 		case errors.Is(err, dcollection.ErrInvalidDocumentType):
 			return SendError(c, fiber.StatusBadRequest, "invalid document_type")
+		case errors.Is(err, dcollection.ErrInvalidCollectionName):
+			return SendError(c, fiber.StatusBadRequest, "nama wajib diisi")
+		case errors.Is(err, dcollection.ErrCollectionNameConflict):
+			return SendError(c, fiber.StatusBadRequest, "nama folder/collection sudah digunakan")
 		default:
-			return SendError(c, fiber.StatusInternalServerError, err.Error())
+			return SendError(c, fiber.StatusInternalServerError, "failed to create collection")
 		}
 	}
 
@@ -212,6 +220,40 @@ func (h *CollectionHandler) GetCollectionPath(c *fiber.Ctx) error {
 	}
 
 	return SendSuccess(c, fiber.StatusOK, nodes, "collection path retrieved successfully")
+}
+
+func (h *CollectionHandler) RenameCollection(c *fiber.Ctx) error {
+	ctx := c.Context()
+	userID, ok := c.Locals("userId").(string)
+	if !ok {
+		return fiber.ErrUnauthorized
+	}
+
+	id := strings.TrimSpace(c.Params("id"))
+	if id == "" {
+		return SendError(c, fiber.StatusBadRequest, "id is required")
+	}
+
+	var req RenameCollectionRequest
+	if err := c.BodyParser(&req); err != nil {
+		return SendError(c, fiber.StatusBadRequest, "invalid request body")
+	}
+
+	updated, err := h.collectionService.Rename(ctx, id, userID, req.Name)
+	if err != nil {
+		switch {
+		case errors.Is(err, dcollection.ErrCollectionNotFound):
+			return SendError(c, fiber.StatusNotFound, "collection not found")
+		case errors.Is(err, dcollection.ErrInvalidCollectionName):
+			return SendError(c, fiber.StatusBadRequest, "nama wajib diisi")
+		case errors.Is(err, dcollection.ErrCollectionNameConflict):
+			return SendError(c, fiber.StatusBadRequest, "nama folder/collection sudah digunakan")
+		default:
+			return SendError(c, fiber.StatusInternalServerError, "failed to rename collection")
+		}
+	}
+
+	return SendSuccess(c, fiber.StatusOK, updated, "collection renamed successfully")
 }
 
 func (h *CollectionHandler) DeleteCollection(c *fiber.Ctx) error {

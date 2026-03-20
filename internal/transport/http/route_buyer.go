@@ -6,23 +6,16 @@ import (
 )
 
 func (s *Server) registerBuyerRoutes(protected fiber.Router) {
-	// Legacy buyer upload handler (for backward compatibility)
-	buyerHandler := handler.NewBuyerUploadHandler(
-		s.appCtx.BuyerRegistry,
-		s.appCtx.BuyerStore,
-		s.appCtx.RootDir,
-	)
-
-	protected.Get("/buyer/isloaded", buyerHandler.IsLoaded)
-	protected.Post("/buyer/upload", buyerHandler.Handle)
-
-	// New buyer registry routes at /config/master-data
 	buyerRegistryHandler := handler.NewBuyerRegistryHandler(
 		s.appCtx.BuyerRegistryService,
 	)
 
+	protected.Get("/buyer/isloaded", buyerRegistryHandler.IsLoaded)
+	protected.Post("/buyer/upload", buyerRegistryHandler.Update)
+
 	config := protected.Group("/config/master-data")
 	config.Get("/buyer", buyerRegistryHandler.List)
-	config.Post("/buyer/upload", buyerRegistryHandler.Update)
+	config.Get("/buyer/spec", buyerRegistryHandler.Spec)
 	config.Get("/buyer/status", buyerRegistryHandler.IsLoaded)
+	config.Post("/buyer/upload", buyerRegistryHandler.Update)
 }

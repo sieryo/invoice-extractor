@@ -212,6 +212,20 @@ func (r *CollectionRepository) UpdateStatus(
 	return r.UpdatePhase(ctx, id, phase)
 }
 
+func (r *CollectionRepository) UpdateName(
+	ctx context.Context,
+	id string,
+	name string,
+) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE collections
+		SET name = ?, updated_at = ?
+		WHERE id = ?
+		  AND deleted_at IS NULL
+	`, name, time.Now(), id)
+	return err
+}
+
 func (r *CollectionRepository) Delete(
 	ctx context.Context,
 	id string,

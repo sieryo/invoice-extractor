@@ -17,5 +17,6 @@ type Repository interface {
 
 	// Legacy compatibility methods.
 	UpdateStatus(ctx context.Context, id string, status Status) error
+	UpdateName(ctx context.Context, id string, name string) error
 	Delete(ctx context.Context, id string) error
 }

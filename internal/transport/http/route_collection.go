@@ -13,6 +13,7 @@ func (s *Server) registerCollectionRoutes(protected fiber.Router) {
 	protected.Get("/collections", collectionHandler.ListChildren)
 	protected.Get("/collections/:id", collectionHandler.GetCollectionByID)
 	protected.Get("/collections/:id/path", collectionHandler.GetCollectionPath)
+	protected.Patch("/collections/:id", collectionHandler.RenameCollection)
 	protected.Delete("/collections/:id", collectionHandler.DeleteCollection)
 
 	protected.Post("/collection/create", collectionHandler.CreateCollection)
@@ -20,6 +21,7 @@ func (s *Server) registerCollectionRoutes(protected fiber.Router) {
 
 	protected.Get("/collection/:id", collectionHandler.GetCollectionByID)
 	protected.Get("/collection/:id/path", collectionHandler.GetCollectionPath)
+	protected.Patch("/collection/:id", collectionHandler.RenameCollection)
 	protected.Delete("/collection/:id", collectionHandler.DeleteCollection)
 	protected.Get("/collection/:id/files", fileHandler.ListByCollection)
 	protected.Post("/collection/:id/files", fileHandler.Upload)

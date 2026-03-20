@@ -1,6 +1,9 @@
 package action
 
-import "errors"
+import (
+	"errors"
+	"strings"
+)
 
 var (
 	ErrActionNotFound        = errors.New("collection action not found")
@@ -16,4 +19,44 @@ var (
 	ErrSnapshotDocNotFound   = errors.New("some selected documents are not available for snapshot")
 	ErrSnapshotDocStatus     = errors.New("selected documents include unsupported status")
 	ErrSpecNotFound          = errors.New("action spec not found")
+	ErrActionRequirement     = errors.New("action requirement is not satisfied")
 )
+
+type DisabledActionError struct {
+	Reason string
+}
+
+func (e *DisabledActionError) Error() string {
+	if e == nil {
+		return ErrActionDisabled.Error()
+	}
+	reason := strings.TrimSpace(e.Reason)
+	if reason == "" {
+		return ErrActionDisabled.Error()
+	}
+	return reason
+}
+
+func (e *DisabledActionError) Unwrap() error {
+	return ErrActionDisabled
+}
+
+type RequirementError struct {
+	Code    string
+	Message string
+}
+
+func (e *RequirementError) Error() string {
+	if e == nil {
+		return ErrActionRequirement.Error()
+	}
+	message := strings.TrimSpace(e.Message)
+	if message == "" {
+		return ErrActionRequirement.Error()
+	}
+	return message
+}
+
+func (e *RequirementError) Unwrap() error {
+	return ErrActionRequirement
+}

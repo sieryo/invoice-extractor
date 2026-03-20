@@ -13,7 +13,7 @@ func (s *Server) registerMiddleware() {
 	s.app.Use(recover.New())
 	s.app.Use(cors.New(cors.Config{
 		AllowOrigins:  "*",
-		AllowMethods:  "GET,POST,PUT,DELETE,OPTIONS",
+		AllowMethods:  "GET,POST,PUT,PATCH,DELETE,OPTIONS",
 		AllowHeaders:  "*",
 		ExposeHeaders: "Content-Length, Content-Disposition, X-File-Id, X-Exported-Filename",
 	}))

@@ -2,6 +2,7 @@ package buyer
 
 import (
 	"path/filepath"
+	"strings"
 
 	domainbuyer "github.com/sieryo/invoice-extractor/internal/domain/buyer"
 	"github.com/sieryo/invoice-extractor/internal/infra/parser"
@@ -13,6 +14,13 @@ type BuyerRegistryService struct {
 	parser   *parser.BuyerExcelParser
 	store    *storage.BuyerCSVStore
 	dataDir  string
+}
+
+type BuyerRegistryStatus struct {
+	Loaded  bool   `json:"loaded"`
+	Count   int    `json:"count"`
+	Code    string `json:"code"`
+	Message string `json:"message"`
 }
 
 func NewBuyerRegistryService(
@@ -44,6 +52,37 @@ func (s *BuyerRegistryService) List() []domainbuyer.Buyer {
 	return buyers
 }
 
+func (s *BuyerRegistryService) Spec() parser.BuyerRegistrySchemaSpec {
+	return s.parser.SchemaSpec()
+}
+
+func (s *BuyerRegistryService) Status() BuyerRegistryStatus {
+	loaded := s.registry.IsLoaded()
+	count := s.Count()
+	if !loaded {
+		return BuyerRegistryStatus{
+			Loaded:  false,
+			Count:   count,
+			Code:    "BUYER_REGISTRY_NOT_READY",
+			Message: "Buyer registry belum tersedia. Upload file buyer terlebih dahulu.",
+		}
+	}
+	if count <= 0 {
+		return BuyerRegistryStatus{
+			Loaded:  false,
+			Count:   count,
+			Code:    "BUYER_REGISTRY_EMPTY",
+			Message: "Buyer registry kosong. Upload file buyer yang valid.",
+		}
+	}
+	return BuyerRegistryStatus{
+		Loaded:  true,
+		Count:   count,
+		Code:    "BUYER_REGISTRY_READY",
+		Message: "Buyer registry siap digunakan.",
+	}
+}
+
 func (s *BuyerRegistryService) Update(filePath string) (int, []parser.ValidationIssue, error) {
 	buyers, issues, err := s.parser.Parse(filePath)
 	if err != nil {
@@ -61,7 +100,14 @@ func (s *BuyerRegistryService) Update(filePath string) (int, []parser.Validation
 }
 
 func (s *BuyerRegistryService) IsLoaded() bool {
-	return s.registry.IsLoaded()
+	status := s.Status()
+	return status.Loaded
+}
+
+func (s *BuyerRegistryService) Count() int {
+	s.registry.mu.RLock()
+	defer s.registry.mu.RUnlock()
+	return len(s.registry.buyers)
 }
 
 func (s *BuyerRegistryService) DataDir() string {
@@ -70,4 +116,21 @@ func (s *BuyerRegistryService) DataDir() string {
 
 func (s *BuyerRegistryService) TempFilePath() string {
 	return filepath.Join(s.dataDir, "buyer_upload.xlsx")
+}
+
+func (s *BuyerRegistryService) IsAcceptedUpload(filename string, sizeBytes int64) (bool, string) {
+	spec := s.Spec()
+	ext := strings.ToLower(strings.TrimSpace(filepath.Ext(filename)))
+	if ext == "" {
+		return false, "format file tidak dikenali"
+	}
+	for _, allowed := range spec.Upload.AcceptedExtensions {
+		if strings.EqualFold(strings.TrimSpace(allowed), ext) {
+			if spec.Upload.MaxFileSizeMB > 0 && sizeBytes > spec.Upload.MaxFileSizeMB*1024*1024 {
+				return false, "ukuran file melebihi batas maksimal"
+			}
+			return true, ""
+		}
+	}
+	return false, "format file tidak didukung"
 }

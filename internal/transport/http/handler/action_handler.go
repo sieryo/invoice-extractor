@@ -103,7 +103,9 @@ func (h *ActionHandler) RunAction(c *fiber.Ctx) error {
 		case errors.Is(err, action.ErrActionNotSupported):
 			return SendError(c, fiber.StatusBadRequest, "action_type is not available for this document type")
 		case errors.Is(err, action.ErrActionDisabled):
-			return SendError(c, fiber.StatusBadRequest, "action is disabled for this document type")
+			return SendError(c, fiber.StatusBadRequest, err.Error())
+		case errors.Is(err, action.ErrActionRequirement):
+			return SendError(c, fiber.StatusBadRequest, err.Error())
 		case errors.Is(err, action.ErrInvalidActionParams):
 			return SendError(c, fiber.StatusBadRequest, err.Error())
 		case errors.Is(err, action.ErrInvalidActionSpec):
