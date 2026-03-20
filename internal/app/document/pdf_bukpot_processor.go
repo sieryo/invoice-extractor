@@ -783,6 +783,8 @@ func buildBukpotTemplateMap(
 		put("sifatPemotongan", parsed.BPA1.SifatPemotongan)
 		put("statusBukti", parsed.BPA1.StatusBukti)
 		put("npwpNikPenerima", parsed.BPA1.NIKNPWPPenerima)
+		put("posisi", parsed.BPA1.Posisi)
+		put("statusPtkp", parsed.BPA1.StatusPTKP)
 		put("namaPemotong", parsed.BPA1.NamaPemotong)
 		put("npwpNikPemotong", parsed.BPA1.NPWPNIKPemotong)
 	}

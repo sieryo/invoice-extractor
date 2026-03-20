@@ -126,3 +126,25 @@ func TestRenderBukpotFilename(t *testing.T) {
 		t.Fatalf("expected no warnings, got: %#v", warnings)
 	}
 }
+
+func TestBuildBukpotTemplateMapBPA1IncludesPosisi(t *testing.T) {
+	parsed := &bukpotdomain.ParsedDocument{
+		Kind: bukpotdomain.KindBPA1,
+		BPA1: &bukpotdomain.BPA1Document{
+			NomorBuktiPotong:   "2507TJSDP",
+			NamaPenerima:       "Aprilia Nuraeni",
+			PeriodePenghasilan: "01-2025-12-2025",
+			Posisi:             "STAFF",
+			StatusPTKP:         "TK0",
+		},
+	}
+
+	values := buildBukpotTemplateMap(DocumentTypePDFBukpotBPA1, parsed, "example_bpa1.pdf", "BPA1")
+
+	if values["posisi"] != "STAFF" {
+		t.Fatalf("expected posisi token to be populated, got %q", values["posisi"])
+	}
+	if values["statusptkp"] != "TK0" {
+		t.Fatalf("expected statusPtkp token to be populated, got %q", values["statusptkp"])
+	}
+}

@@ -323,18 +323,7 @@ func buildBukpotDocumentTypeSpec(
 				UI: &ActionParamUISpec{
 					Editor: "template",
 				},
-				Suggestions: []ActionParamSuggestion{
-					{Token: "nomorBuktiPotong", Label: "Nomor Bukti Potong", Example: "{{nomorBuktiPotong}}"},
-					{Token: "namaPenerima", Label: "Nama Penerima", Example: "{{namaPenerima}}"},
-					{Token: "dokumenReferensiNomor", Label: "Nomor Dokumen Referensi", Example: "{{dokumenReferensiNomor}}"},
-					{Token: "masaPajak", Label: "Masa Pajak", Example: "{{masaPajak}}"},
-					{Token: "sifatPemotongan", Label: "Sifat Pemotongan", Example: "{{sifatPemotongan}}"},
-					{Token: "statusBukti", Label: "Status Bukti", Example: "{{statusBukti}}"},
-					{Token: "namaPemotong", Label: "Nama Pemotong", Example: "{{namaPemotong}}"},
-					{Token: "npwpNikPemotong", Label: "NPWP/NIK Pemotong", Example: "{{npwpNikPemotong}}"},
-					{Token: "documentTag", Label: "Tag Dokumen", Example: "{{documentTag}}"},
-					{Token: "sourceName", Label: "Nama File Asal", Example: "{{sourceName}}"},
-				},
+				Suggestions: buildBukpotTemplateSuggestions(docType),
 				Description: "Gunakan placeholder yang tersedia. Ekstensi .pdf akan ditambahkan otomatis.",
 				Placeholder: "{{nomorBuktiPotong}} - {{namaPenerima}}",
 			},
@@ -394,4 +383,36 @@ func buildBukpotDocumentTypeSpec(
 		},
 		Actions: actions,
 	}
+}
+
+func buildBukpotTemplateSuggestions(docType DocumentType) []ActionParamSuggestion {
+	suggestions := []ActionParamSuggestion{
+		{Token: "nomorBuktiPotong", Label: "Nomor Bukti Potong", Example: "{{nomorBuktiPotong}}"},
+		{Token: "namaPenerima", Label: "Nama Penerima", Example: "{{namaPenerima}}"},
+		{Token: "sifatPemotongan", Label: "Sifat Pemotongan", Example: "{{sifatPemotongan}}"},
+		{Token: "statusBukti", Label: "Status Bukti", Example: "{{statusBukti}}"},
+		{Token: "npwpNikPenerima", Label: "NPWP/NIK Penerima", Example: "{{npwpNikPenerima}}"},
+		{Token: "namaPemotong", Label: "Nama Pemotong", Example: "{{namaPemotong}}"},
+		{Token: "npwpNikPemotong", Label: "NPWP/NIK Pemotong", Example: "{{npwpNikPemotong}}"},
+		{Token: "documentTag", Label: "Tag Dokumen", Example: "{{documentTag}}"},
+		{Token: "sourceName", Label: "Nama File Asal", Example: "{{sourceName}}"},
+	}
+
+	switch docType {
+	case DocumentTypePDFBukpotBPPU, DocumentTypePDFBukpotBP21:
+		suggestions = append(suggestions,
+			ActionParamSuggestion{Token: "dokumenReferensiNomor", Label: "Nomor Dokumen Referensi", Example: "{{dokumenReferensiNomor}}"},
+			ActionParamSuggestion{Token: "dokumenReferensiJenis", Label: "Jenis Dokumen Referensi", Example: "{{dokumenReferensiJenis}}"},
+			ActionParamSuggestion{Token: "dokumenReferensiTanggal", Label: "Tanggal Dokumen Referensi", Example: "{{dokumenReferensiTanggal}}"},
+			ActionParamSuggestion{Token: "masaPajak", Label: "Masa Pajak", Example: "{{masaPajak}}"},
+		)
+	case DocumentTypePDFBukpotBPA1:
+		suggestions = append(suggestions,
+			ActionParamSuggestion{Token: "periodePenghasilan", Label: "Periode Penghasilan", Example: "{{periodePenghasilan}}"},
+			ActionParamSuggestion{Token: "posisi", Label: "Posisi", Example: "{{posisi}}"},
+			ActionParamSuggestion{Token: "statusPtkp", Label: "Status PTKP", Example: "{{statusPtkp}}"},
+		)
+	}
+
+	return suggestions
 }
