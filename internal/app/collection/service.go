@@ -6,21 +6,36 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sieryo/invoice-extractor/internal/app/ingest"
 	domain "github.com/sieryo/invoice-extractor/internal/domain/collection"
 	"github.com/sieryo/invoice-extractor/internal/domain/file"
 )
 
+type FreezeDocumentRepository interface {
+	ListByCollection(
+		ctx context.Context,
+		collectionID string,
+		status string,
+		limit int,
+		offset int,
+	) ([]*ingest.DocumentRecord, error)
+	ClearRawRef(ctx context.Context, id string) error
+}
+
 type CollectionService struct {
 	collectionRepo domain.Repository
+	documentRepo   FreezeDocumentRepository
 	fileStore      file.FileStore
 }
 
 func NewCollectionService(
 	collectionRepo domain.Repository,
+	documentRepo FreezeDocumentRepository,
 	fileStore file.FileStore,
 ) *CollectionService {
 	return &CollectionService{
 		collectionRepo: collectionRepo,
+		documentRepo:   documentRepo,
 		fileStore:      fileStore,
 	}
 }
@@ -160,6 +175,14 @@ func (s *CollectionService) Delete(
 	ctx context.Context,
 	id string,
 ) error {
+	current, err := s.collectionRepo.FindByID(ctx, id)
+	if err != nil || current == nil {
+		return domain.ErrCollectionNotFound
+	}
+	if current.IsFrozen() {
+		return domain.ErrCollectionFrozen
+	}
+
 	// Keep cleanup best-effort while collection still exists.
 	if err := s.fileStore.CleanupTemp(ctx, id); err != nil {
 		return err
@@ -186,6 +209,9 @@ func (s *CollectionService) Rename(
 	if current.UserID != userID || current.DeletedAt != nil {
 		return nil, domain.ErrCollectionNotFound
 	}
+	if current.IsFrozen() {
+		return nil, domain.ErrCollectionFrozen
+	}
 
 	if strings.EqualFold(strings.TrimSpace(current.Name), normalizedName) {
 		return current, nil
@@ -203,6 +229,45 @@ func (s *CollectionService) Rename(
 	}
 
 	updated, err := s.collectionRepo.FindByID(ctx, id)
+	if err != nil || updated == nil {
+		return nil, domain.ErrCollectionNotFound
+	}
+
+	return updated, nil
+}
+
+func (s *CollectionService) Freeze(
+	ctx context.Context,
+	id string,
+	userID string,
+) (*domain.Collection, error) {
+	current, err := s.collectionRepo.FindByID(ctx, id)
+	if err != nil || current == nil {
+		return nil, domain.ErrCollectionNotFound
+	}
+	if current.UserID != userID || current.DeletedAt != nil {
+		return nil, domain.ErrCollectionNotFound
+	}
+	if !current.IsCollection() || current.DocumentType == nil {
+		return nil, domain.ErrInvalidNodeType
+	}
+	if current.IsFrozen() {
+		return nil, domain.ErrCollectionAlreadyFrozen
+	}
+	if current.Phase != domain.PhaseReady {
+		return nil, domain.ErrCollectionBusy
+	}
+
+	if err := s.clearRawArtifacts(ctx, current.ID); err != nil {
+		return nil, err
+	}
+
+	frozenAt := time.Now()
+	if err := s.collectionRepo.Freeze(ctx, current.ID, userID, frozenAt); err != nil {
+		return nil, err
+	}
+
+	updated, err := s.collectionRepo.FindByID(ctx, current.ID)
 	if err != nil || updated == nil {
 		return nil, domain.ErrCollectionNotFound
 	}
@@ -283,6 +348,43 @@ func (s *CollectionService) ensureUniqueName(
 		}
 	}
 	return nil
+}
+
+func (s *CollectionService) clearRawArtifacts(ctx context.Context, collectionID string) error {
+	if s.documentRepo == nil {
+		return nil
+	}
+
+	const pageSize = 200
+	offset := 0
+
+	for {
+		docs, err := s.documentRepo.ListByCollection(ctx, collectionID, "", pageSize, offset)
+		if err != nil {
+			return err
+		}
+		if len(docs) == 0 {
+			return nil
+		}
+
+		for _, doc := range docs {
+			if doc == nil || doc.RawRef == nil || strings.TrimSpace(*doc.RawRef) == "" {
+				continue
+			}
+			rawRef := strings.TrimSpace(*doc.RawRef)
+			if err := s.fileStore.Delete(ctx, collectionID, rawRef); err != nil {
+				return err
+			}
+			if err := s.documentRepo.ClearRawRef(ctx, doc.ID); err != nil {
+				return err
+			}
+		}
+
+		if len(docs) < pageSize {
+			return nil
+		}
+		offset += len(docs)
+	}
 }
 
 func normalizeCollectionName(name string) (string, error) {

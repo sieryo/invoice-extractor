@@ -70,6 +70,9 @@ type Collection struct {
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
 
+	FrozenAt *time.Time `json:"frozenAt,omitempty"`
+	FrozenBy *string    `json:"frozenBy,omitempty"`
+
 	DeletedAt     *time.Time `json:"deletedAt,omitempty"`
 	DeletedBy     *string    `json:"deletedBy,omitempty"`
 	DeleteReason  *string    `json:"deleteReason,omitempty"`
@@ -141,6 +144,10 @@ func (c *Collection) IsActive() bool {
 	return c.IsCollection() && c.DeletedAt == nil
 }
 
+func (c *Collection) IsFrozen() bool {
+	return c.FrozenAt != nil
+}
+
 func (c *Collection) IsCommitted() bool {
 	return false
 }
@@ -157,6 +164,8 @@ func (c *Collection) SyncLegacyStatus() {
 	switch {
 	case c.DeletedAt != nil:
 		c.Status = "deleted"
+	case c.IsFrozen():
+		c.Status = "frozen"
 	case c.IsFolder():
 		c.Status = "folder"
 	default:

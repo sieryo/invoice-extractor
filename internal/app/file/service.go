@@ -34,6 +34,9 @@ func (s *FileService) UploadFiles(
 	if !coll.IsActive() {
 		return nil, collection.ErrCollectionNotActive
 	}
+	if coll.IsFrozen() {
+		return nil, collection.ErrCollectionFrozen
+	}
 
 	files := make([]*file.FileObject, 0, len(inputs))
 
@@ -87,6 +90,13 @@ func (s *FileService) Delete(
 	if err != nil {
 		return err
 	}
+	coll, err := s.collectionRepo.FindByID(ctx, f.CollectionID)
+	if err != nil {
+		return collection.ErrCollectionNotFound
+	}
+	if coll.IsFrozen() {
+		return collection.ErrCollectionFrozen
+	}
 
 	if err := s.store.Delete(ctx, f.CollectionID, f.ID); err != nil {
 		return err
@@ -104,6 +114,13 @@ func (s *FileService) DeleteBulk(
 		f, err := s.fileRepo.FindByID(ctx, id)
 		if err != nil {
 			continue
+		}
+		coll, err := s.collectionRepo.FindByID(ctx, f.CollectionID)
+		if err != nil {
+			return collection.ErrCollectionNotFound
+		}
+		if coll.IsFrozen() {
+			return collection.ErrCollectionFrozen
 		}
 		_ = s.store.Delete(ctx, f.CollectionID, f.ID)
 	}

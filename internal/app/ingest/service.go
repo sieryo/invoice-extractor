@@ -93,6 +93,9 @@ func (s *IngestService) CreateSession(
 	if !coll.IsCollection() || coll.DocumentType == nil {
 		return nil, collection.ErrInvalidNodeType
 	}
+	if coll.IsFrozen() {
+		return nil, collection.ErrCollectionFrozen
+	}
 
 	now := time.Now()
 	session := &UploadSession{
@@ -135,6 +138,9 @@ func (s *IngestService) UploadChunk(
 ) (*UploadChunk, error) {
 	session, err := s.sessionRepo.FindByID(ctx, sessionID)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.ensureCollectionWritableByID(ctx, session.CollectionID); err != nil {
 		return nil, err
 	}
 
@@ -199,6 +205,9 @@ func (s *IngestService) UploadChunk(
 func (s *IngestService) FinalizeSession(ctx context.Context, sessionID string) (*UploadSession, error) {
 	session, err := s.sessionRepo.FindByID(ctx, sessionID)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.ensureCollectionWritableByID(ctx, session.CollectionID); err != nil {
 		return nil, err
 	}
 
@@ -374,6 +383,17 @@ func (s *IngestService) ensureCollectionOwner(
 	}
 
 	return coll, nil
+}
+
+func (s *IngestService) ensureCollectionWritableByID(ctx context.Context, collectionID string) error {
+	coll, err := s.collectionRepo.FindByID(ctx, collectionID)
+	if err != nil {
+		return collection.ErrCollectionNotFound
+	}
+	if coll.IsFrozen() {
+		return collection.ErrCollectionFrozen
+	}
+	return nil
 }
 
 func (s *IngestService) worker(ctx context.Context) {

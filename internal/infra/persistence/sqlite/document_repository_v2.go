@@ -285,3 +285,13 @@ func (r *DocumentRepositoryV2) ListByCollection(
 
 	return out, rows.Err()
 }
+
+func (r *DocumentRepositoryV2) ClearRawRef(ctx context.Context, id string) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE documents
+		SET raw_ref = NULL, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+		  AND deleted_at IS NULL
+	`, id)
+	return err
+}

@@ -82,6 +82,9 @@ func (s *Service) RunAction(ctx context.Context, req RunRequest) (*CollectionAct
 	if err != nil {
 		return nil, err
 	}
+	if coll.IsFrozen() {
+		return nil, dcollection.ErrCollectionFrozen
+	}
 
 	idempotencyKey := normalizePtrString(req.IdempotencyKey)
 	if idempotencyKey != nil {
@@ -265,6 +268,9 @@ func (s *Service) GetActionSpec(
 		return nil, ErrSpecNotFound
 	}
 	spec = s.applyRuntimeRequirements(spec)
+	if coll.IsFrozen() {
+		spec = applyFrozenCollectionSpec(spec)
+	}
 
 	return &spec, nil
 }
@@ -464,6 +470,14 @@ func (s *Service) getOwnedCollection(
 	}
 
 	return coll, nil
+}
+
+func applyFrozenCollectionSpec(spec document.DocumentTypeSpec) document.DocumentTypeSpec {
+	for idx := range spec.Actions {
+		spec.Actions[idx].Enabled = false
+		spec.Actions[idx].Reason = "Collection sudah freeze dan tidak bisa menjalankan action baru."
+	}
+	return spec
 }
 
 func buildActionItems(

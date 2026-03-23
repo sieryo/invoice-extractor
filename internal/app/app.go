@@ -117,7 +117,7 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 	if err := bukpotService.RegisterParser(parsers.NewBPA1Parser()); err != nil {
 		panic(err)
 	}
-	collectionService := collection.NewCollectionService(collectionRepo, fs)
+	collectionService := collection.NewCollectionService(collectionRepo, documentRepoV2, fs)
 	fileService := appfile.NewFileService(fs, fileRepo, collectionRepo)
 
 	// registry services

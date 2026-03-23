@@ -39,6 +39,7 @@ type DocumentRepository interface {
 		limit int,
 		offset int,
 	) ([]*DocumentRecord, error)
+	ClearRawRef(ctx context.Context, id string) error
 }
 
 type CollectionHistoryRepository interface {

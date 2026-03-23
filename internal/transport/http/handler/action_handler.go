@@ -96,6 +96,8 @@ func (h *ActionHandler) RunAction(c *fiber.Ctx) error {
 		switch {
 		case errors.Is(err, dcollection.ErrCollectionNotFound):
 			return SendError(c, fiber.StatusNotFound, "collection not found")
+		case errors.Is(err, dcollection.ErrCollectionFrozen):
+			return SendError(c, fiber.StatusConflict, "collection sudah freeze dan tidak bisa menjalankan action baru")
 		case errors.Is(err, dcollection.ErrInvalidNodeType):
 			return SendError(c, fiber.StatusBadRequest, "target must be a typed collection")
 		case errors.Is(err, action.ErrInvalidActionType):
@@ -323,6 +325,8 @@ func (h *ActionHandler) UploadActionArtifact(c *fiber.Ctx) error {
 		switch {
 		case errors.Is(err, dcollection.ErrCollectionNotFound):
 			return SendError(c, fiber.StatusNotFound, "collection not found")
+		case errors.Is(err, dcollection.ErrCollectionFrozen):
+			return SendError(c, fiber.StatusConflict, "collection sudah freeze dan tidak bisa menjalankan action baru")
 		case errors.Is(err, dcollection.ErrInvalidNodeType):
 			return SendError(c, fiber.StatusBadRequest, "target must be a typed collection")
 		case errors.Is(err, action.ErrSpecNotFound):
@@ -335,6 +339,13 @@ func (h *ActionHandler) UploadActionArtifact(c *fiber.Ctx) error {
 	actionSpec, found := docSpec.FindActionSpec(actionType)
 	if !found {
 		return SendError(c, fiber.StatusBadRequest, "action type is not available for this collection")
+	}
+	if !actionSpec.Enabled {
+		reason := strings.TrimSpace(actionSpec.Reason)
+		if reason == "" {
+			reason = "action tidak tersedia untuk collection ini"
+		}
+		return SendError(c, fiber.StatusConflict, reason)
 	}
 
 	artifactSpec, found := findArtifactInputSpec(actionSpec.ArtifactInputs, artifactKey)

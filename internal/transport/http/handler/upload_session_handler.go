@@ -6,6 +6,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/sieryo/invoice-extractor/internal/app/ingest"
+	dcollection "github.com/sieryo/invoice-extractor/internal/domain/collection"
 )
 
 type UploadSessionHandler struct {
@@ -48,7 +49,14 @@ func (h *UploadSessionHandler) StartSession(c *fiber.Ctx) error {
 
 	session, err := h.ingestService.CreateSession(ctx, userID, collectionID, clientSessionKey)
 	if err != nil {
-		return SendError(c, fiber.StatusBadRequest, err.Error())
+		switch {
+		case err == dcollection.ErrCollectionNotFound:
+			return SendError(c, fiber.StatusNotFound, "collection not found")
+		case err == dcollection.ErrCollectionFrozen:
+			return SendError(c, fiber.StatusConflict, "collection sudah freeze dan tidak bisa menerima dokumen baru")
+		default:
+			return SendError(c, fiber.StatusBadRequest, err.Error())
+		}
 	}
 
 	return SendSuccess(c, fiber.StatusCreated, session, "upload session created")
@@ -117,7 +125,12 @@ func (h *UploadSessionHandler) UploadChunk(c *fiber.Ctx) error {
 		RequestChecksum: requestChecksum,
 	}, files, sourceOrderStart)
 	if err != nil {
-		return SendError(c, fiber.StatusBadRequest, err.Error())
+		switch {
+		case err == dcollection.ErrCollectionFrozen:
+			return SendError(c, fiber.StatusConflict, "collection sudah freeze dan tidak bisa menerima dokumen baru")
+		default:
+			return SendError(c, fiber.StatusBadRequest, err.Error())
+		}
 	}
 
 	return SendSuccess(c, fiber.StatusOK, chunk, "chunk uploaded")
@@ -133,7 +146,12 @@ func (h *UploadSessionHandler) FinalizeSession(c *fiber.Ctx) error {
 
 	session, err := h.ingestService.FinalizeSession(ctx, sessionID)
 	if err != nil {
-		return SendError(c, fiber.StatusBadRequest, err.Error())
+		switch {
+		case err == dcollection.ErrCollectionFrozen:
+			return SendError(c, fiber.StatusConflict, "collection sudah freeze dan tidak bisa menerima dokumen baru")
+		default:
+			return SendError(c, fiber.StatusBadRequest, err.Error())
+		}
 	}
 
 	return SendSuccess(c, fiber.StatusOK, session, "upload session finalized")

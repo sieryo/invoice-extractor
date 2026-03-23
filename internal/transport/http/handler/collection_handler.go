@@ -41,6 +41,8 @@ type RenameCollectionRequest struct {
 	Name string `json:"name"`
 }
 
+type FreezeCollectionRequest struct{}
+
 func (h *CollectionHandler) CreateCollection(c *fiber.Ctx) error {
 	return h.createNode(c, true)
 }
@@ -248,12 +250,52 @@ func (h *CollectionHandler) RenameCollection(c *fiber.Ctx) error {
 			return SendError(c, fiber.StatusBadRequest, "nama wajib diisi")
 		case errors.Is(err, dcollection.ErrCollectionNameConflict):
 			return SendError(c, fiber.StatusBadRequest, "nama folder/collection sudah digunakan")
+		case errors.Is(err, dcollection.ErrCollectionFrozen):
+			return SendError(c, fiber.StatusConflict, "collection sudah freeze dan tidak bisa diubah lagi")
 		default:
 			return SendError(c, fiber.StatusInternalServerError, "failed to rename collection")
 		}
 	}
 
 	return SendSuccess(c, fiber.StatusOK, updated, "collection renamed successfully")
+}
+
+func (h *CollectionHandler) FreezeCollection(c *fiber.Ctx) error {
+	ctx := c.Context()
+	userID, ok := c.Locals("userId").(string)
+	if !ok {
+		return fiber.ErrUnauthorized
+	}
+
+	id := strings.TrimSpace(c.Params("id"))
+	if id == "" {
+		return SendError(c, fiber.StatusBadRequest, "id is required")
+	}
+
+	var req FreezeCollectionRequest
+	if len(c.Body()) > 0 {
+		if err := c.BodyParser(&req); err != nil {
+			return SendError(c, fiber.StatusBadRequest, "invalid request body")
+		}
+	}
+
+	updated, err := h.collectionService.Freeze(ctx, id, userID)
+	if err != nil {
+		switch {
+		case errors.Is(err, dcollection.ErrCollectionNotFound):
+			return SendError(c, fiber.StatusNotFound, "collection not found")
+		case errors.Is(err, dcollection.ErrInvalidNodeType):
+			return SendError(c, fiber.StatusBadRequest, "target must be a typed collection")
+		case errors.Is(err, dcollection.ErrCollectionAlreadyFrozen):
+			return SendError(c, fiber.StatusConflict, "collection sudah freeze")
+		case errors.Is(err, dcollection.ErrCollectionBusy):
+			return SendError(c, fiber.StatusConflict, "collection masih diproses dan belum bisa di-freeze")
+		default:
+			return SendError(c, fiber.StatusInternalServerError, "failed to freeze collection")
+		}
+	}
+
+	return SendSuccess(c, fiber.StatusOK, updated, "collection frozen successfully")
 }
 
 func (h *CollectionHandler) DeleteCollection(c *fiber.Ctx) error {
@@ -264,10 +306,14 @@ func (h *CollectionHandler) DeleteCollection(c *fiber.Ctx) error {
 	}
 
 	if err := h.collectionService.Delete(ctx, id); err != nil {
-		if err == dcollection.ErrCollectionNotFound {
+		switch {
+		case errors.Is(err, dcollection.ErrCollectionNotFound):
 			return SendError(c, fiber.StatusNotFound, "collection not found")
+		case errors.Is(err, dcollection.ErrCollectionFrozen):
+			return SendError(c, fiber.StatusConflict, "collection sudah freeze dan tidak bisa diubah lagi")
+		default:
+			return SendError(c, fiber.StatusInternalServerError, err.Error())
 		}
-		return SendError(c, fiber.StatusInternalServerError, err.Error())
 	}
 
 	return SendSuccess(c, fiber.StatusOK, nil, "collection deleted successfully")

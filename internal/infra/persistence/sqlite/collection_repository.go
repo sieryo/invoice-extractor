@@ -35,8 +35,8 @@ func (r *CollectionRepository) Create(
 		INSERT INTO collections (
 			id, user_id, parent_id, name, node_type, document_type, phase,
 			total_count, ready_count, warning_count, failed_count, duplicate_count,
-			created_at, updated_at, deleted_at, deleted_by, delete_reason
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			created_at, updated_at, frozen_at, frozen_by, deleted_at, deleted_by, delete_reason
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		c.ID,
 		c.UserID,
@@ -52,6 +52,8 @@ func (r *CollectionRepository) Create(
 		c.DuplicateCount,
 		c.CreatedAt,
 		c.UpdatedAt,
+		c.FrozenAt,
+		c.FrozenBy,
 		c.DeletedAt,
 		c.DeletedBy,
 		c.DeleteReason,
@@ -67,7 +69,7 @@ func (r *CollectionRepository) FindByID(
 		SELECT
 			id, user_id, parent_id, name, node_type, document_type, phase,
 			total_count, ready_count, warning_count, failed_count, duplicate_count,
-			created_at, updated_at, deleted_at, deleted_by, delete_reason
+			created_at, updated_at, frozen_at, frozen_by, deleted_at, deleted_by, delete_reason
 		FROM collections
 		WHERE id = ?
 	`, id)
@@ -88,7 +90,7 @@ func (r *CollectionRepository) ListByUserID(
 		SELECT
 			id, user_id, parent_id, name, node_type, document_type, phase,
 			total_count, ready_count, warning_count, failed_count, duplicate_count,
-			created_at, updated_at, deleted_at, deleted_by, delete_reason
+			created_at, updated_at, frozen_at, frozen_by, deleted_at, deleted_by, delete_reason
 		FROM collections
 		WHERE user_id = ?
 		  AND deleted_at IS NULL
@@ -117,7 +119,7 @@ func (r *CollectionRepository) ListChildren(
 			SELECT
 				id, user_id, parent_id, name, node_type, document_type, phase,
 				total_count, ready_count, warning_count, failed_count, duplicate_count,
-				created_at, updated_at, deleted_at, deleted_by, delete_reason
+				created_at, updated_at, frozen_at, frozen_by, deleted_at, deleted_by, delete_reason
 			FROM collections
 			WHERE user_id = ?
 			  AND parent_id IS NULL
@@ -129,7 +131,7 @@ func (r *CollectionRepository) ListChildren(
 			SELECT
 				id, user_id, parent_id, name, node_type, document_type, phase,
 				total_count, ready_count, warning_count, failed_count, duplicate_count,
-				created_at, updated_at, deleted_at, deleted_by, delete_reason
+				created_at, updated_at, frozen_at, frozen_by, deleted_at, deleted_by, delete_reason
 			FROM collections
 			WHERE user_id = ?
 			  AND parent_id = ?
@@ -226,6 +228,22 @@ func (r *CollectionRepository) UpdateName(
 	return err
 }
 
+func (r *CollectionRepository) Freeze(
+	ctx context.Context,
+	id string,
+	frozenBy string,
+	frozenAt time.Time,
+) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE collections
+		SET frozen_at = ?, frozen_by = ?, updated_at = ?
+		WHERE id = ?
+		  AND deleted_at IS NULL
+		  AND frozen_at IS NULL
+	`, frozenAt, frozenBy, time.Now(), id)
+	return err
+}
+
 func (r *CollectionRepository) Delete(
 	ctx context.Context,
 	id string,
@@ -260,6 +278,8 @@ func scanCollection(row scanner) (*collection.Collection, error) {
 		c            collection.Collection
 		parentID     sql.NullString
 		docType      sql.NullString
+		frozenAt     sql.NullTime
+		frozenBy     sql.NullString
 		deletedAt    sql.NullTime
 		deletedBy    sql.NullString
 		deleteReason sql.NullString
@@ -280,6 +300,8 @@ func scanCollection(row scanner) (*collection.Collection, error) {
 		&c.DuplicateCount,
 		&c.CreatedAt,
 		&c.UpdatedAt,
+		&frozenAt,
+		&frozenBy,
 		&deletedAt,
 		&deletedBy,
 		&deleteReason,
@@ -293,6 +315,14 @@ func scanCollection(row scanner) (*collection.Collection, error) {
 	if docType.Valid && docType.String != "" {
 		d := collection.DocumentType(docType.String)
 		c.DocumentType = &d
+	}
+	if frozenAt.Valid {
+		t := frozenAt.Time
+		c.FrozenAt = &t
+	}
+	if frozenBy.Valid {
+		v := frozenBy.String
+		c.FrozenBy = &v
 	}
 	if deletedAt.Valid {
 		t := deletedAt.Time
