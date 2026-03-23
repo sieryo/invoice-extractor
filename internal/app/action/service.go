@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"math"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,12 +14,18 @@ import (
 
 	"github.com/google/uuid"
 	appbuyer "github.com/sieryo/invoice-extractor/internal/app/buyer"
+	appcashflow "github.com/sieryo/invoice-extractor/internal/app/cashflow"
 	"github.com/sieryo/invoice-extractor/internal/app/document"
 	dcollection "github.com/sieryo/invoice-extractor/internal/domain/collection"
+	"github.com/sieryo/invoice-extractor/internal/domain/file"
 )
 
 type BuyerRegistryStatusProvider interface {
 	Status() appbuyer.BuyerRegistryStatus
+}
+
+type CashflowTaxAccountStatusProvider interface {
+	Status() appcashflow.TaxAccountStatus
 }
 
 type Service struct {
@@ -28,6 +33,8 @@ type Service struct {
 	collectionRepo dcollection.Repository
 	processors     *document.Registry
 	buyerRegistry  BuyerRegistryStatusProvider
+	taxAccounts    CashflowTaxAccountStatusProvider
+	fileStore      file.FileStore
 
 	queue   chan string
 	workers int
@@ -47,6 +54,8 @@ func NewService(
 	collectionRepo dcollection.Repository,
 	processors *document.Registry,
 	buyerRegistry BuyerRegistryStatusProvider,
+	taxAccounts CashflowTaxAccountStatusProvider,
+	fileStore file.FileStore,
 	workers int,
 ) *Service {
 	if workers < 1 {
@@ -58,6 +67,8 @@ func NewService(
 		collectionRepo: collectionRepo,
 		processors:     processors,
 		buyerRegistry:  buyerRegistry,
+		taxAccounts:    taxAccounts,
+		fileStore:      fileStore,
 		queue:          make(chan string, 64),
 		workers:        workers,
 	}
@@ -99,19 +110,20 @@ func (s *Service) RunAction(ctx context.Context, req RunRequest) (*CollectionAct
 		}
 	}
 
-	docType := document.DocumentType(*coll.DocumentType)
-	docTypeSpec, ok := document.BuildDocumentTypeSpec(docType)
+	collectionKind := document.CollectionKind(*coll.CollectionKind)
+	sourceFormat := document.ResolveCollectionSourceFormat(collectionKind)
+	spec, ok := document.BuildCollectionSpec(collectionKind)
 	if !ok {
 		return nil, ErrSpecNotFound
 	}
-	docTypeSpec = s.applyRuntimeRequirements(docTypeSpec)
+	spec = s.applyRuntimeRequirements(spec)
 
-	actionSpec, ok := docTypeSpec.FindActionSpec(actionType)
+	actionSpec, ok := spec.FindActionSpec(actionType)
 	if !ok {
 		return nil, ErrActionNotSupported
 	}
-	if !actionSpec.Enabled {
-		reason := strings.TrimSpace(actionSpec.Reason)
+	if !actionSpec.State.Enabled {
+		reason := strings.TrimSpace(actionSpec.State.Message)
 		if reason != "" {
 			return nil, &DisabledActionError{Reason: reason}
 		}
@@ -126,7 +138,7 @@ func (s *Service) RunAction(ctx context.Context, req RunRequest) (*CollectionAct
 		return nil, err
 	}
 
-	paramsJSON, err := normalizeAndValidateActionParams(req.Params, actionSpec.Params)
+	inputJSON, err := normalizeAndValidateActionInput(req.Input, actionSpec.Form)
 	if err != nil {
 		return nil, err
 	}
@@ -143,7 +155,7 @@ func (s *Service) RunAction(ctx context.Context, req RunRequest) (*CollectionAct
 
 	var snapshotDocs []SnapshotDocument
 	if len(selectedDocumentIDs) > 0 {
-		snapshotDocs, err = s.repo.ListSnapshotDocumentsByIDs(ctx, req.CollectionID, docType, selectedDocumentIDs)
+		snapshotDocs, err = s.repo.ListSnapshotDocumentsByIDs(ctx, req.CollectionID, collectionKind, sourceFormat, selectedDocumentIDs)
 		if err != nil {
 			return nil, err
 		}
@@ -172,7 +184,7 @@ func (s *Service) RunAction(ctx context.Context, req RunRequest) (*CollectionAct
 			return nil, statusErr
 		}
 
-		snapshotDocs, err = s.repo.ListSnapshotDocuments(ctx, req.CollectionID, docType, statuses)
+		snapshotDocs, err = s.repo.ListSnapshotDocuments(ctx, req.CollectionID, collectionKind, sourceFormat, statuses)
 		if err != nil {
 			return nil, err
 		}
@@ -198,10 +210,11 @@ func (s *Service) RunAction(ctx context.Context, req RunRequest) (*CollectionAct
 		ID:             uuid.NewString(),
 		UserID:         req.UserID,
 		CollectionID:   req.CollectionID,
-		DocumentType:   docType,
+		CollectionKind: collectionKind,
+		SourceFormat:   sourceFormat,
 		ActionType:     actionType,
 		Status:         StatusQueued,
-		ParamsJSON:     paramsJSON,
+		InputJSON:      inputJSON,
 		SnapshotJSON:   snapshotJSON,
 		SnapshotHash:   hash,
 		SnapshotTotal:  len(snapshotDocs),
@@ -257,13 +270,13 @@ func (s *Service) GetActionSpec(
 	ctx context.Context,
 	userID string,
 	collectionID string,
-) (*document.DocumentTypeSpec, error) {
+) (*document.CollectionSpec, error) {
 	coll, err := s.getOwnedCollection(ctx, userID, collectionID)
 	if err != nil {
 		return nil, err
 	}
 
-	spec, ok := document.BuildDocumentTypeSpec(document.DocumentType(*coll.DocumentType))
+	spec, ok := document.BuildCollectionSpec(document.CollectionKind(*coll.CollectionKind))
 	if !ok {
 		return nil, ErrSpecNotFound
 	}
@@ -273,6 +286,43 @@ func (s *Service) GetActionSpec(
 	}
 
 	return &spec, nil
+}
+
+func (s *Service) ResolveActionSpec(
+	ctx context.Context,
+	req ResolveSpecRequest,
+) (*document.ActionSpec, error) {
+	coll, err := s.getOwnedCollection(ctx, req.UserID, req.CollectionID)
+	if err != nil {
+		return nil, err
+	}
+
+	collectionKind := document.CollectionKind(*coll.CollectionKind)
+	sourceFormat := document.ResolveCollectionSourceFormat(collectionKind)
+
+	spec, ok := document.BuildCollectionSpec(collectionKind)
+	if !ok {
+		return nil, ErrSpecNotFound
+	}
+	spec = s.applyRuntimeRequirements(spec)
+	if coll.IsFrozen() {
+		spec = applyFrozenCollectionSpec(spec)
+	}
+
+	actionSpec, ok := spec.FindActionSpec(req.ActionType)
+	if !ok {
+		return nil, ErrActionNotSupported
+	}
+
+	resolved := actionSpec
+	if collectionKind == document.CollectionKindCashflowImport && strings.EqualFold(strings.TrimSpace(actionSpec.ActionType), "export_cashflow_myob") {
+		resolved, err = s.resolveCashflowActionSpec(ctx, req.CollectionID, collectionKind, sourceFormat, actionSpec, req.DocumentIDs)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &resolved, nil
 }
 
 func (s *Service) GetActionDetail(
@@ -388,21 +438,28 @@ func (s *Service) process(ctx context.Context, actionID string) error {
 		})
 	}
 
-	processor, ok := s.processors.Get(action.DocumentType)
+	processor, ok := s.processors.Get(document.ProcessorKey{
+		CollectionKind: action.CollectionKind,
+		SourceFormat:   action.SourceFormat,
+	})
 	if !ok {
-		processor = document.NewNoopProcessor(action.DocumentType)
+		processor = document.NewNoopProcessor(document.ProcessorKey{
+			CollectionKind: action.CollectionKind,
+			SourceFormat:   action.SourceFormat,
+		})
 	}
 
 	runReq := document.ActionRequest{
-		ActionID:      action.ID,
-		UserID:        action.UserID,
-		CollectionID:  action.CollectionID,
-		DocumentType:  action.DocumentType,
-		ActionType:    action.ActionType,
-		SnapshotDocID: docIDs,
-		SnapshotDocs:  snapshotPayload,
-		Params:        action.ParamsJSON,
-		RequestedAt:   startedAt,
+		ActionID:       action.ID,
+		UserID:         action.UserID,
+		CollectionID:   action.CollectionID,
+		CollectionKind: action.CollectionKind,
+		SourceFormat:   action.SourceFormat,
+		ActionType:     action.ActionType,
+		SnapshotDocID:  docIDs,
+		SnapshotDocs:   snapshotPayload,
+		Input:          action.InputJSON,
+		RequestedAt:    startedAt,
 	}
 
 	result, runErr := processor.RunAction(ctx, runReq)
@@ -465,17 +522,18 @@ func (s *Service) getOwnedCollection(
 		return nil, dcollection.ErrCollectionNotFound
 	}
 
-	if !coll.IsCollection() || coll.DocumentType == nil {
+	if !coll.IsCollection() || coll.CollectionKind == nil {
 		return nil, dcollection.ErrInvalidNodeType
 	}
 
 	return coll, nil
 }
 
-func applyFrozenCollectionSpec(spec document.DocumentTypeSpec) document.DocumentTypeSpec {
+func applyFrozenCollectionSpec(spec document.CollectionSpec) document.CollectionSpec {
 	for idx := range spec.Actions {
-		spec.Actions[idx].Enabled = false
-		spec.Actions[idx].Reason = "Collection sudah freeze dan tidak bisa menjalankan action baru."
+		spec.Actions[idx].State.Enabled = false
+		spec.Actions[idx].State.Code = "COLLECTION_FROZEN"
+		spec.Actions[idx].State.Message = "Collection sudah freeze dan tidak bisa menjalankan action baru."
 	}
 	return spec
 }
@@ -674,15 +732,32 @@ func normalizeSnapshotStatuses(input []string, allowed []string) ([]string, erro
 	return out, nil
 }
 
-func normalizeAndValidateActionParams(
+func normalizeAndValidateActionInput(
 	raw json.RawMessage,
-	paramSpecs []document.ActionParamFieldSpec,
+	form *document.FormSpec,
 ) (json.RawMessage, error) {
-	specByKey := make(map[string]document.ActionParamFieldSpec, len(paramSpecs))
-	for _, spec := range paramSpecs {
+	fieldSpecs := flattenFormFields(form)
+	if len(fieldSpecs) == 0 {
+		trimmed := bytes.TrimSpace(raw)
+		if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+			return nil, nil
+		}
+
+		payload := map[string]any{}
+		if err := json.Unmarshal(trimmed, &payload); err != nil {
+			return nil, fmt.Errorf("%w: input must be a JSON object", ErrInvalidActionParams)
+		}
+		if len(payload) > 0 {
+			return nil, fmt.Errorf("%w: action does not accept input", ErrInvalidActionParams)
+		}
+		return nil, nil
+	}
+
+	specByKey := make(map[string]document.FormFieldSpec, len(fieldSpecs))
+	for _, spec := range fieldSpecs {
 		key := strings.TrimSpace(spec.Key)
 		if key == "" {
-			return nil, fmt.Errorf("%w: param key cannot be empty", ErrInvalidActionSpec)
+			return nil, fmt.Errorf("%w: field key cannot be empty", ErrInvalidActionSpec)
 		}
 		specByKey[key] = spec
 	}
@@ -691,7 +766,7 @@ func normalizeAndValidateActionParams(
 	payload := map[string]any{}
 	if !(len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null"))) {
 		if err := json.Unmarshal(trimmed, &payload); err != nil {
-			return nil, fmt.Errorf("%w: params must be a JSON object", ErrInvalidActionParams)
+			return nil, fmt.Errorf("%w: input must be a JSON object", ErrInvalidActionParams)
 		}
 		if payload == nil {
 			payload = map[string]any{}
@@ -700,42 +775,42 @@ func normalizeAndValidateActionParams(
 
 	for key := range payload {
 		if _, ok := specByKey[key]; !ok {
-			return nil, fmt.Errorf("%w: unknown param %q", ErrInvalidActionParams, key)
+			return nil, fmt.Errorf("%w: unknown input %q", ErrInvalidActionParams, key)
 		}
 	}
 
 	normalized := make(map[string]any, len(payload))
-	for _, spec := range paramSpecs {
+	for _, spec := range fieldSpecs {
 		value, exists := payload[spec.Key]
-		if (!exists || value == nil) && spec.Default != nil {
-			value = spec.Default
+		if (!exists || value == nil) && spec.DefaultValue != nil {
+			value = spec.DefaultValue
 			exists = true
 		}
 		if !exists || value == nil {
 			if spec.Required {
-				return nil, fmt.Errorf("%w: missing required param %q", ErrInvalidActionParams, spec.Key)
+				return nil, fmt.Errorf("%w: missing required input %q", ErrInvalidActionParams, spec.Key)
 			}
 			continue
 		}
 
-		normalizedValue, normalizeErr := normalizeActionParamValue(spec, value)
+		normalizedValue, normalizeErr := normalizeActionInputValue(spec, value)
 		if normalizeErr != nil {
 			return nil, normalizeErr
 		}
-		if spec.Required && isEmptyActionParamValue(normalizedValue) {
-			return nil, fmt.Errorf("%w: param %q cannot be empty", ErrInvalidActionParams, spec.Key)
+		if spec.Required && isEmptyActionInputValue(normalizedValue) {
+			return nil, fmt.Errorf("%w: input %q cannot be empty", ErrInvalidActionParams, spec.Key)
 		}
-		if !spec.Required && isEmptyActionParamValue(normalizedValue) {
+		if !spec.Required && isEmptyActionInputValue(normalizedValue) {
 			continue
 		}
-		if optionsErr := validateActionParamOptions(spec, normalizedValue); optionsErr != nil {
+		if optionsErr := validateActionInputOptions(spec, normalizedValue); optionsErr != nil {
 			return nil, optionsErr
 		}
 
 		normalized[spec.Key] = normalizedValue
 	}
 
-	if ruleErr := validateActionParamRules(normalized, paramSpecs); ruleErr != nil {
+	if ruleErr := validateActionInputRules(normalized, fieldSpecs); ruleErr != nil {
 		return nil, ruleErr
 	}
 
@@ -745,42 +820,33 @@ func normalizeAndValidateActionParams(
 
 	b, err := json.Marshal(normalized)
 	if err != nil {
-		return nil, fmt.Errorf("%w: failed to encode normalized params", ErrInvalidActionParams)
+		return nil, fmt.Errorf("%w: failed to encode normalized input", ErrInvalidActionParams)
 	}
 	return b, nil
 }
 
-func normalizeActionParamValue(spec document.ActionParamFieldSpec, value any) (any, error) {
-	switch strings.ToLower(strings.TrimSpace(spec.Type)) {
-	case document.ActionParamTypeString:
+func flattenFormFields(form *document.FormSpec) []document.FormFieldSpec {
+	if form == nil || len(form.Sections) == 0 {
+		return nil
+	}
+
+	fields := make([]document.FormFieldSpec, 0)
+	for _, section := range form.Sections {
+		fields = append(fields, section.Fields...)
+	}
+	return fields
+}
+
+func normalizeActionInputValue(spec document.FormFieldSpec, value any) (any, error) {
+	switch strings.ToLower(strings.TrimSpace(spec.Kind)) {
+	case document.FormFieldKindText, document.FormFieldKindTextarea, document.FormFieldKindTemplate:
 		s, ok := value.(string)
 		if !ok {
-			return nil, fmt.Errorf("%w: param %q must be string", ErrInvalidActionParams, spec.Key)
+			return nil, fmt.Errorf("%w: input %q must be string", ErrInvalidActionParams, spec.Key)
 		}
 		return strings.TrimSpace(s), nil
 
-	case document.ActionParamTypeInt:
-		switch n := value.(type) {
-		case float64:
-			if math.Trunc(n) != n {
-				return nil, fmt.Errorf("%w: param %q must be integer", ErrInvalidActionParams, spec.Key)
-			}
-			return int64(n), nil
-		case int:
-			return int64(n), nil
-		case int64:
-			return n, nil
-		case json.Number:
-			i, err := n.Int64()
-			if err != nil {
-				return nil, fmt.Errorf("%w: param %q must be integer", ErrInvalidActionParams, spec.Key)
-			}
-			return i, nil
-		default:
-			return nil, fmt.Errorf("%w: param %q must be integer", ErrInvalidActionParams, spec.Key)
-		}
-
-	case document.ActionParamTypeFloat:
+	case document.FormFieldKindNumber:
 		switch n := value.(type) {
 		case float64:
 			return n, nil
@@ -791,26 +857,33 @@ func normalizeActionParamValue(spec document.ActionParamFieldSpec, value any) (a
 		case json.Number:
 			f, err := n.Float64()
 			if err != nil {
-				return nil, fmt.Errorf("%w: param %q must be number", ErrInvalidActionParams, spec.Key)
+				return nil, fmt.Errorf("%w: input %q must be number", ErrInvalidActionParams, spec.Key)
 			}
 			return f, nil
 		default:
-			return nil, fmt.Errorf("%w: param %q must be number", ErrInvalidActionParams, spec.Key)
+			return nil, fmt.Errorf("%w: input %q must be number", ErrInvalidActionParams, spec.Key)
 		}
 
-	case document.ActionParamTypeBoolean, "bool":
+	case document.FormFieldKindCheckbox:
 		b, ok := value.(bool)
 		if !ok {
-			return nil, fmt.Errorf("%w: param %q must be boolean", ErrInvalidActionParams, spec.Key)
+			return nil, fmt.Errorf("%w: input %q must be boolean", ErrInvalidActionParams, spec.Key)
 		}
 		return b, nil
 
+	case document.FormFieldKindSelect:
+		s, ok := value.(string)
+		if !ok {
+			return nil, fmt.Errorf("%w: input %q must be string", ErrInvalidActionParams, spec.Key)
+		}
+		return strings.TrimSpace(s), nil
+
 	default:
-		return nil, fmt.Errorf("%w: unsupported param type %q for key %q", ErrInvalidActionSpec, spec.Type, spec.Key)
+		return nil, fmt.Errorf("%w: unsupported field kind %q for key %q", ErrInvalidActionSpec, spec.Kind, spec.Key)
 	}
 }
 
-func validateActionParamOptions(spec document.ActionParamFieldSpec, value any) error {
+func validateActionInputOptions(spec document.FormFieldSpec, value any) error {
 	if len(spec.Options) == 0 {
 		return nil
 	}
@@ -820,22 +893,22 @@ func validateActionParamOptions(spec document.ActionParamFieldSpec, value any) e
 			return nil
 		}
 	}
-	return fmt.Errorf("%w: param %q has unsupported value %q", ErrInvalidActionParams, spec.Key, current)
+	return fmt.Errorf("%w: input %q has unsupported value %q", ErrInvalidActionParams, spec.Key, current)
 }
 
-func validateActionParamRules(params map[string]any, specs []document.ActionParamFieldSpec) error {
+func validateActionInputRules(input map[string]any, specs []document.FormFieldSpec) error {
 	for _, spec := range specs {
 		for _, rule := range spec.Rules {
 			switch strings.ToLower(strings.TrimSpace(rule.Type)) {
-			case document.ActionParamRuleRequiredIf:
-				if !isActionParamRuleConditionMet(params, rule) {
+			case document.FormFieldRuleRequiredIf:
+				if !isActionInputRuleConditionMet(input, rule) {
 					continue
 				}
-				value, exists := params[spec.Key]
-				if !exists || isEmptyActionParamValue(value) {
+				value, exists := input[spec.Key]
+				if !exists || isEmptyActionInputValue(value) {
 					msg := strings.TrimSpace(rule.Message)
 					if msg == "" {
-						msg = fmt.Sprintf("param %q is required by rule", spec.Key)
+						msg = fmt.Sprintf("input %q is required by rule", spec.Key)
 					}
 					return fmt.Errorf("%w: %s", ErrInvalidActionParams, msg)
 				}
@@ -847,23 +920,23 @@ func validateActionParamRules(params map[string]any, specs []document.ActionPara
 	return nil
 }
 
-func isActionParamRuleConditionMet(params map[string]any, rule document.ActionParamRuleSpec) bool {
+func isActionInputRuleConditionMet(input map[string]any, rule document.FormFieldRuleSpec) bool {
 	field := strings.TrimSpace(rule.Field)
 	if field == "" {
 		return false
 	}
-	left, ok := params[field]
+	left, ok := input[field]
 	if !ok {
 		return false
 	}
 	expected := strings.TrimSpace(rule.Equals)
 	if expected == "" {
-		return !isEmptyActionParamValue(left)
+		return !isEmptyActionInputValue(left)
 	}
 	return strings.EqualFold(strings.TrimSpace(fmt.Sprint(left)), expected)
 }
 
-func isEmptyActionParamValue(value any) bool {
+func isEmptyActionInputValue(value any) bool {
 	if value == nil {
 		return true
 	}
@@ -936,6 +1009,168 @@ func normalizeDocumentIDs(input []string) ([]string, error) {
 	return out, nil
 }
 
+func (s *Service) resolveCashflowActionSpec(
+	ctx context.Context,
+	collectionID string,
+	collectionKind document.CollectionKind,
+	sourceFormat document.SourceFormat,
+	actionSpec document.ActionSpec,
+	documentIDs []string,
+) (document.ActionSpec, error) {
+	field, ok := findFormField(actionSpec.Form, "sheetName")
+	if !ok {
+		return actionSpec, nil
+	}
+
+	normalizedIDs, err := normalizeDocumentIDs(documentIDs)
+	if err != nil {
+		return actionSpec, err
+	}
+	if len(normalizedIDs) == 0 {
+		field.Options = nil
+		field.HelpText = "Pilih minimal satu dokumen cashflow untuk melihat sheet yang tersedia."
+		updateFormField(actionSpec.Form, field)
+		return actionSpec, nil
+	}
+
+	snapshotDocs, err := s.repo.ListSnapshotDocumentsByIDs(ctx, collectionID, collectionKind, sourceFormat, normalizedIDs)
+	if err != nil {
+		return actionSpec, err
+	}
+	if len(snapshotDocs) != len(normalizedIDs) {
+		return actionSpec, ErrSnapshotDocNotFound
+	}
+	if allowed, allowedErr := normalizeAllowedStatuses(actionSpec.Selection.AllowedStatus); allowedErr == nil {
+		if err := validateSnapshotStatuses(snapshotDocs, allowed); err != nil {
+			return actionSpec, err
+		}
+	}
+
+	commonSheetNames, defaultSheet, defaultHeaderRow, resolveErr := s.resolveCommonCashflowSheets(ctx, collectionID, snapshotDocs)
+	if resolveErr != nil {
+		return actionSpec, resolveErr
+	}
+
+	if len(commonSheetNames) == 0 {
+		actionSpec.State.Enabled = false
+		actionSpec.State.Code = "CASHFLOW_COMMON_SHEET_NOT_FOUND"
+		actionSpec.State.Message = "Dokumen terpilih tidak memiliki nama sheet yang sama untuk diproses bersama."
+		field.Options = nil
+		field.HelpText = actionSpec.State.Message
+		updateFormField(actionSpec.Form, field)
+		return actionSpec, nil
+	}
+
+	field.Options = make([]document.FormFieldOption, 0, len(commonSheetNames))
+	for _, sheetName := range commonSheetNames {
+		field.Options = append(field.Options, document.FormFieldOption{
+			Label: sheetName,
+			Value: sheetName,
+		})
+	}
+	field.HelpText = "Sheet yang tersedia pada semua dokumen terpilih."
+	if defaultSheet != "" {
+		field.DefaultValue = defaultSheet
+	}
+	updateFormField(actionSpec.Form, field)
+
+	if headerField, ok := findFormField(actionSpec.Form, "headerRowNumber"); ok {
+		if defaultHeaderRow > 0 {
+			headerField.DefaultValue = defaultHeaderRow
+		}
+		updateFormField(actionSpec.Form, headerField)
+	}
+
+	return actionSpec, nil
+}
+
+func (s *Service) resolveCommonCashflowSheets(
+	ctx context.Context,
+	collectionID string,
+	snapshotDocs []SnapshotDocument,
+) ([]string, string, int, error) {
+	var common []string
+	headerBySheet := map[string]int{}
+	for idx, doc := range snapshotDocs {
+		workbook, err := document.LoadCashflowWorkbook(ctx, s.fileStore, collectionID, doc.NormalizedRef)
+		if err != nil {
+			return nil, "", 0, err
+		}
+
+		currentNames := make([]string, 0, len(workbook.Sheets))
+		currentHeaders := map[string]int{}
+		for _, sheet := range workbook.Sheets {
+			name := strings.TrimSpace(sheet.Name)
+			if name == "" {
+				continue
+			}
+			currentNames = append(currentNames, name)
+			currentHeaders[name] = sheet.HeaderRowIndex
+		}
+
+		if idx == 0 {
+			common = append(common, currentNames...)
+			for name, row := range currentHeaders {
+				headerBySheet[name] = row
+			}
+			continue
+		}
+
+		nextCommon := make([]string, 0, len(common))
+		for _, existing := range common {
+			row, ok := currentHeaders[existing]
+			if !ok {
+				continue
+			}
+			nextCommon = append(nextCommon, existing)
+			if headerBySheet[existing] <= 0 || row <= 0 || headerBySheet[existing] != row {
+				headerBySheet[existing] = 1
+			}
+		}
+		common = nextCommon
+	}
+
+	if len(common) == 0 {
+		return nil, "", 0, nil
+	}
+
+	defaultSheet := common[0]
+	defaultHeader := headerBySheet[defaultSheet]
+	if defaultHeader <= 0 {
+		defaultHeader = 1
+	}
+
+	return common, defaultSheet, defaultHeader, nil
+}
+
+func findFormField(form *document.FormSpec, key string) (document.FormFieldSpec, bool) {
+	if form == nil {
+		return document.FormFieldSpec{}, false
+	}
+	for _, section := range form.Sections {
+		for _, field := range section.Fields {
+			if strings.EqualFold(strings.TrimSpace(field.Key), strings.TrimSpace(key)) {
+				return field, true
+			}
+		}
+	}
+	return document.FormFieldSpec{}, false
+}
+
+func updateFormField(form *document.FormSpec, updated document.FormFieldSpec) {
+	if form == nil {
+		return
+	}
+	for sectionIndex := range form.Sections {
+		for fieldIndex := range form.Sections[sectionIndex].Fields {
+			if strings.EqualFold(strings.TrimSpace(form.Sections[sectionIndex].Fields[fieldIndex].Key), strings.TrimSpace(updated.Key)) {
+				form.Sections[sectionIndex].Fields[fieldIndex] = updated
+				return
+			}
+		}
+	}
+}
+
 func validateSnapshotStatuses(snapshotDocs []SnapshotDocument, allowed []string) error {
 	allow := make(map[string]struct{}, len(allowed))
 	for _, status := range allowed {
@@ -950,15 +1185,19 @@ func validateSnapshotStatuses(snapshotDocs []SnapshotDocument, allowed []string)
 	return nil
 }
 
-func (s *Service) applyRuntimeRequirements(spec document.DocumentTypeSpec) document.DocumentTypeSpec {
+func (s *Service) applyRuntimeRequirements(spec document.CollectionSpec) document.CollectionSpec {
 	actions := make([]document.ActionSpec, 0, len(spec.Actions))
 	for _, item := range spec.Actions {
 		actionSpec := item
 		actionSpec.Requirements = append([]document.ActionRequirementSpec(nil), item.Requirements...)
 
-		if spec.DocumentType == document.DocumentTypePDFInvoice &&
+		if spec.CollectionKind == document.CollectionKindInvoiceCompany &&
 			strings.EqualFold(strings.TrimSpace(actionSpec.ActionType), "export_faktur_keluaran") {
 			actionSpec = s.applyBuyerRegistryRequirement(actionSpec)
+		}
+		if spec.CollectionKind == document.CollectionKindCashflowImport &&
+			strings.EqualFold(strings.TrimSpace(actionSpec.ActionType), "export_cashflow_myob") {
+			actionSpec = s.applyCashflowTaxAccountRequirement(actionSpec)
 		}
 
 		actions = append(actions, actionSpec)
@@ -1001,12 +1240,58 @@ func (s *Service) applyBuyerRegistryRequirement(actionSpec document.ActionSpec) 
 	}
 
 	if !status.Loaded {
-		actionSpec.Enabled = false
+		actionSpec.State.Enabled = false
+		actionSpec.State.Code = strings.TrimSpace(status.Code)
 		reason := strings.TrimSpace(status.Message)
 		if reason == "" {
 			reason = "Buyer registry belum siap."
 		}
-		actionSpec.Reason = reason
+		actionSpec.State.Message = reason
+	}
+
+	return actionSpec
+}
+
+func (s *Service) applyCashflowTaxAccountRequirement(actionSpec document.ActionSpec) document.ActionSpec {
+	status := appcashflow.TaxAccountStatus{
+		Loaded:  false,
+		Code:    "CASHFLOW_TAX_ACCOUNTS_UNAVAILABLE",
+		Message: "Master data tax accounts belum tersedia.",
+	}
+	if s.taxAccounts != nil {
+		status = s.taxAccounts.Status()
+	}
+
+	updated := false
+	for idx, requirement := range actionSpec.Requirements {
+		if !strings.EqualFold(strings.TrimSpace(requirement.Key), "cashflowTaxAccounts") {
+			continue
+		}
+		requirement.Satisfied = status.Loaded
+		requirement.Code = strings.TrimSpace(status.Code)
+		requirement.Message = strings.TrimSpace(status.Message)
+		actionSpec.Requirements[idx] = requirement
+		updated = true
+	}
+
+	if !updated {
+		actionSpec.Requirements = append(actionSpec.Requirements, document.ActionRequirementSpec{
+			Key:       "cashflowTaxAccounts",
+			Label:     "Tax Accounts",
+			Required:  true,
+			Satisfied: status.Loaded,
+			Code:      strings.TrimSpace(status.Code),
+			Message:   strings.TrimSpace(status.Message),
+		})
+	}
+
+	if !status.Loaded {
+		actionSpec.State.Enabled = false
+		actionSpec.State.Code = strings.TrimSpace(status.Code)
+		actionSpec.State.Message = strings.TrimSpace(status.Message)
+		if actionSpec.State.Message == "" {
+			actionSpec.State.Message = "Master data tax accounts belum siap."
+		}
 	}
 
 	return actionSpec

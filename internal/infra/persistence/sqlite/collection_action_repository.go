@@ -26,22 +26,23 @@ func (r *CollectionActionRepository) CreateAction(
 ) error {
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO collection_actions (
-			id, user_id, collection_id, document_type,
+			id, user_id, collection_id, collection_kind, source_format, document_type,
 			action_type, status, message, params_json,
 			snapshot_json, snapshot_hash, snapshot_total,
 			rerun_of_action_id, idempotency_key,
 			total_count, success_count, warning_count, failed_count, skipped_count,
 			started_at, finished_at, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		act.ID,
 		act.UserID,
 		act.CollectionID,
-		act.DocumentType,
+		act.CollectionKind,
+		act.SourceFormat,
 		act.ActionType,
 		act.Status,
 		act.Message,
-		act.ParamsJSON,
+		act.InputJSON,
 		act.SnapshotJSON,
 		act.SnapshotHash,
 		act.SnapshotTotal,
@@ -66,7 +67,7 @@ func (r *CollectionActionRepository) FindActionByID(
 ) (*action.CollectionAction, error) {
 	row := r.db.QueryRowContext(ctx, `
 		SELECT
-			id, user_id, collection_id, document_type,
+			id, user_id, collection_id, collection_kind, source_format,
 			action_type, status, message, params_json,
 			snapshot_json, snapshot_hash, snapshot_total,
 			rerun_of_action_id, idempotency_key,
@@ -87,7 +88,7 @@ func (r *CollectionActionRepository) FindActionByIdempotency(
 ) (*action.CollectionAction, error) {
 	row := r.db.QueryRowContext(ctx, `
 		SELECT
-			id, user_id, collection_id, document_type,
+			id, user_id, collection_id, collection_kind, source_format,
 			action_type, status, message, params_json,
 			snapshot_json, snapshot_hash, snapshot_total,
 			rerun_of_action_id, idempotency_key,
@@ -116,7 +117,7 @@ func (r *CollectionActionRepository) ListActions(
 ) ([]*action.CollectionAction, error) {
 	query := `
 		SELECT
-			id, user_id, collection_id, document_type,
+			id, user_id, collection_id, collection_kind, source_format,
 			action_type, status, message, params_json,
 			snapshot_json, snapshot_hash, snapshot_total,
 			rerun_of_action_id, idempotency_key,
@@ -153,7 +154,7 @@ func (r *CollectionActionRepository) ListActions(
 func (r *CollectionActionRepository) ListPendingActions(ctx context.Context) ([]*action.CollectionAction, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT
-			id, user_id, collection_id, document_type,
+			id, user_id, collection_id, collection_kind, source_format,
 			action_type, status, message, params_json,
 			snapshot_json, snapshot_hash, snapshot_total,
 			rerun_of_action_id, idempotency_key,
@@ -367,7 +368,8 @@ func (r *CollectionActionRepository) AddActionOutputs(
 func (r *CollectionActionRepository) ListSnapshotDocuments(
 	ctx context.Context,
 	collectionID string,
-	documentType document.DocumentType,
+	collectionKind document.CollectionKind,
+	sourceFormat document.SourceFormat,
 	statuses []string,
 ) ([]action.SnapshotDocument, error) {
 	if len(statuses) == 0 {
@@ -375,8 +377,8 @@ func (r *CollectionActionRepository) ListSnapshotDocuments(
 	}
 
 	placeholders := make([]string, len(statuses))
-	args := make([]any, 0, len(statuses)+2)
-	args = append(args, collectionID, documentType)
+	args := make([]any, 0, len(statuses)+3)
+	args = append(args, collectionID, collectionKind, sourceFormat)
 	for i, status := range statuses {
 		placeholders[i] = "?"
 		args = append(args, status)
@@ -387,7 +389,8 @@ func (r *CollectionActionRepository) ListSnapshotDocuments(
 			id, source_name, source_order, status, document_tag, source_sha256, normalized_ref, audit_ref, raw_ref
 		FROM documents
 		WHERE collection_id = ?
-		  AND document_type = ?
+		  AND collection_kind = ?
+		  AND source_format = ?
 		  AND deleted_at IS NULL
 		  AND status IN (` + strings.Join(placeholders, ",") + `)
 		ORDER BY source_order ASC, id ASC
@@ -445,7 +448,8 @@ func (r *CollectionActionRepository) ListSnapshotDocuments(
 func (r *CollectionActionRepository) ListSnapshotDocumentsByIDs(
 	ctx context.Context,
 	collectionID string,
-	documentType document.DocumentType,
+	collectionKind document.CollectionKind,
+	sourceFormat document.SourceFormat,
 	documentIDs []string,
 ) ([]action.SnapshotDocument, error) {
 	if len(documentIDs) == 0 {
@@ -453,8 +457,8 @@ func (r *CollectionActionRepository) ListSnapshotDocumentsByIDs(
 	}
 
 	placeholders := make([]string, len(documentIDs))
-	args := make([]any, 0, len(documentIDs)+2)
-	args = append(args, collectionID, documentType)
+	args := make([]any, 0, len(documentIDs)+3)
+	args = append(args, collectionID, collectionKind, sourceFormat)
 	for i, id := range documentIDs {
 		placeholders[i] = "?"
 		args = append(args, id)
@@ -465,7 +469,8 @@ func (r *CollectionActionRepository) ListSnapshotDocumentsByIDs(
 			id, source_name, source_order, status, document_tag, source_sha256, normalized_ref, audit_ref, raw_ref
 		FROM documents
 		WHERE collection_id = ?
-		  AND document_type = ?
+		  AND collection_kind = ?
+		  AND source_format = ?
 		  AND deleted_at IS NULL
 		  AND id IN (` + strings.Join(placeholders, ",") + `)
 		ORDER BY source_order ASC, id ASC
@@ -524,22 +529,24 @@ func scanCollectionAction(row rowScanner) (*action.CollectionAction, error) {
 	var (
 		act action.CollectionAction
 
-		docTypeRaw  string
-		statusRaw   string
-		messageRaw  sql.NullString
-		paramsRaw   []byte
-		snapshotRaw []byte
-		rerunRaw    sql.NullString
-		idemRaw     sql.NullString
-		startedRaw  sql.NullTime
-		finishedRaw sql.NullTime
+		collectionKindRaw string
+		sourceFormatRaw   string
+		statusRaw         string
+		messageRaw        sql.NullString
+		paramsRaw         []byte
+		snapshotRaw       []byte
+		rerunRaw          sql.NullString
+		idemRaw           sql.NullString
+		startedRaw        sql.NullTime
+		finishedRaw       sql.NullTime
 	)
 
 	if err := row.Scan(
 		&act.ID,
 		&act.UserID,
 		&act.CollectionID,
-		&docTypeRaw,
+		&collectionKindRaw,
+		&sourceFormatRaw,
 		&act.ActionType,
 		&statusRaw,
 		&messageRaw,
@@ -565,13 +572,14 @@ func scanCollectionAction(row rowScanner) (*action.CollectionAction, error) {
 		return nil, err
 	}
 
-	act.DocumentType = document.DocumentType(docTypeRaw)
+	act.CollectionKind = document.CollectionKind(collectionKindRaw)
+	act.SourceFormat = document.SourceFormat(sourceFormatRaw)
 	act.Status = action.Status(statusRaw)
 	if messageRaw.Valid {
 		act.Message = messageRaw.String
 	}
 	if len(paramsRaw) > 0 && json.Valid(paramsRaw) {
-		act.ParamsJSON = paramsRaw
+		act.InputJSON = paramsRaw
 	}
 	if len(snapshotRaw) > 0 && json.Valid(snapshotRaw) {
 		act.SnapshotJSON = snapshotRaw

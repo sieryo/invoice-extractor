@@ -21,11 +21,11 @@ import (
 )
 
 type PDFBukpotProcessor struct {
-	docType    DocumentType
-	forcedKind bukpotdomain.Kind
-	service    *bukpot.Service
-	fileStore  dfile.FileStore
-	actions    map[string]bukpotActionHandler
+	collectionKind CollectionKind
+	forcedKind     bukpotdomain.Kind
+	service        *bukpot.Service
+	fileStore      dfile.FileStore
+	actions        map[string]bukpotActionHandler
 }
 
 const (
@@ -58,28 +58,31 @@ type bukpotNormalizedPayload struct {
 }
 
 func NewPDFBukpotProcessor(
-	docType DocumentType,
+	collectionKind CollectionKind,
 	service *bukpot.Service,
 	fileStore dfile.FileStore,
 ) *PDFBukpotProcessor {
 	p := &PDFBukpotProcessor{
-		docType:    docType,
-		forcedKind: mapBukpotKindFromDocType(docType),
-		service:    service,
-		fileStore:  fileStore,
-		actions:    map[string]bukpotActionHandler{},
+		collectionKind: collectionKind,
+		forcedKind:     mapBukpotKindFromCollectionKind(collectionKind),
+		service:        service,
+		fileStore:      fileStore,
+		actions:        map[string]bukpotActionHandler{},
 	}
 
 	p.registerActionHandler(bukpotRenameActionType, p.runRenameWithTemplate)
-	if supportsBukpotCategoryAction(docType) {
+	if supportsBukpotCategoryAction(collectionKind) {
 		p.registerActionHandler(bukpotRenameByCategoryActionType, p.runRenameByCategory)
 	}
 
 	return p
 }
 
-func (p *PDFBukpotProcessor) Type() DocumentType {
-	return p.docType
+func (p *PDFBukpotProcessor) Key() ProcessorKey {
+	return ProcessorKey{
+		CollectionKind: p.collectionKind,
+		SourceFormat:   SourceFormatPDF,
+	}
 }
 
 func (p *PDFBukpotProcessor) Ingest(ctx context.Context, req IngestRequest) (IngestResult, error) {
@@ -87,14 +90,14 @@ func (p *PDFBukpotProcessor) Ingest(ctx context.Context, req IngestRequest) (Ing
 	result := IngestResult{
 		BatchID:      req.RequestID,
 		CollectionID: req.CollectionID,
-		DocumentType: string(req.DocumentType),
+		DocumentType: string(req.CollectionKind),
 		Items:        make([]IngestItemResult, 0, len(req.Sources)),
 		StartedAt:    startedAt,
 	}
 
 	if !p.forcedKind.IsValid() {
 		result.FinishedAt = time.Now()
-		return result, fmt.Errorf("%w: unsupported bukpot document type %s", ErrProcessorNotImplemented, p.docType)
+		return result, fmt.Errorf("%w: unsupported bukpot collection kind %s", ErrProcessorNotImplemented, p.collectionKind)
 	}
 
 	for _, source := range req.Sources {
@@ -131,10 +134,10 @@ func (p *PDFBukpotProcessor) RunAction(ctx context.Context, req ActionRequest) (
 			Outputs:     []ActionOutput{},
 			ItemResults: []ActionItemResult{},
 			Status:      "failed",
-			Message:     fmt.Sprintf("unsupported action %s for %s", req.ActionType, p.docType),
+			Message:     fmt.Sprintf("unsupported action %s for %s", req.ActionType, p.collectionKind),
 			FinishedAt:  time.Now(),
 		}
-		return result, fmt.Errorf("%w: action %s for %s", ErrProcessorNotImplemented, req.ActionType, p.docType)
+		return result, fmt.Errorf("%w: action %s for %s", ErrProcessorNotImplemented, req.ActionType, p.collectionKind)
 	}
 
 	return handler(ctx, req)
@@ -160,11 +163,11 @@ func (p *PDFBukpotProcessor) runRenameByCategory(ctx context.Context, req Action
 		Outputs:     make([]ActionOutput, 0, 1),
 	}
 
-	if !supportsBukpotCategoryAction(p.docType) {
+	if !supportsBukpotCategoryAction(p.collectionKind) {
 		result.Status = "failed"
 		result.Message = "rename_by_category is only available for BPPU and BP21"
 		result.FinishedAt = time.Now()
-		return result, fmt.Errorf("%w: action %s for %s", ErrProcessorNotImplemented, req.ActionType, p.docType)
+		return result, fmt.Errorf("%w: action %s for %s", ErrProcessorNotImplemented, req.ActionType, p.collectionKind)
 	}
 
 	if len(req.SnapshotDocs) == 0 {
@@ -189,7 +192,7 @@ func (p *PDFBukpotProcessor) runRenameByCategory(ctx context.Context, req Action
 			continue
 		}
 
-		category, dokumenNomor := extractBukpotCategoryAndDocumentNumber(p.docType, payload.Bukpot)
+		category, dokumenNomor := extractBukpotCategoryAndDocumentNumber(p.collectionKind, payload.Bukpot)
 		category = sanitizeBukpotPathSegment(category)
 		if category == "" {
 			category = bukpotUnknownCategory
@@ -239,7 +242,7 @@ func (p *PDFBukpotProcessor) runRenameByCategory(ctx context.Context, req Action
 		return result, zipErr
 	}
 
-	if err := p.attachBukpotZipOutput(ctx, req.CollectionID, zipBytes, p.docType, bukpotRenameByCategoryActionType, &result); err != nil {
+	if err := p.attachBukpotZipOutput(ctx, req.CollectionID, zipBytes, p.collectionKind, bukpotRenameByCategoryActionType, &result); err != nil {
 		result.Status = "failed"
 		result.Message = "failed to save zip output"
 		result.FinishedAt = time.Now()
@@ -273,7 +276,7 @@ func (p *PDFBukpotProcessor) runRenameWithTemplate(ctx context.Context, req Acti
 		return result, errors.New("snapshot is empty")
 	}
 
-	params, err := parseBukpotRenameParams(req.Params)
+	params, err := parseBukpotRenameParams(req.Input)
 	if err != nil {
 		result.Status = "failed"
 		result.Message = "invalid action params"
@@ -297,7 +300,7 @@ func (p *PDFBukpotProcessor) runRenameWithTemplate(ctx context.Context, req Acti
 			continue
 		}
 
-		values := buildBukpotTemplateMap(p.docType, payload.Bukpot, payload.SourceName, payload.DocumentTag)
+		values := buildBukpotTemplateMap(p.collectionKind, payload.Bukpot, payload.SourceName, payload.DocumentTag)
 		filename, warnings := renderBukpotFilename(params.FilenameTemplate, values)
 		filename = ensureUniqueBukpotFilename(filename, usedNames)
 
@@ -339,7 +342,7 @@ func (p *PDFBukpotProcessor) runRenameWithTemplate(ctx context.Context, req Acti
 		return result, zipErr
 	}
 
-	if err := p.attachBukpotZipOutput(ctx, req.CollectionID, zipBytes, p.docType, bukpotRenameActionType, &result); err != nil {
+	if err := p.attachBukpotZipOutput(ctx, req.CollectionID, zipBytes, p.collectionKind, bukpotRenameActionType, &result); err != nil {
 		result.Status = "failed"
 		result.Message = "failed to save zip output"
 		result.FinishedAt = time.Now()
@@ -456,13 +459,14 @@ func (p *PDFBukpotProcessor) ingestSource(
 	}
 
 	normalizedPayload := map[string]any{
-		"source_id":     source.SourceID,
-		"source_name":   source.OriginalName,
-		"source_sha256": source.SHA256,
-		"document_type": string(req.DocumentType),
-		"document_tag":  strings.TrimSpace(parsed.Data.DocumentTag),
-		"bukpot":        parsed.Data,
-		"processed_at":  time.Now().UTC(),
+		"source_id":       source.SourceID,
+		"source_name":     source.OriginalName,
+		"source_sha256":   source.SHA256,
+		"collection_kind": string(req.CollectionKind),
+		"source_format":   string(req.SourceFormat),
+		"document_tag":    strings.TrimSpace(parsed.Data.DocumentTag),
+		"bukpot":          parsed.Data,
+		"processed_at":    time.Now().UTC(),
 	}
 	normalizedBytes, err := json.Marshal(normalizedPayload)
 	if err != nil {
@@ -506,21 +510,21 @@ func (p *PDFBukpotProcessor) ingestSource(
 	}
 }
 
-func mapBukpotKindFromDocType(docType DocumentType) bukpotdomain.Kind {
-	switch docType {
-	case DocumentTypePDFBukpotBPPU:
+func mapBukpotKindFromCollectionKind(collectionKind CollectionKind) bukpotdomain.Kind {
+	switch collectionKind {
+	case CollectionKindBukpotBPPU:
 		return bukpotdomain.KindBPPU
-	case DocumentTypePDFBukpotBP21:
+	case CollectionKindBukpotBP21:
 		return bukpotdomain.KindBP21
-	case DocumentTypePDFBukpotBPA1:
+	case CollectionKindBukpotBPA1:
 		return bukpotdomain.KindBPA1
 	default:
 		return ""
 	}
 }
 
-func supportsBukpotCategoryAction(docType DocumentType) bool {
-	return docType == DocumentTypePDFBukpotBPPU || docType == DocumentTypePDFBukpotBP21
+func supportsBukpotCategoryAction(collectionKind CollectionKind) bool {
+	return collectionKind == CollectionKindBukpotBPPU || collectionKind == CollectionKindBukpotBP21
 }
 
 func parseBukpotRenameParams(raw json.RawMessage) (bukpotRenameParams, error) {
@@ -592,20 +596,20 @@ func (p *PDFBukpotProcessor) loadBukpotNormalizedPayload(
 }
 
 func extractBukpotCategoryAndDocumentNumber(
-	docType DocumentType,
+	collectionKind CollectionKind,
 	parsed *bukpotdomain.ParsedDocument,
 ) (string, string) {
 	if parsed == nil {
 		return bukpotUnknownCategory, ""
 	}
 
-	switch docType {
-	case DocumentTypePDFBukpotBPPU:
+	switch collectionKind {
+	case CollectionKindBukpotBPPU:
 		if parsed.BPPU == nil {
 			return bukpotUnknownCategory, ""
 		}
 		return extractCategoryAndDocumentNumberFromReference(parsed.BPPU.DokumenReferensiNomor)
-	case DocumentTypePDFBukpotBP21:
+	case CollectionKindBukpotBP21:
 		if parsed.BP21 == nil {
 			return bukpotUnknownCategory, ""
 		}
@@ -721,7 +725,7 @@ func getBukpotNomorBukti(parsed *bukpotdomain.ParsedDocument) string {
 }
 
 func buildBukpotTemplateMap(
-	docType DocumentType,
+	collectionKind CollectionKind,
 	parsed *bukpotdomain.ParsedDocument,
 	sourceName string,
 	documentTag string,
@@ -738,7 +742,7 @@ func buildBukpotTemplateMap(
 
 	put("sourceName", strings.TrimSuffix(strings.TrimSpace(sourceName), filepath.Ext(sourceName)))
 	put("documentTag", documentTag)
-	put("documentType", string(docType))
+	put("collectionKind", string(collectionKind))
 
 	if parsed == nil {
 		return values
@@ -748,8 +752,8 @@ func buildBukpotTemplateMap(
 	put("nomorBuktiPotong", getBukpotNomorBukti(parsed))
 	put("namaPenerima", getBukpotReceiverName(parsed))
 
-	switch docType {
-	case DocumentTypePDFBukpotBPPU:
+	switch collectionKind {
+	case CollectionKindBukpotBPPU:
 		if parsed.BPPU == nil {
 			return values
 		}
@@ -762,7 +766,7 @@ func buildBukpotTemplateMap(
 		put("npwpNikPemotong", parsed.BPPU.NPWPNIKPemotong)
 		put("dokumenReferensiJenis", parsed.BPPU.DokumenReferensiJenis)
 		put("dokumenReferensiTanggal", parsed.BPPU.DokumenReferensiTanggal)
-	case DocumentTypePDFBukpotBP21:
+	case CollectionKindBukpotBP21:
 		if parsed.BP21 == nil {
 			return values
 		}
@@ -775,7 +779,7 @@ func buildBukpotTemplateMap(
 		put("npwpNikPemotong", parsed.BP21.NPWPNIKPemotong)
 		put("dokumenReferensiJenis", parsed.BP21.DokumenReferensiJenis)
 		put("dokumenReferensiTanggal", parsed.BP21.DokumenReferensiTanggal)
-	case DocumentTypePDFBukpotBPA1:
+	case CollectionKindBukpotBPA1:
 		if parsed.BPA1 == nil {
 			return values
 		}
@@ -940,11 +944,11 @@ func (p *PDFBukpotProcessor) attachBukpotZipOutput(
 	ctx context.Context,
 	collectionID string,
 	zipBytes []byte,
-	docType DocumentType,
+	collectionKind CollectionKind,
 	actionType string,
 	result *ActionResult,
 ) error {
-	docTypeSuffix := strings.TrimPrefix(string(docType), "pdf_")
+	docTypeSuffix := strings.TrimSpace(string(collectionKind))
 	baseName := fmt.Sprintf("%s_%s", actionType, docTypeSuffix)
 	if actionType == bukpotRenameActionType {
 		baseName = fmt.Sprintf("rename_%s", docTypeSuffix)

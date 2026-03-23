@@ -33,17 +33,17 @@ func (r *CollectionRepository) Create(
 
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO collections (
-			id, user_id, parent_id, name, node_type, document_type, phase,
+			id, user_id, parent_id, name, node_type, collection_kind, document_type, phase,
 			total_count, ready_count, warning_count, failed_count, duplicate_count,
 			created_at, updated_at, frozen_at, frozen_by, deleted_at, deleted_by, delete_reason
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		c.ID,
 		c.UserID,
 		c.Parent,
 		c.Name,
 		c.NodeType,
-		c.DocumentType,
+		c.CollectionKind,
 		c.Phase,
 		c.TotalCount,
 		c.ReadyCount,
@@ -67,7 +67,7 @@ func (r *CollectionRepository) FindByID(
 ) (*collection.Collection, error) {
 	row := r.db.QueryRowContext(ctx, `
 		SELECT
-			id, user_id, parent_id, name, node_type, document_type, phase,
+			id, user_id, parent_id, name, node_type, collection_kind, phase,
 			total_count, ready_count, warning_count, failed_count, duplicate_count,
 			created_at, updated_at, frozen_at, frozen_by, deleted_at, deleted_by, delete_reason
 		FROM collections
@@ -88,7 +88,7 @@ func (r *CollectionRepository) ListByUserID(
 ) ([]*collection.Collection, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT
-			id, user_id, parent_id, name, node_type, document_type, phase,
+			id, user_id, parent_id, name, node_type, collection_kind, phase,
 			total_count, ready_count, warning_count, failed_count, duplicate_count,
 			created_at, updated_at, frozen_at, frozen_by, deleted_at, deleted_by, delete_reason
 		FROM collections
@@ -117,7 +117,7 @@ func (r *CollectionRepository) ListChildren(
 	if parentID == nil {
 		rows, err = r.db.QueryContext(ctx, `
 			SELECT
-				id, user_id, parent_id, name, node_type, document_type, phase,
+				id, user_id, parent_id, name, node_type, collection_kind, phase,
 				total_count, ready_count, warning_count, failed_count, duplicate_count,
 				created_at, updated_at, frozen_at, frozen_by, deleted_at, deleted_by, delete_reason
 			FROM collections
@@ -129,7 +129,7 @@ func (r *CollectionRepository) ListChildren(
 	} else {
 		rows, err = r.db.QueryContext(ctx, `
 			SELECT
-				id, user_id, parent_id, name, node_type, document_type, phase,
+				id, user_id, parent_id, name, node_type, collection_kind, phase,
 				total_count, ready_count, warning_count, failed_count, duplicate_count,
 				created_at, updated_at, frozen_at, frozen_by, deleted_at, deleted_by, delete_reason
 			FROM collections
@@ -275,14 +275,14 @@ type scanner interface {
 
 func scanCollection(row scanner) (*collection.Collection, error) {
 	var (
-		c            collection.Collection
-		parentID     sql.NullString
-		docType      sql.NullString
-		frozenAt     sql.NullTime
-		frozenBy     sql.NullString
-		deletedAt    sql.NullTime
-		deletedBy    sql.NullString
-		deleteReason sql.NullString
+		c              collection.Collection
+		parentID       sql.NullString
+		collectionKind sql.NullString
+		frozenAt       sql.NullTime
+		frozenBy       sql.NullString
+		deletedAt      sql.NullTime
+		deletedBy      sql.NullString
+		deleteReason   sql.NullString
 	)
 
 	if err := row.Scan(
@@ -291,7 +291,7 @@ func scanCollection(row scanner) (*collection.Collection, error) {
 		&parentID,
 		&c.Name,
 		&c.NodeType,
-		&docType,
+		&collectionKind,
 		&c.Phase,
 		&c.TotalCount,
 		&c.ReadyCount,
@@ -312,9 +312,9 @@ func scanCollection(row scanner) (*collection.Collection, error) {
 	if parentID.Valid {
 		c.Parent = &parentID.String
 	}
-	if docType.Valid && docType.String != "" {
-		d := collection.DocumentType(docType.String)
-		c.DocumentType = &d
+	if collectionKind.Valid && collectionKind.String != "" {
+		k := collection.CollectionKind(collectionKind.String)
+		c.CollectionKind = &k
 	}
 	if frozenAt.Valid {
 		t := frozenAt.Time

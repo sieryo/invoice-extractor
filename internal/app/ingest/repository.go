@@ -28,7 +28,7 @@ type DocumentRepository interface {
 	FindActiveByHash(
 		ctx context.Context,
 		collectionID string,
-		documentType string,
+		collectionKind string,
 		sha256 string,
 	) (*DocumentRecord, error)
 	Create(ctx context.Context, doc *DocumentRecord) error

@@ -44,13 +44,15 @@ type Repository interface {
 	ListSnapshotDocuments(
 		ctx context.Context,
 		collectionID string,
-		documentType document.DocumentType,
+		collectionKind document.CollectionKind,
+		sourceFormat document.SourceFormat,
 		statuses []string,
 	) ([]SnapshotDocument, error)
 	ListSnapshotDocumentsByIDs(
 		ctx context.Context,
 		collectionID string,
-		documentType document.DocumentType,
+		collectionKind document.CollectionKind,
+		sourceFormat document.SourceFormat,
 		documentIDs []string,
 	) ([]SnapshotDocument, error)
 }

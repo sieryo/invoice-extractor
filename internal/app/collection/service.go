@@ -101,10 +101,10 @@ func (s *CollectionService) CreateTypedCollection(
 	name string,
 	userID string,
 	parentID *string,
-	documentType domain.DocumentType,
+	collectionKind domain.CollectionKind,
 ) (*domain.Collection, error) {
-	if !documentType.IsValid() {
-		return nil, domain.ErrInvalidDocumentType
+	if !collectionKind.IsValid() {
+		return nil, domain.ErrInvalidCollectionKind
 	}
 	normalizedName, err := normalizeCollectionName(name)
 	if err != nil {
@@ -120,7 +120,7 @@ func (s *CollectionService) CreateTypedCollection(
 		userID,
 		parentID,
 		normalizedName,
-		documentType,
+		collectionKind,
 		now,
 	)
 
@@ -248,7 +248,7 @@ func (s *CollectionService) Freeze(
 	if current.UserID != userID || current.DeletedAt != nil {
 		return nil, domain.ErrCollectionNotFound
 	}
-	if !current.IsCollection() || current.DocumentType == nil {
+	if !current.IsCollection() || current.CollectionKind == nil {
 		return nil, domain.ErrInvalidNodeType
 	}
 	if current.IsFrozen() {

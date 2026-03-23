@@ -8,12 +8,20 @@ import (
 	"github.com/sieryo/invoice-extractor/internal/app/document"
 )
 
-func TestNormalizeAndValidateActionParams_RequiredMissing(t *testing.T) {
-	_, err := normalizeAndValidateActionParams(nil, []document.ActionParamFieldSpec{
-		{
-			Key:      "sheetName",
-			Type:     document.ActionParamTypeString,
-			Required: true,
+func TestNormalizeAndValidateActionInput_RequiredMissing(t *testing.T) {
+	_, err := normalizeAndValidateActionInput(nil, &document.FormSpec{
+		Sections: []document.FormSectionSpec{
+			{
+				Key: "main",
+				Fields: []document.FormFieldSpec{
+					{
+						Key:      "sheetName",
+						Kind:     document.FormFieldKindText,
+						Required: true,
+						State:    document.FormFieldStateSpec{Visible: true},
+					},
+				},
+			},
 		},
 	})
 
@@ -22,13 +30,21 @@ func TestNormalizeAndValidateActionParams_RequiredMissing(t *testing.T) {
 	}
 }
 
-func TestNormalizeAndValidateActionParams_UnknownParam(t *testing.T) {
+func TestNormalizeAndValidateActionInput_UnknownField(t *testing.T) {
 	raw := json.RawMessage(`{"unknown":"x"}`)
-	_, err := normalizeAndValidateActionParams(raw, []document.ActionParamFieldSpec{
-		{
-			Key:      "sheetName",
-			Type:     document.ActionParamTypeString,
-			Required: true,
+	_, err := normalizeAndValidateActionInput(raw, &document.FormSpec{
+		Sections: []document.FormSectionSpec{
+			{
+				Key: "main",
+				Fields: []document.FormFieldSpec{
+					{
+						Key:      "sheetName",
+						Kind:     document.FormFieldKindText,
+						Required: true,
+						State:    document.FormFieldStateSpec{Visible: true},
+					},
+				},
+			},
 		},
 	})
 
@@ -37,13 +53,21 @@ func TestNormalizeAndValidateActionParams_UnknownParam(t *testing.T) {
 	}
 }
 
-func TestNormalizeAndValidateActionParams_IntCoercion(t *testing.T) {
+func TestNormalizeAndValidateActionInput_NumberCoercion(t *testing.T) {
 	raw := json.RawMessage(`{"headerRowNumber":2}`)
-	b, err := normalizeAndValidateActionParams(raw, []document.ActionParamFieldSpec{
-		{
-			Key:      "headerRowNumber",
-			Type:     document.ActionParamTypeInt,
-			Required: true,
+	b, err := normalizeAndValidateActionInput(raw, &document.FormSpec{
+		Sections: []document.FormSectionSpec{
+			{
+				Key: "main",
+				Fields: []document.FormFieldSpec{
+					{
+						Key:      "headerRowNumber",
+						Kind:     document.FormFieldKindNumber,
+						Required: true,
+						State:    document.FormFieldStateSpec{Visible: true},
+					},
+				},
+			},
 		},
 	})
 	if err != nil {
@@ -52,24 +76,10 @@ func TestNormalizeAndValidateActionParams_IntCoercion(t *testing.T) {
 
 	var got map[string]any
 	if unmarshalErr := json.Unmarshal(b, &got); unmarshalErr != nil {
-		t.Fatalf("unmarshal normalized params failed: %v", unmarshalErr)
+		t.Fatalf("unmarshal normalized input failed: %v", unmarshalErr)
 	}
 	if got["headerRowNumber"] != float64(2) {
 		t.Fatalf("expected headerRowNumber=2, got %#v", got["headerRowNumber"])
-	}
-}
-
-func TestNormalizeAndValidateActionParams_IntRejectDecimal(t *testing.T) {
-	raw := json.RawMessage(`{"headerRowNumber":2.5}`)
-	_, err := normalizeAndValidateActionParams(raw, []document.ActionParamFieldSpec{
-		{
-			Key:      "headerRowNumber",
-			Type:     document.ActionParamTypeInt,
-			Required: true,
-		},
-	})
-	if !errors.Is(err, ErrInvalidActionParams) {
-		t.Fatalf("expected ErrInvalidActionParams, got %v", err)
 	}
 }
 
@@ -80,13 +90,21 @@ func TestNormalizeAllowedStatuses_InvalidSpec(t *testing.T) {
 	}
 }
 
-func TestNormalizeAndValidateActionParams_DefaultApplied(t *testing.T) {
-	b, err := normalizeAndValidateActionParams(nil, []document.ActionParamFieldSpec{
-		{
-			Key:      "headerRowNumber",
-			Type:     document.ActionParamTypeInt,
-			Required: true,
-			Default:  1,
+func TestNormalizeAndValidateActionInput_DefaultApplied(t *testing.T) {
+	b, err := normalizeAndValidateActionInput(nil, &document.FormSpec{
+		Sections: []document.FormSectionSpec{
+			{
+				Key: "main",
+				Fields: []document.FormFieldSpec{
+					{
+						Key:          "headerRowNumber",
+						Kind:         document.FormFieldKindNumber,
+						Required:     true,
+						DefaultValue: 1,
+						State:        document.FormFieldStateSpec{Visible: true},
+					},
+				},
+			},
 		},
 	})
 	if err != nil {
@@ -95,23 +113,31 @@ func TestNormalizeAndValidateActionParams_DefaultApplied(t *testing.T) {
 
 	var got map[string]any
 	if unmarshalErr := json.Unmarshal(b, &got); unmarshalErr != nil {
-		t.Fatalf("unmarshal normalized params failed: %v", unmarshalErr)
+		t.Fatalf("unmarshal normalized input failed: %v", unmarshalErr)
 	}
 	if got["headerRowNumber"] != float64(1) {
 		t.Fatalf("expected headerRowNumber=1, got %#v", got["headerRowNumber"])
 	}
 }
 
-func TestNormalizeAndValidateActionParams_OptionsRejectInvalid(t *testing.T) {
+func TestNormalizeAndValidateActionInput_OptionsRejectInvalid(t *testing.T) {
 	raw := json.RawMessage(`{"cashflowFormat":"unknown"}`)
-	_, err := normalizeAndValidateActionParams(raw, []document.ActionParamFieldSpec{
-		{
-			Key:      "cashflowFormat",
-			Type:     document.ActionParamTypeString,
-			Required: true,
-			Options: []document.ActionParamOptionSpec{
-				{Label: "Default", Value: "default"},
-				{Label: "Influencer", Value: "influencer"},
+	_, err := normalizeAndValidateActionInput(raw, &document.FormSpec{
+		Sections: []document.FormSectionSpec{
+			{
+				Key: "main",
+				Fields: []document.FormFieldSpec{
+					{
+						Key:      "cashflowFormat",
+						Kind:     document.FormFieldKindSelect,
+						Required: true,
+						State:    document.FormFieldStateSpec{Visible: true},
+						Options: []document.FormFieldOption{
+							{Label: "Default", Value: "default"},
+							{Label: "Influencer", Value: "influencer"},
+						},
+					},
+				},
 			},
 		},
 	})
@@ -120,35 +146,44 @@ func TestNormalizeAndValidateActionParams_OptionsRejectInvalid(t *testing.T) {
 	}
 }
 
-func TestNormalizeAndValidateActionParams_RequiredIfRule(t *testing.T) {
-	specs := []document.ActionParamFieldSpec{
-		{
-			Key:      "cashflowFormat",
-			Type:     document.ActionParamTypeString,
-			Required: true,
-		},
-		{
-			Key:      "defaultIAccountCode",
-			Type:     document.ActionParamTypeString,
-			Required: false,
-			Rules: []document.ActionParamRuleSpec{
-				{
-					Type:   document.ActionParamRuleRequiredIf,
-					Field:  "cashflowFormat",
-					Equals: "influencer",
+func TestNormalizeAndValidateActionInput_RequiredIfRule(t *testing.T) {
+	form := &document.FormSpec{
+		Sections: []document.FormSectionSpec{
+			{
+				Key: "main",
+				Fields: []document.FormFieldSpec{
+					{
+						Key:      "cashflowFormat",
+						Kind:     document.FormFieldKindText,
+						Required: true,
+						State:    document.FormFieldStateSpec{Visible: true},
+					},
+					{
+						Key:      "defaultIAccountCode",
+						Kind:     document.FormFieldKindText,
+						Required: false,
+						State:    document.FormFieldStateSpec{Visible: true},
+						Rules: []document.FormFieldRuleSpec{
+							{
+								Type:   document.FormFieldRuleRequiredIf,
+								Field:  "cashflowFormat",
+								Equals: "influencer",
+							},
+						},
+					},
 				},
 			},
 		},
 	}
 
-	_, err := normalizeAndValidateActionParams(json.RawMessage(`{"cashflowFormat":"influencer"}`), specs)
+	_, err := normalizeAndValidateActionInput(json.RawMessage(`{"cashflowFormat":"influencer"}`), form)
 	if !errors.Is(err, ErrInvalidActionParams) {
 		t.Fatalf("expected ErrInvalidActionParams, got %v", err)
 	}
 
-	_, okErr := normalizeAndValidateActionParams(
+	_, okErr := normalizeAndValidateActionInput(
 		json.RawMessage(`{"cashflowFormat":"influencer","defaultIAccountCode":"62004"}`),
-		specs,
+		form,
 	)
 	if okErr != nil {
 		t.Fatalf("unexpected error: %v", okErr)

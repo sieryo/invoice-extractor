@@ -139,7 +139,7 @@ func TestBuildBukpotTemplateMapBPA1IncludesPosisi(t *testing.T) {
 		},
 	}
 
-	values := buildBukpotTemplateMap(DocumentTypePDFBukpotBPA1, parsed, "example_bpa1.pdf", "BPA1")
+	values := buildBukpotTemplateMap(CollectionKindBukpotBPA1, parsed, "example_bpa1.pdf", "BPA1")
 
 	if values["posisi"] != "STAFF" {
 		t.Fatalf("expected posisi token to be populated, got %q", values["posisi"])

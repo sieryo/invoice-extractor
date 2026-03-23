@@ -13,6 +13,7 @@ func (s *Server) registerRoutes() {
 	// Register domain-specific routes
 	s.registerJobRoutes(protected)
 	s.registerBuyerRoutes(protected)
+	s.registerTaxAccountRoutes(protected)
 	s.registerInvoiceRoutes(protected)
 	s.registerCollectionRoutes(protected)
 	s.registerTemplateRoutes(protected)

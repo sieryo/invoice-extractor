@@ -50,28 +50,29 @@ type SnapshotDocument struct {
 }
 
 type CollectionAction struct {
-	ID             string                `json:"id"`
-	UserID         string                `json:"userId"`
-	CollectionID   string                `json:"collectionId"`
-	DocumentType   document.DocumentType `json:"documentType"`
-	ActionType     string                `json:"actionType"`
-	Status         Status                `json:"status"`
-	Message        string                `json:"message,omitempty"`
-	ParamsJSON     json.RawMessage       `json:"params,omitempty"`
-	SnapshotJSON   json.RawMessage       `json:"-"`
-	SnapshotHash   string                `json:"snapshotHash"`
-	SnapshotTotal  int                   `json:"snapshotTotal"`
-	RerunOfAction  *string               `json:"rerunOfActionId,omitempty"`
-	IdempotencyKey *string               `json:"idempotencyKey,omitempty"`
-	TotalCount     int                   `json:"totalCount"`
-	SuccessCount   int                   `json:"successCount"`
-	WarningCount   int                   `json:"warningCount"`
-	FailedCount    int                   `json:"failedCount"`
-	SkippedCount   int                   `json:"skippedCount"`
-	StartedAt      *time.Time            `json:"startedAt,omitempty"`
-	FinishedAt     *time.Time            `json:"finishedAt,omitempty"`
-	CreatedAt      time.Time             `json:"createdAt"`
-	UpdatedAt      time.Time             `json:"updatedAt"`
+	ID             string                  `json:"id"`
+	UserID         string                  `json:"userId"`
+	CollectionID   string                  `json:"collectionId"`
+	CollectionKind document.CollectionKind `json:"collectionKind"`
+	SourceFormat   document.SourceFormat   `json:"sourceFormat"`
+	ActionType     string                  `json:"actionType"`
+	Status         Status                  `json:"status"`
+	Message        string                  `json:"message,omitempty"`
+	InputJSON      json.RawMessage         `json:"input,omitempty"`
+	SnapshotJSON   json.RawMessage         `json:"-"`
+	SnapshotHash   string                  `json:"snapshotHash"`
+	SnapshotTotal  int                     `json:"snapshotTotal"`
+	RerunOfAction  *string                 `json:"rerunOfActionId,omitempty"`
+	IdempotencyKey *string                 `json:"idempotencyKey,omitempty"`
+	TotalCount     int                     `json:"totalCount"`
+	SuccessCount   int                     `json:"successCount"`
+	WarningCount   int                     `json:"warningCount"`
+	FailedCount    int                     `json:"failedCount"`
+	SkippedCount   int                     `json:"skippedCount"`
+	StartedAt      *time.Time              `json:"startedAt,omitempty"`
+	FinishedAt     *time.Time              `json:"finishedAt,omitempty"`
+	CreatedAt      time.Time               `json:"createdAt"`
+	UpdatedAt      time.Time               `json:"updatedAt"`
 }
 
 type CollectionActionItem struct {
@@ -108,7 +109,7 @@ type RunRequest struct {
 	UserID           string          `json:"userId"`
 	CollectionID     string          `json:"collectionId"`
 	ActionType       string          `json:"actionType"`
-	Params           json.RawMessage `json:"params,omitempty"`
+	Input            json.RawMessage `json:"input,omitempty"`
 	DocumentIDs      []string        `json:"documentIds,omitempty"`
 	DocumentStatuses []string        `json:"documentStatuses,omitempty"`
 	IdempotencyKey   *string         `json:"idempotencyKey,omitempty"`
@@ -121,4 +122,11 @@ type ListRequest struct {
 	Status       string `json:"status,omitempty"`
 	Limit        int    `json:"limit"`
 	Offset       int    `json:"offset"`
+}
+
+type ResolveSpecRequest struct {
+	UserID       string   `json:"userId"`
+	CollectionID string   `json:"collectionId"`
+	ActionType   string   `json:"actionType"`
+	DocumentIDs  []string `json:"documentIds,omitempty"`
 }

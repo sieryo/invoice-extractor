@@ -18,23 +18,42 @@ const (
 	NodeTypeCollection NodeType = "collection"
 )
 
-type DocumentType string
+type CollectionKind string
 
 const (
-	DocumentTypePDFInvoice    DocumentType = "pdf_invoice"
-	DocumentTypePDFTaxInvoice DocumentType = "pdf_tax_invoice"
-	DocumentTypePDFBukpotBPPU DocumentType = "pdf_bppu"
-	DocumentTypePDFBukpotBP21 DocumentType = "pdf_bp21"
-	DocumentTypePDFBukpotBPA1 DocumentType = "pdf_bpa1"
+	CollectionKindInvoiceCompany    CollectionKind = "invoice_company"
+	CollectionKindTaxInvoiceCoretax CollectionKind = "tax_invoice_coretax"
+	CollectionKindBukpotBPPU        CollectionKind = "bukpot_bppu"
+	CollectionKindBukpotBP21        CollectionKind = "bukpot_bp21"
+	CollectionKindBukpotBPA1        CollectionKind = "bukpot_bpa1"
+	CollectionKindCashflowImport    CollectionKind = "cashflow_import"
 )
 
-func (d DocumentType) IsValid() bool {
-	switch d {
-	case DocumentTypePDFInvoice,
-		DocumentTypePDFTaxInvoice,
-		DocumentTypePDFBukpotBPPU,
-		DocumentTypePDFBukpotBP21,
-		DocumentTypePDFBukpotBPA1:
+func (k CollectionKind) IsValid() bool {
+	switch k {
+	case CollectionKindInvoiceCompany,
+		CollectionKindTaxInvoiceCoretax,
+		CollectionKindBukpotBPPU,
+		CollectionKindBukpotBP21,
+		CollectionKindBukpotBPA1,
+		CollectionKindCashflowImport:
+		return true
+	default:
+		return false
+	}
+}
+
+type SourceFormat string
+
+const (
+	SourceFormatPDF  SourceFormat = "pdf"
+	SourceFormatXLSX SourceFormat = "xlsx"
+	SourceFormatCSV  SourceFormat = "csv"
+)
+
+func (f SourceFormat) IsValid() bool {
+	switch f {
+	case SourceFormatPDF, SourceFormatXLSX, SourceFormatCSV:
 		return true
 	default:
 		return false
@@ -57,9 +76,9 @@ type Collection struct {
 	Status Status  `json:"status,omitempty"` // legacy field for old FE contracts
 	Parent *string `json:"parentId,omitempty"`
 
-	NodeType     NodeType      `json:"nodeType"`
-	DocumentType *DocumentType `json:"documentType,omitempty"`
-	Phase        Phase         `json:"phase"`
+	NodeType       NodeType        `json:"nodeType"`
+	CollectionKind *CollectionKind `json:"collectionKind,omitempty"`
+	Phase          Phase           `json:"phase"`
 
 	TotalCount     int `json:"totalCount"`
 	ReadyCount     int `json:"readyCount"`
@@ -80,17 +99,17 @@ type Collection struct {
 }
 
 func NewCollection(id string, userID string, name string, now time.Time) *Collection {
-	docType := DocumentTypePDFInvoice
+	kind := CollectionKindInvoiceCompany
 	return &Collection{
-		ID:           id,
-		UserID:       userID,
-		Name:         name,
-		NodeType:     NodeTypeCollection,
-		DocumentType: &docType,
-		Phase:        PhaseReady,
-		CreatedAt:    now,
-		UpdatedAt:    now,
-		Status:       StatusActive,
+		ID:             id,
+		UserID:         userID,
+		Name:           name,
+		NodeType:       NodeTypeCollection,
+		CollectionKind: &kind,
+		Phase:          PhaseReady,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+		Status:         StatusActive,
 	}
 }
 
@@ -113,20 +132,20 @@ func NewTypedCollection(
 	userID string,
 	parent *string,
 	name string,
-	documentType DocumentType,
+	collectionKind CollectionKind,
 	now time.Time,
 ) *Collection {
 	c := &Collection{
-		ID:           id,
-		UserID:       userID,
-		Parent:       parent,
-		Name:         name,
-		NodeType:     NodeTypeCollection,
-		DocumentType: &documentType,
-		Phase:        PhaseReady,
-		CreatedAt:    now,
-		UpdatedAt:    now,
-		Status:       StatusActive,
+		ID:             id,
+		UserID:         userID,
+		Parent:         parent,
+		Name:           name,
+		NodeType:       NodeTypeCollection,
+		CollectionKind: &collectionKind,
+		Phase:          PhaseReady,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+		Status:         StatusActive,
 	}
 	c.SyncLegacyStatus()
 	return c

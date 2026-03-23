@@ -35,8 +35,11 @@ func NewPDFInvoiceProcessor(
 	}
 }
 
-func (p *PDFInvoiceProcessor) Type() DocumentType {
-	return DocumentTypePDFInvoice
+func (p *PDFInvoiceProcessor) Key() ProcessorKey {
+	return ProcessorKey{
+		CollectionKind: CollectionKindInvoiceCompany,
+		SourceFormat:   SourceFormatPDF,
+	}
 }
 
 func (p *PDFInvoiceProcessor) Ingest(ctx context.Context, req IngestRequest) (IngestResult, error) {
@@ -44,7 +47,7 @@ func (p *PDFInvoiceProcessor) Ingest(ctx context.Context, req IngestRequest) (In
 	result := IngestResult{
 		BatchID:      req.RequestID,
 		CollectionID: req.CollectionID,
-		DocumentType: string(req.DocumentType),
+		DocumentType: string(req.CollectionKind),
 		Items:        make([]IngestItemResult, 0, len(req.Sources)),
 		StartedAt:    startedAt,
 	}
@@ -153,7 +156,7 @@ func (p *PDFInvoiceProcessor) RunAction(ctx context.Context, req ActionRequest) 
 		result.Status = "failed"
 		result.Message = "unsupported action for pdf_invoice"
 		result.FinishedAt = time.Now()
-		return result, fmt.Errorf("%w: action %s for %s", ErrProcessorNotImplemented, req.ActionType, p.Type())
+		return result, fmt.Errorf("%w: action %s for %s", ErrProcessorNotImplemented, req.ActionType, p.Key().CollectionKind)
 	}
 
 	if len(req.SnapshotDocs) == 0 {

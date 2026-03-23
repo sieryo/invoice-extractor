@@ -60,8 +60,11 @@ func NewPDFTaxInvoiceProcessor(
 	}
 }
 
-func (p *PDFTaxInvoiceProcessor) Type() DocumentType {
-	return DocumentTypePDFTaxInvoice
+func (p *PDFTaxInvoiceProcessor) Key() ProcessorKey {
+	return ProcessorKey{
+		CollectionKind: CollectionKindTaxInvoiceCoretax,
+		SourceFormat:   SourceFormatPDF,
+	}
 }
 
 func (p *PDFTaxInvoiceProcessor) Ingest(ctx context.Context, req IngestRequest) (IngestResult, error) {
@@ -69,7 +72,7 @@ func (p *PDFTaxInvoiceProcessor) Ingest(ctx context.Context, req IngestRequest) 
 	result := IngestResult{
 		BatchID:      req.RequestID,
 		CollectionID: req.CollectionID,
-		DocumentType: string(req.DocumentType),
+		DocumentType: string(req.CollectionKind),
 		Items:        make([]IngestItemResult, 0, len(req.Sources)),
 		StartedAt:    startedAt,
 	}
@@ -166,9 +169,9 @@ func (p *PDFTaxInvoiceProcessor) RunAction(ctx context.Context, req ActionReques
 
 	if strings.TrimSpace(req.ActionType) != taxInvoiceRenameActionType {
 		result.Status = "failed"
-		result.Message = "unsupported action for pdf_tax_invoice"
+		result.Message = "unsupported action for tax_invoice_coretax"
 		result.FinishedAt = time.Now()
-		return result, fmt.Errorf("%w: action %s for %s", ErrProcessorNotImplemented, req.ActionType, p.Type())
+		return result, fmt.Errorf("%w: action %s for %s", ErrProcessorNotImplemented, req.ActionType, p.Key().CollectionKind)
 	}
 
 	if len(req.SnapshotDocs) == 0 {
@@ -178,7 +181,7 @@ func (p *PDFTaxInvoiceProcessor) RunAction(ctx context.Context, req ActionReques
 		return result, fmt.Errorf("snapshot is empty")
 	}
 
-	params, err := parseTaxInvoiceRenameParams(req.Params)
+	params, err := parseTaxInvoiceRenameParams(req.Input)
 	if err != nil {
 		result.Status = "failed"
 		result.Message = "invalid action params"
@@ -339,7 +342,8 @@ func (p *PDFTaxInvoiceProcessor) buildSuccessItem(
 		"source_id":       source.SourceID,
 		"source_name":     source.OriginalName,
 		"source_sha256":   source.SHA256,
-		"document_type":   string(DocumentTypePDFTaxInvoice),
+		"collection_kind": string(CollectionKindTaxInvoiceCoretax),
+		"source_format":   string(SourceFormatPDF),
 		"normalized_text": parsed.NormalizedText,
 		"invoice":         parsed.Invoice,
 		"warnings":        parsed.Warnings,

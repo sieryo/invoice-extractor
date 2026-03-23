@@ -23,7 +23,7 @@ func (r *DocumentRepositoryV2) FindByID(
 ) (*ingest.DocumentRecord, error) {
 	row := r.db.QueryRowContext(ctx, `
 		SELECT
-			id, user_id, collection_id, document_type,
+			id, user_id, collection_id, collection_kind, source_format,
 			document_tag, source_name, source_size_bytes, source_mime, source_sha256, source_order,
 			status, message, normalized_ref, audit_ref, raw_ref
 		FROM documents
@@ -46,7 +46,8 @@ func (r *DocumentRepositoryV2) FindByID(
 		&doc.ID,
 		&doc.UserID,
 		&doc.CollectionID,
-		&doc.DocumentType,
+		&doc.CollectionKind,
+		&doc.SourceFormat,
 		&documentTag,
 		&doc.SourceName,
 		&sourceSize,
@@ -92,21 +93,21 @@ func (r *DocumentRepositoryV2) FindByID(
 func (r *DocumentRepositoryV2) FindActiveByHash(
 	ctx context.Context,
 	collectionID string,
-	documentType string,
+	collectionKind string,
 	sha256 string,
 ) (*ingest.DocumentRecord, error) {
 	row := r.db.QueryRowContext(ctx, `
 		SELECT
-			id, user_id, collection_id, document_type,
+			id, user_id, collection_id, collection_kind, source_format,
 			document_tag, source_name, source_size_bytes, source_mime, source_sha256, source_order,
 			status, message, normalized_ref, audit_ref, raw_ref
 		FROM documents
 		WHERE collection_id = ?
-		  AND document_type = ?
+		  AND collection_kind = ?
 		  AND source_sha256 = ?
 		  AND deleted_at IS NULL
 		LIMIT 1
-	`, collectionID, documentType, sha256)
+	`, collectionID, collectionKind, sha256)
 
 	var (
 		doc ingest.DocumentRecord
@@ -123,7 +124,8 @@ func (r *DocumentRepositoryV2) FindActiveByHash(
 		&doc.ID,
 		&doc.UserID,
 		&doc.CollectionID,
-		&doc.DocumentType,
+		&doc.CollectionKind,
+		&doc.SourceFormat,
 		&documentTag,
 		&doc.SourceName,
 		&sourceSize,
@@ -169,15 +171,16 @@ func (r *DocumentRepositoryV2) FindActiveByHash(
 func (r *DocumentRepositoryV2) Create(ctx context.Context, doc *ingest.DocumentRecord) error {
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO documents (
-			id, user_id, collection_id, document_type,
+			id, user_id, collection_id, collection_kind, source_format, document_type,
 			document_tag, source_name, source_size_bytes, source_mime, source_sha256, source_order,
 			status, message, normalized_ref, audit_ref, raw_ref
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		doc.ID,
 		doc.UserID,
 		doc.CollectionID,
-		doc.DocumentType,
+		doc.CollectionKind,
+		doc.SourceFormat,
 		doc.DocumentTag,
 		doc.SourceName,
 		doc.SourceSizeBytes,
@@ -202,7 +205,7 @@ func (r *DocumentRepositoryV2) ListByCollection(
 ) ([]*ingest.DocumentRecord, error) {
 	query := `
 		SELECT
-			id, user_id, collection_id, document_type,
+			id, user_id, collection_id, collection_kind, source_format,
 			document_tag, source_name, source_size_bytes, source_mime, source_sha256, source_order,
 			status, message, normalized_ref, audit_ref, raw_ref
 		FROM documents
@@ -243,7 +246,8 @@ func (r *DocumentRepositoryV2) ListByCollection(
 			&doc.ID,
 			&doc.UserID,
 			&doc.CollectionID,
-			&doc.DocumentType,
+			&doc.CollectionKind,
+			&doc.SourceFormat,
 			&documentTag,
 			&doc.SourceName,
 			&sourceSize,

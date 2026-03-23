@@ -2,13 +2,18 @@ package document
 
 import "fmt"
 
+type ProcessorKey struct {
+	CollectionKind CollectionKind
+	SourceFormat   SourceFormat
+}
+
 type Registry struct {
-	byType map[DocumentType]DocumentProcessor
+	byKey map[ProcessorKey]DocumentProcessor
 }
 
 func NewRegistry() *Registry {
 	return &Registry{
-		byType: make(map[DocumentType]DocumentProcessor),
+		byKey: make(map[ProcessorKey]DocumentProcessor),
 	}
 }
 
@@ -17,16 +22,19 @@ func (r *Registry) Register(p DocumentProcessor) error {
 		return ErrNilProcessor
 	}
 
-	docType := p.Type()
-	if !docType.IsValid() {
-		return fmt.Errorf("%w: %s", ErrInvalidDocumentType, docType)
+	key := p.Key()
+	if !key.CollectionKind.IsValid() {
+		return fmt.Errorf("%w: %s", ErrInvalidDocumentType, key.CollectionKind)
+	}
+	if !key.SourceFormat.IsValid() {
+		return fmt.Errorf("%w: %s", ErrInvalidDocumentType, key.SourceFormat)
 	}
 
-	if _, exists := r.byType[docType]; exists {
-		return fmt.Errorf("%w: %s", ErrProcessorAlreadyRegistered, docType)
+	if _, exists := r.byKey[key]; exists {
+		return fmt.Errorf("%w: %s/%s", ErrProcessorAlreadyRegistered, key.CollectionKind, key.SourceFormat)
 	}
 
-	r.byType[docType] = p
+	r.byKey[key] = p
 	return nil
 }
 
@@ -36,15 +44,15 @@ func (r *Registry) MustRegister(p DocumentProcessor) {
 	}
 }
 
-func (r *Registry) Get(docType DocumentType) (DocumentProcessor, bool) {
-	p, ok := r.byType[docType]
+func (r *Registry) Get(key ProcessorKey) (DocumentProcessor, bool) {
+	p, ok := r.byKey[key]
 	return p, ok
 }
 
-func (r *Registry) Types() []DocumentType {
-	out := make([]DocumentType, 0, len(r.byType))
-	for t := range r.byType {
-		out = append(out, t)
+func (r *Registry) Keys() []ProcessorKey {
+	out := make([]ProcessorKey, 0, len(r.byKey))
+	for key := range r.byKey {
+		out = append(out, key)
 	}
 	return out
 }

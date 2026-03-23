@@ -12,6 +12,7 @@ import (
 	appbukpot "github.com/sieryo/invoice-extractor/internal/app/bukpot"
 	"github.com/sieryo/invoice-extractor/internal/app/bukpot/parsers"
 	"github.com/sieryo/invoice-extractor/internal/app/buyer"
+	appcashflow "github.com/sieryo/invoice-extractor/internal/app/cashflow"
 	"github.com/sieryo/invoice-extractor/internal/app/collection"
 	"github.com/sieryo/invoice-extractor/internal/app/document"
 	appfile "github.com/sieryo/invoice-extractor/internal/app/file"
@@ -53,6 +54,7 @@ type App struct {
 	BuyerRegistry        *buyer.Registry
 	BuyerStore           *storage.BuyerCSVStore
 	BuyerRegistryService *buyer.BuyerRegistryService
+	TaxAccountService    *appcashflow.TaxAccountService
 
 	TemplateRegistryService *template.TemplateRegistryService
 	DocumentProcessors      *document.Registry
@@ -63,6 +65,7 @@ type App struct {
 func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 	// Path
 	csvPath := filepath.Join(rootDir, "buyers.csv")
+	taxAccountsPath := filepath.Join(rootDir, "tax_accounts.csv")
 
 	// Registry
 	templateRegistry := template.NewRegistry()
@@ -122,13 +125,15 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 
 	// registry services
 	buyerRegistryService := buyer.NewBuyerRegistryService(buyerRegistry, buyerStore, rootDir)
+	taxAccountService := appcashflow.NewTaxAccountService(taxAccountsPath)
 	templateRegistryService := template.NewTemplateRegistryService(templateRegistry)
 	documentRegistry := document.NewRegistry()
 	documentRegistry.MustRegister(document.NewPDFInvoiceProcessor(invoiceExtractService, invoiceService, fs))
 	documentRegistry.MustRegister(document.NewPDFTaxInvoiceProcessor(taxInvoiceExtractService, fs))
-	documentRegistry.MustRegister(document.NewPDFBukpotProcessor(document.DocumentTypePDFBukpotBPPU, bukpotService, fs))
-	documentRegistry.MustRegister(document.NewPDFBukpotProcessor(document.DocumentTypePDFBukpotBP21, bukpotService, fs))
-	documentRegistry.MustRegister(document.NewPDFBukpotProcessor(document.DocumentTypePDFBukpotBPA1, bukpotService, fs))
+	documentRegistry.MustRegister(document.NewPDFBukpotProcessor(document.CollectionKindBukpotBPPU, bukpotService, fs))
+	documentRegistry.MustRegister(document.NewPDFBukpotProcessor(document.CollectionKindBukpotBP21, bukpotService, fs))
+	documentRegistry.MustRegister(document.NewPDFBukpotProcessor(document.CollectionKindBukpotBPA1, bukpotService, fs))
+	documentRegistry.MustRegister(document.NewXLSXCashflowProcessor(fs, taxAccountService))
 	ingestService := ingest.NewIngestService(
 		uploadSessionRepo,
 		uploadChunkRepo,
@@ -145,6 +150,8 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 		collectionRepo,
 		documentRegistry,
 		buyerRegistryService,
+		taxAccountService,
+		fs,
 		1,
 	)
 	actionService.StartPool(context.Background())
@@ -180,6 +187,7 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 		BuyerRegistry:           buyerRegistry,
 		BuyerStore:              buyerStore,
 		BuyerRegistryService:    buyerRegistryService,
+		TaxAccountService:       taxAccountService,
 		TemplateRegistryService: templateRegistryService,
 		DocumentProcessors:      documentRegistry,
 	}

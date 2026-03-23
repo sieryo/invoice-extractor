@@ -6,26 +6,26 @@ import (
 )
 
 type NoopProcessor struct {
-	docType DocumentType
+	key ProcessorKey
 }
 
-func NewNoopProcessor(docType DocumentType) *NoopProcessor {
+func NewNoopProcessor(key ProcessorKey) *NoopProcessor {
 	return &NoopProcessor{
-		docType: docType,
+		key: key,
 	}
 }
 
-func (n *NoopProcessor) Type() DocumentType {
-	return n.docType
+func (n *NoopProcessor) Key() ProcessorKey {
+	return n.key
 }
 
 func (n *NoopProcessor) Ingest(_ context.Context, req IngestRequest) (IngestResult, error) {
 	return IngestResult{
 		BatchID:      req.RequestID,
 		CollectionID: req.CollectionID,
-		DocumentType: string(req.DocumentType),
+		DocumentType: string(req.CollectionKind),
 		Items:        []IngestItemResult{},
-	}, fmt.Errorf("%w: ingest for %s", ErrProcessorNotImplemented, n.docType)
+	}, fmt.Errorf("%w: ingest for %s/%s", ErrProcessorNotImplemented, n.key.CollectionKind, n.key.SourceFormat)
 }
 
 func (n *NoopProcessor) RunAction(_ context.Context, req ActionRequest) (ActionResult, error) {
@@ -33,5 +33,5 @@ func (n *NoopProcessor) RunAction(_ context.Context, req ActionRequest) (ActionR
 		ActionID:   req.ActionID,
 		ActionType: req.ActionType,
 		Outputs:    []ActionOutput{},
-	}, fmt.Errorf("%w: action for %s", ErrProcessorNotImplemented, n.docType)
+	}, fmt.Errorf("%w: action for %s/%s", ErrProcessorNotImplemented, n.key.CollectionKind, n.key.SourceFormat)
 }

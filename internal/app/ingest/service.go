@@ -90,7 +90,7 @@ func (s *IngestService) CreateSession(
 		return nil, collection.ErrCollectionNotFound
 	}
 
-	if !coll.IsCollection() || coll.DocumentType == nil {
+	if !coll.IsCollection() || coll.CollectionKind == nil {
 		return nil, collection.ErrInvalidNodeType
 	}
 	if coll.IsFrozen() {
@@ -102,7 +102,8 @@ func (s *IngestService) CreateSession(
 		ID:               uuid.NewString(),
 		UserID:           userID,
 		CollectionID:     collectionID,
-		DocumentType:     document.DocumentType(*coll.DocumentType),
+		CollectionKind:   document.CollectionKind(*coll.CollectionKind),
+		SourceFormat:     document.ResolveCollectionSourceFormat(document.CollectionKind(*coll.CollectionKind)),
 		Status:           SessionStatusReceiving,
 		TotalChunks:      0,
 		UploadedChunks:   0,
@@ -442,21 +443,28 @@ func (s *IngestService) processChunk(ctx context.Context, chunkID string) error 
 
 	dupItems, uniqueSources, sourceByID := s.filterDuplicateSources(ctx, session, sources)
 
-	processor, ok := s.processors.Get(session.DocumentType)
+	processor, ok := s.processors.Get(document.ProcessorKey{
+		CollectionKind: session.CollectionKind,
+		SourceFormat:   session.SourceFormat,
+	})
 	if !ok {
-		processor = document.NewNoopProcessor(session.DocumentType)
+		processor = document.NewNoopProcessor(document.ProcessorKey{
+			CollectionKind: session.CollectionKind,
+			SourceFormat:   session.SourceFormat,
+		})
 	}
 
 	ingestItems := make([]document.IngestItemResult, 0, len(uniqueSources))
 	if len(uniqueSources) > 0 {
 		req := document.IngestRequest{
-			RequestID:    chunk.ID,
-			UserID:       session.UserID,
-			CollectionID: session.CollectionID,
-			DocumentType: session.DocumentType,
-			Sources:      uniqueSources,
-			Policy:       defaultIngestPolicy(session.DocumentType),
-			RequestedAt:  time.Now(),
+			RequestID:      chunk.ID,
+			UserID:         session.UserID,
+			CollectionID:   session.CollectionID,
+			CollectionKind: session.CollectionKind,
+			SourceFormat:   session.SourceFormat,
+			Sources:        uniqueSources,
+			Policy:         defaultIngestPolicy(session.CollectionKind),
+			RequestedAt:    time.Now(),
 		}
 
 		res, err := processor.Ingest(ctx, req)
@@ -485,7 +493,7 @@ func (s *IngestService) processChunk(ctx context.Context, chunkID string) error 
 		msg := persistErr.Error()
 		_ = s.chunkRepo.UpdateStatus(ctx, chunk.ID, ChunkStatusFailed, &msg)
 		_ = s.sessionRepo.IncrementProcessedChunk(ctx, session.ID, 1, 0)
-		s.cleanupTempSources(sources, defaultIngestPolicy(session.DocumentType))
+		s.cleanupTempSources(sources, defaultIngestPolicy(session.CollectionKind))
 		return persistErr
 	}
 
@@ -508,7 +516,7 @@ func (s *IngestService) processChunk(ctx context.Context, chunkID string) error 
 		return err
 	}
 
-	s.cleanupTempSources(sources, defaultIngestPolicy(session.DocumentType))
+	s.cleanupTempSources(sources, defaultIngestPolicy(session.CollectionKind))
 
 	latestSession, err := s.sessionRepo.FindByID(ctx, session.ID)
 	if err == nil {
@@ -704,8 +712,8 @@ func (s *IngestService) prepareChunkSources(
 	var payloadSize int64
 
 	for i, f := range filesIn {
-		if !isAllowedUploadBySpec(session.DocumentType, f.Name) {
-			return nil, 0, fmt.Errorf("file %s is not allowed for document type %s", f.Name, session.DocumentType)
+		if !isAllowedUploadBySpec(session.CollectionKind, f.Name) {
+			return nil, 0, fmt.Errorf("file %s is not allowed for collection kind %s", f.Name, session.CollectionKind)
 		}
 
 		obj, err := s.fileStore.SaveTemp(ctx, session.CollectionID, f.Name, f.Data)
@@ -748,7 +756,7 @@ func (s *IngestService) filterDuplicateSources(
 		existing, err := s.documentRepo.FindActiveByHash(
 			ctx,
 			session.CollectionID,
-			string(session.DocumentType),
+			string(session.CollectionKind),
 			src.SHA256,
 		)
 		if err != nil || existing == nil {
@@ -819,7 +827,8 @@ func (s *IngestService) persistChunkResult(
 				ID:              newDocID,
 				UserID:          session.UserID,
 				CollectionID:    session.CollectionID,
-				DocumentType:    session.DocumentType,
+				CollectionKind:  session.CollectionKind,
+				SourceFormat:    session.SourceFormat,
 				DocumentTag:     documentTag,
 				SourceName:      src.OriginalName,
 				SourceSizeBytes: src.SizeBytes,
@@ -838,7 +847,7 @@ func (s *IngestService) persistChunkResult(
 				existing, findErr := s.documentRepo.FindActiveByHash(
 					ctx,
 					session.CollectionID,
-					string(session.DocumentType),
+					string(session.CollectionKind),
 					src.SHA256,
 				)
 				if findErr == nil && existing != nil {
@@ -878,7 +887,8 @@ func (s *IngestService) persistChunkResult(
 			HistoryID:       history.ID,
 			UserID:          session.UserID,
 			CollectionID:    session.CollectionID,
-			DocumentType:    session.DocumentType,
+			CollectionKind:  session.CollectionKind,
+			SourceFormat:    session.SourceFormat,
 			SourceName:      src.OriginalName,
 			SourceSizeBytes: src.SizeBytes,
 			SourceMIME:      src.MimeType,
@@ -965,21 +975,18 @@ func normalizeIngestItems(
 	return out
 }
 
-func defaultIngestPolicy(docType document.DocumentType) document.IngestPolicy {
-	switch docType {
-	case document.DocumentTypePDFTaxInvoice,
-		document.DocumentTypePDFBukpotBPPU,
-		document.DocumentTypePDFBukpotBP21,
-		document.DocumentTypePDFBukpotBPA1:
+func defaultIngestPolicy(collectionKind document.CollectionKind) document.IngestPolicy {
+	spec, ok := document.BuildCollectionSpec(collectionKind)
+	if ok {
 		return document.IngestPolicy{
-			KeepRaw:            true,
-			DeleteTempAfterRun: true,
+			KeepRaw:            spec.Ingest.KeepRaw,
+			DeleteTempAfterRun: spec.Ingest.DeleteTempAfterRun,
 		}
-	default:
-		return document.IngestPolicy{
-			KeepRaw:            false,
-			DeleteTempAfterRun: true,
-		}
+	}
+
+	return document.IngestPolicy{
+		KeepRaw:            false,
+		DeleteTempAfterRun: true,
 	}
 }
 
@@ -1062,8 +1069,8 @@ func isDedupUniqueError(err error) bool {
 		strings.Contains(msg, "documents.source_sha256")
 }
 
-func isAllowedUploadBySpec(docType document.DocumentType, fileName string) bool {
-	spec, ok := document.BuildDocumentTypeSpec(docType)
+func isAllowedUploadBySpec(collectionKind document.CollectionKind, fileName string) bool {
+	spec, ok := document.BuildCollectionSpec(collectionKind)
 	if !ok {
 		return true
 	}

@@ -10,7 +10,8 @@ var (
 	ErrCollectionAlreadyFrozen = errors.New("collection is already frozen")
 	ErrCollectionBusy          = errors.New("collection is busy")
 	ErrInvalidNodeType         = errors.New("invalid collection node type")
-	ErrInvalidDocumentType     = errors.New("invalid collection document type")
+	ErrInvalidCollectionKind   = errors.New("invalid collection kind")
+	ErrInvalidDocumentType     = ErrInvalidCollectionKind
 	ErrInvalidCollectionName   = errors.New("invalid collection name")
 	ErrCollectionNameConflict  = errors.New("collection name already exists")
 )

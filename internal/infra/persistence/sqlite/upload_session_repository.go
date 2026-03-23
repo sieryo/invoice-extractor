@@ -22,15 +22,16 @@ func NewUploadSessionRepository(db *sql.DB) *UploadSessionRepository {
 func (r *UploadSessionRepository) Create(ctx context.Context, session *ingest.UploadSession) error {
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO upload_sessions (
-			id, user_id, collection_id, document_type, status,
+			id, user_id, collection_id, collection_kind, source_format, document_type, status,
 			total_chunks, uploaded_chunks, processed_chunks, failed_chunks, duplicate_chunks,
 			last_heartbeat_at, started_at, finished_at, expires_at, client_session_key, metadata_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		session.ID,
 		session.UserID,
 		session.CollectionID,
-		session.DocumentType,
+		session.CollectionKind,
+		session.SourceFormat,
 		session.Status,
 		session.TotalChunks,
 		session.UploadedChunks,
@@ -50,7 +51,7 @@ func (r *UploadSessionRepository) Create(ctx context.Context, session *ingest.Up
 func (r *UploadSessionRepository) FindByID(ctx context.Context, id string) (*ingest.UploadSession, error) {
 	row := r.db.QueryRowContext(ctx, `
 		SELECT
-			id, user_id, collection_id, document_type, status,
+			id, user_id, collection_id, collection_kind, source_format, status,
 			total_chunks, uploaded_chunks, processed_chunks, failed_chunks, duplicate_chunks,
 			last_heartbeat_at, started_at, finished_at, expires_at, client_session_key, metadata_json
 		FROM upload_sessions
@@ -63,7 +64,7 @@ func (r *UploadSessionRepository) FindByID(ctx context.Context, id string) (*ing
 func (r *UploadSessionRepository) ListActive(ctx context.Context) ([]*ingest.UploadSession, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT
-			id, user_id, collection_id, document_type, status,
+			id, user_id, collection_id, collection_kind, source_format, status,
 			total_chunks, uploaded_chunks, processed_chunks, failed_chunks, duplicate_chunks,
 			last_heartbeat_at, started_at, finished_at, expires_at, client_session_key, metadata_json
 		FROM upload_sessions
@@ -89,7 +90,7 @@ func (r *UploadSessionRepository) ListActive(ctx context.Context) ([]*ingest.Upl
 func (r *UploadSessionRepository) ListActiveByCollection(ctx context.Context, collectionID string) ([]*ingest.UploadSession, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT
-			id, user_id, collection_id, document_type, status,
+			id, user_id, collection_id, collection_kind, source_format, status,
 			total_chunks, uploaded_chunks, processed_chunks, failed_chunks, duplicate_chunks,
 			last_heartbeat_at, started_at, finished_at, expires_at, client_session_key, metadata_json
 		FROM upload_sessions
@@ -177,8 +178,9 @@ func scanUploadSession(row rowScanner) (*ingest.UploadSession, error) {
 	var (
 		s ingest.UploadSession
 
-		docTypeRaw string
-		statusRaw  string
+		collectionKindRaw string
+		sourceFormatRaw   string
+		statusRaw         string
 
 		lastHeartbeat sql.NullTime
 		finishedAt    sql.NullTime
@@ -191,7 +193,8 @@ func scanUploadSession(row rowScanner) (*ingest.UploadSession, error) {
 		&s.ID,
 		&s.UserID,
 		&s.CollectionID,
-		&docTypeRaw,
+		&collectionKindRaw,
+		&sourceFormatRaw,
 		&statusRaw,
 		&s.TotalChunks,
 		&s.UploadedChunks,
@@ -211,7 +214,8 @@ func scanUploadSession(row rowScanner) (*ingest.UploadSession, error) {
 		return nil, err
 	}
 
-	s.DocumentType = document.DocumentType(docTypeRaw)
+	s.CollectionKind = document.CollectionKind(collectionKindRaw)
+	s.SourceFormat = document.SourceFormat(sourceFormatRaw)
 	s.Status = ingest.SessionStatus(statusRaw)
 
 	if lastHeartbeat.Valid {

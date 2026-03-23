@@ -3,12 +3,15 @@ package document
 import "strings"
 
 const (
-	ActionParamTypeString  = "string"
-	ActionParamTypeInt     = "int"
-	ActionParamTypeFloat   = "float"
-	ActionParamTypeBoolean = "boolean"
+	FormFieldKindText     = "text"
+	FormFieldKindTextarea = "textarea"
+	FormFieldKindNumber   = "number"
+	FormFieldKindSelect   = "select"
+	FormFieldKindCheckbox = "checkbox"
+	FormFieldKindTemplate = "template"
+	FormFieldKindMapping  = "mapping"
 
-	ActionParamRuleRequiredIf = "required_if"
+	FormFieldRuleRequiredIf = "required_if"
 )
 
 type UploadRuleSpec struct {
@@ -29,37 +32,63 @@ type IngestRuleSpec struct {
 	Artifacts          []ArtifactRuleSpec `json:"artifacts"`
 }
 
-type ActionParamFieldSpec struct {
-	Key         string                  `json:"key"`
-	Type        string                  `json:"type"`
-	Label       string                  `json:"label"`
-	Required    bool                    `json:"required"`
-	Default     any                     `json:"default,omitempty"`
-	Options     []ActionParamOptionSpec `json:"options,omitempty"`
-	Rules       []ActionParamRuleSpec   `json:"rules,omitempty"`
-	UI          *ActionParamUISpec      `json:"ui,omitempty"`
-	Suggestions []ActionParamSuggestion `json:"suggestions,omitempty"`
-	Description string                  `json:"description,omitempty"`
-	Placeholder string                  `json:"placeholder,omitempty"`
+type ActionStateSpec struct {
+	Enabled bool   `json:"enabled"`
+	Code    string `json:"code,omitempty"`
+	Message string `json:"message,omitempty"`
 }
 
-type ActionParamOptionSpec struct {
+type ActionPresentationSpec struct {
+	Mode  string `json:"mode"`
+	Width string `json:"width,omitempty"`
+}
+
+type FormSpec struct {
+	Title       string            `json:"title,omitempty"`
+	Description string            `json:"description,omitempty"`
+	Sections    []FormSectionSpec `json:"sections"`
+}
+
+type FormSectionSpec struct {
+	Key         string          `json:"key"`
+	Title       string          `json:"title"`
+	Description string          `json:"description,omitempty"`
+	Fields      []FormFieldSpec `json:"fields"`
+}
+
+type FormFieldSpec struct {
+	Key          string               `json:"key"`
+	Kind         string               `json:"kind"`
+	Label        string               `json:"label"`
+	Required     bool                 `json:"required"`
+	DefaultValue any                  `json:"defaultValue,omitempty"`
+	Options      []FormFieldOption    `json:"options,omitempty"`
+	Rules        []FormFieldRuleSpec  `json:"rules,omitempty"`
+	State        FormFieldStateSpec   `json:"state"`
+	Suggestions  []FormSuggestionSpec `json:"suggestions,omitempty"`
+	HelpText     string               `json:"helpText,omitempty"`
+	Placeholder  string               `json:"placeholder,omitempty"`
+}
+
+type FormFieldOption struct {
 	Label string `json:"label"`
 	Value string `json:"value"`
 }
 
-type ActionParamSuggestion struct {
+type FormSuggestionSpec struct {
 	Token       string `json:"token"`
 	Label       string `json:"label,omitempty"`
 	Description string `json:"description,omitempty"`
 	Example     string `json:"example,omitempty"`
 }
 
-type ActionParamUISpec struct {
-	Editor string `json:"editor,omitempty"`
+type FormFieldStateSpec struct {
+	Visible  bool   `json:"visible"`
+	Disabled bool   `json:"disabled"`
+	Message  string `json:"message,omitempty"`
 }
 
-type ActionParamRuleSpec struct {
+type FormFieldRuleSpec struct {
 	Type    string `json:"type"`
 	Field   string `json:"field"`
 	Equals  string `json:"equals,omitempty"`
@@ -89,6 +118,12 @@ type ActionRequirementSpec struct {
 	Message   string `json:"message,omitempty"`
 }
 
+type ActionMasterDataSpec struct {
+	Relative     string   `json:"relative"`
+	LookupKey    string   `json:"lookupKey"`
+	RequiredCols []string `json:"requiredCols,omitempty"`
+}
+
 type ActionArtifactInputSpec struct {
 	Key              string   `json:"key"`
 	ValueType        string   `json:"valueType,omitempty"`
@@ -100,39 +135,42 @@ type ActionArtifactInputSpec struct {
 }
 
 type ActionColumnSpec struct {
-	Key      string                `json:"key"`
-	Label    string                `json:"label"`
-	Type     string                `json:"type"`
-	Required bool                  `json:"required"`
-	Aliases  []string              `json:"aliases,omitempty"`
-	Group    string                `json:"group,omitempty"`
-	Rules    []ActionParamRuleSpec `json:"rules,omitempty"`
+	Key      string              `json:"key"`
+	Label    string              `json:"label"`
+	Type     string              `json:"type"`
+	Required bool                `json:"required"`
+	Aliases  []string            `json:"aliases,omitempty"`
+	Group    string              `json:"group,omitempty"`
+	Rules    []FormFieldRuleSpec `json:"rules,omitempty"`
 }
 
 type ActionSpec struct {
-	ActionType     string                    `json:"actionType"`
-	Label          string                    `json:"label"`
-	Description    string                    `json:"description,omitempty"`
-	Enabled        bool                      `json:"enabled"`
-	Reason         string                    `json:"reason,omitempty"`
-	Selection      ActionSelectionSpec       `json:"selection"`
-	Params         []ActionParamFieldSpec    `json:"params"`
-	Requirements   []ActionRequirementSpec   `json:"requirements,omitempty"`
-	ArtifactInputs []ActionArtifactInputSpec `json:"artifactInputs,omitempty"`
-	Columns        []ActionColumnSpec        `json:"columns,omitempty"`
-	Outputs        []ActionOutputSpec        `json:"outputs"`
+	CollectionKind string                          `json:"collectionKind,omitempty"`
+	ActionType     string                          `json:"actionType"`
+	Label          string                          `json:"label"`
+	Description    string                          `json:"description,omitempty"`
+	State          ActionStateSpec                 `json:"state"`
+	Presentation   ActionPresentationSpec          `json:"presentation"`
+	Selection      ActionSelectionSpec             `json:"selection"`
+	Form           *FormSpec                       `json:"form,omitempty"`
+	Requirements   []ActionRequirementSpec         `json:"requirements,omitempty"`
+	MasterData     map[string]ActionMasterDataSpec `json:"masterData,omitempty"`
+	ArtifactInputs []ActionArtifactInputSpec       `json:"artifactInputs,omitempty"`
+	Columns        []ActionColumnSpec              `json:"columns,omitempty"`
+	Outputs        []ActionOutputSpec              `json:"outputs"`
 }
 
-type DocumentTypeSpec struct {
-	DocumentType DocumentType   `json:"documentType"`
-	Label        string         `json:"label"`
-	Description  string         `json:"description,omitempty"`
-	Upload       UploadRuleSpec `json:"upload"`
-	Ingest       IngestRuleSpec `json:"ingest"`
-	Actions      []ActionSpec   `json:"actions"`
+type CollectionSpec struct {
+	CollectionKind CollectionKind `json:"collectionKind"`
+	SourceFormat   SourceFormat   `json:"sourceFormat"`
+	Label          string         `json:"label"`
+	Description    string         `json:"description,omitempty"`
+	Upload         UploadRuleSpec `json:"upload"`
+	Ingest         IngestRuleSpec `json:"ingest"`
+	Actions        []ActionSpec   `json:"actions"`
 }
 
-func (s DocumentTypeSpec) FindActionSpec(actionType string) (ActionSpec, bool) {
+func (s CollectionSpec) FindActionSpec(actionType string) (ActionSpec, bool) {
 	target := strings.ToLower(strings.TrimSpace(actionType))
 	if target == "" {
 		return ActionSpec{}, false
@@ -145,13 +183,14 @@ func (s DocumentTypeSpec) FindActionSpec(actionType string) (ActionSpec, bool) {
 	return ActionSpec{}, false
 }
 
-func BuildDocumentTypeSpec(docType DocumentType) (DocumentTypeSpec, bool) {
-	switch docType {
-	case DocumentTypePDFInvoice:
-		return DocumentTypeSpec{
-			DocumentType: docType,
-			Label:        "Invoice",
-			Description:  "PDF invoice document for extraction and e-Faktur export.",
+func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
+	switch collectionKind {
+	case CollectionKindInvoiceCompany:
+		return CollectionSpec{
+			CollectionKind: collectionKind,
+			SourceFormat:   SourceFormatPDF,
+			Label:          "Invoice",
+			Description:    "PDF invoice document for extraction and e-Faktur export.",
 			Upload: UploadRuleSpec{
 				AcceptExtensions: []string{".pdf"},
 				AcceptMIMETypes:  []string{"application/pdf"},
@@ -168,25 +207,44 @@ func BuildDocumentTypeSpec(docType DocumentType) (DocumentTypeSpec, bool) {
 			},
 			Actions: []ActionSpec{
 				{
-					ActionType:  "export_faktur_keluaran",
-					Label:       "Export e-Faktur",
-					Description: "Export invoice terpilih ke format e-Faktur keluaran Coretax.",
-					Enabled:     true,
+					CollectionKind: string(collectionKind),
+					ActionType:     "export_faktur_keluaran",
+					Label:          "Export e-Faktur",
+					Description:    "Export invoice terpilih ke format e-Faktur keluaran Coretax.",
+					State: ActionStateSpec{
+						Enabled: true,
+					},
+					Presentation: ActionPresentationSpec{
+						Mode:  "inline",
+						Width: "md",
+					},
 					Selection: ActionSelectionSpec{
 						Mode:           "manual",
 						AllowCheckAll:  true,
 						AllowedStatus:  []string{"ready", "warning"},
 						MinDocumentCnt: 1,
 					},
-					Params: []ActionParamFieldSpec{
-						{
-							Key:         "filenamePrefix",
-							Type:        ActionParamTypeString,
-							Label:       "Filename Prefix",
-							Required:    false,
-							Default:     "faktur-keluaran",
-							Description: "Optional prefix for exported file name.",
-							Placeholder: "faktur-keluaran",
+					Form: &FormSpec{
+						Title: "Pengaturan Export",
+						Sections: []FormSectionSpec{
+							{
+								Key:   "general",
+								Title: "Umum",
+								Fields: []FormFieldSpec{
+									{
+										Key:          "filenamePrefix",
+										Kind:         FormFieldKindText,
+										Label:        "Filename Prefix",
+										Required:     false,
+										DefaultValue: "faktur-keluaran",
+										HelpText:     "Optional prefix for exported file name.",
+										Placeholder:  "faktur-keluaran",
+										State: FormFieldStateSpec{
+											Visible: true,
+										},
+									},
+								},
+							},
 						},
 					},
 					Requirements: []ActionRequirementSpec{
@@ -207,11 +265,12 @@ func BuildDocumentTypeSpec(docType DocumentType) (DocumentTypeSpec, bool) {
 				},
 			},
 		}, true
-	case DocumentTypePDFTaxInvoice:
-		return DocumentTypeSpec{
-			DocumentType: docType,
-			Label:        "Faktur Pajak",
-			Description:  "Dokumen PDF faktur pajak Coretax untuk ekstraksi dan action lanjutan.",
+	case CollectionKindTaxInvoiceCoretax:
+		return CollectionSpec{
+			CollectionKind: collectionKind,
+			SourceFormat:   SourceFormatPDF,
+			Label:          "Faktur Pajak",
+			Description:    "Dokumen PDF faktur pajak Coretax untuk ekstraksi dan action lanjutan.",
 			Upload: UploadRuleSpec{
 				AcceptExtensions: []string{".pdf"},
 				AcceptMIMETypes:  []string{"application/pdf"},
@@ -229,39 +288,55 @@ func BuildDocumentTypeSpec(docType DocumentType) (DocumentTypeSpec, bool) {
 			},
 			Actions: []ActionSpec{
 				{
-					ActionType:  "rename_tax_invoice",
-					Label:       "Rename Faktur Pajak",
-					Description: "Ganti nama file faktur pajak berdasarkan template placeholder dan hasilkan ZIP.",
-					Enabled:     true,
+					CollectionKind: string(collectionKind),
+					ActionType:     "rename_tax_invoice",
+					Label:          "Rename Faktur Pajak",
+					Description:    "Ganti nama file faktur pajak berdasarkan template placeholder dan hasilkan ZIP.",
+					State: ActionStateSpec{
+						Enabled: true,
+					},
+					Presentation: ActionPresentationSpec{
+						Mode:  "inline",
+						Width: "md",
+					},
 					Selection: ActionSelectionSpec{
 						Mode:           "manual",
 						AllowCheckAll:  true,
 						AllowedStatus:  []string{"ready", "warning"},
 						MinDocumentCnt: 1,
 					},
-					Params: []ActionParamFieldSpec{
-						{
-							Key:      "filenameTemplate",
-							Type:     ActionParamTypeString,
-							Label:    "Template Nama File",
-							Required: true,
-							Default:  "{{references}} - {{buyerName}}",
-							UI: &ActionParamUISpec{
-								Editor: "template",
+					Form: &FormSpec{
+						Title: "Pengaturan Rename",
+						Sections: []FormSectionSpec{
+							{
+								Key:   "main",
+								Title: "Template Nama File",
+								Fields: []FormFieldSpec{
+									{
+										Key:          "filenameTemplate",
+										Kind:         FormFieldKindTemplate,
+										Label:        "Template Nama File",
+										Required:     true,
+										DefaultValue: "{{references}} - {{buyerName}}",
+										Suggestions: []FormSuggestionSpec{
+											{Token: "references", Label: "Referensi", Description: "Nilai referensi dari faktur pajak", Example: "{{references}}"},
+											{Token: "invoiceNumber", Label: "Nomor Faktur", Description: "Nomor seri faktur pajak", Example: "{{invoiceNumber}}"},
+											{Token: "buyerName", Label: "Nama Pembeli", Description: "Nama pembeli dari faktur pajak", Example: "{{buyerName}}"},
+											{Token: "buyerNPWP", Label: "NPWP Pembeli", Description: "NPWP pembeli", Example: "{{buyerNPWP}}"},
+											{Token: "sellerName", Label: "Nama Penjual", Description: "Nama PKP penjual", Example: "{{sellerName}}"},
+											{Token: "sellerNPWP", Label: "NPWP Penjual", Description: "NPWP PKP penjual", Example: "{{sellerNPWP}}"},
+											{Token: "invoiceDate", Label: "Tanggal Faktur", Description: "Tanggal faktur (format YYYY-MM-DD)", Example: "{{invoiceDate}}"},
+											{Token: "sourceName", Label: "Nama File Asal", Description: "Nama file upload tanpa ekstensi", Example: "{{sourceName}}"},
+											{Token: "documentTag", Label: "Tag Dokumen", Description: "Tag hasil ekstraksi dokumen", Example: "{{documentTag}}"},
+										},
+										HelpText:    "Gunakan placeholder seperti {{references}} - {{buyerName}}. Ekstensi .pdf akan ditambahkan otomatis.",
+										Placeholder: "{{references}} - {{buyerName}}",
+										State: FormFieldStateSpec{
+											Visible: true,
+										},
+									},
+								},
 							},
-							Suggestions: []ActionParamSuggestion{
-								{Token: "references", Label: "Referensi", Description: "Nilai referensi dari faktur pajak", Example: "{{references}}"},
-								{Token: "invoiceNumber", Label: "Nomor Faktur", Description: "Nomor seri faktur pajak", Example: "{{invoiceNumber}}"},
-								{Token: "buyerName", Label: "Nama Pembeli", Description: "Nama pembeli dari faktur pajak", Example: "{{buyerName}}"},
-								{Token: "buyerNPWP", Label: "NPWP Pembeli", Description: "NPWP pembeli", Example: "{{buyerNPWP}}"},
-								{Token: "sellerName", Label: "Nama Penjual", Description: "Nama PKP penjual", Example: "{{sellerName}}"},
-								{Token: "sellerNPWP", Label: "NPWP Penjual", Description: "NPWP PKP penjual", Example: "{{sellerNPWP}}"},
-								{Token: "invoiceDate", Label: "Tanggal Faktur", Description: "Tanggal faktur (format YYYY-MM-DD)", Example: "{{invoiceDate}}"},
-								{Token: "sourceName", Label: "Nama File Asal", Description: "Nama file upload tanpa ekstensi", Example: "{{sourceName}}"},
-								{Token: "documentTag", Label: "Tag Dokumen", Description: "Tag hasil ekstraksi dokumen", Example: "{{documentTag}}"},
-							},
-							Description: "Gunakan placeholder seperti {{references}} - {{buyerName}}. Ekstensi .pdf akan ditambahkan otomatis.",
-							Placeholder: "{{references}} - {{buyerName}}",
 						},
 					},
 					Outputs: []ActionOutputSpec{
@@ -274,75 +349,324 @@ func BuildDocumentTypeSpec(docType DocumentType) (DocumentTypeSpec, bool) {
 					},
 				},
 				{
-					ActionType:  "export_tax_invoice_zip",
-					Label:       "Export Tax Invoice ZIP",
-					Description: "Export selected tax invoices to ZIP package.",
-					Enabled:     false,
-					Reason:      "not implemented yet",
+					CollectionKind: string(collectionKind),
+					ActionType:     "export_tax_invoice_zip",
+					Label:          "Export Tax Invoice ZIP",
+					Description:    "Export selected tax invoices to ZIP package.",
+					State: ActionStateSpec{
+						Enabled: false,
+						Message: "not implemented yet",
+					},
+					Presentation: ActionPresentationSpec{
+						Mode:  "inline",
+						Width: "md",
+					},
 					Selection: ActionSelectionSpec{
 						Mode:           "manual",
 						AllowCheckAll:  true,
 						AllowedStatus:  []string{"ready", "warning"},
 						MinDocumentCnt: 1,
 					},
-					Params:  []ActionParamFieldSpec{},
 					Outputs: []ActionOutputSpec{},
 				},
 			},
 		}, true
-	case DocumentTypePDFBukpotBPPU:
-		return buildBukpotDocumentTypeSpec(
-			docType,
+	case CollectionKindBukpotBPPU:
+		return buildBukpotCollectionSpec(
+			collectionKind,
 			"BPPU",
 			"Dokumen PDF bukti potong BPPU untuk ekstraksi data bukpot.",
 		), true
-	case DocumentTypePDFBukpotBP21:
-		return buildBukpotDocumentTypeSpec(
-			docType,
+	case CollectionKindBukpotBP21:
+		return buildBukpotCollectionSpec(
+			collectionKind,
 			"BP21",
 			"Dokumen PDF bukti potong BP21 untuk ekstraksi data bukpot.",
 		), true
-	case DocumentTypePDFBukpotBPA1:
-		return buildBukpotDocumentTypeSpec(
-			docType,
+	case CollectionKindBukpotBPA1:
+		return buildBukpotCollectionSpec(
+			collectionKind,
 			"BPA1",
 			"Dokumen PDF bukti potong BPA1 untuk ekstraksi data bukpot.",
 		), true
+	case CollectionKindCashflowImport:
+		return CollectionSpec{
+			CollectionKind: collectionKind,
+			SourceFormat:   SourceFormatXLSX,
+			Label:          "Cashflow",
+			Description:    "Spreadsheet XLSX cashflow untuk normalisasi data dan action lanjutan.",
+			Upload: UploadRuleSpec{
+				AcceptExtensions: []string{".xlsx"},
+				AcceptMIMETypes: []string{
+					"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+				},
+				MaxChunkMB:       20,
+				MaxFilesPerBatch: 200,
+			},
+			Ingest: IngestRuleSpec{
+				KeepRaw:            true,
+				DeleteTempAfterRun: true,
+				Artifacts: []ArtifactRuleSpec{
+					{Kind: "raw", Required: false},
+					{Kind: "normalized", Required: true},
+				},
+			},
+			Actions: []ActionSpec{
+				{
+					CollectionKind: string(collectionKind),
+					ActionType:     "export_cashflow_myob",
+					Label:          "Export MYOB",
+					Description:    "Konversi cashflow ke format CSV MYOB Spend Money.",
+					State: ActionStateSpec{
+						Enabled: true,
+					},
+					Presentation: ActionPresentationSpec{
+						Mode:  "inline",
+						Width: "lg",
+					},
+					Selection: ActionSelectionSpec{
+						Mode:           "manual",
+						AllowCheckAll:  true,
+						AllowedStatus:  []string{"ready", "warning"},
+						MinDocumentCnt: 1,
+					},
+					Form: &FormSpec{
+						Title:       "Pengaturan Export MYOB",
+						Description: "Pilih sheet sumber dan atur parameter export cashflow.",
+						Sections: []FormSectionSpec{
+							{
+								Key:   "source",
+								Title: "Sumber Data",
+								Fields: []FormFieldSpec{
+									{
+										Key:      "sheetName",
+										Kind:     FormFieldKindSelect,
+										Label:    "Sheet",
+										Required: true,
+										HelpText: "Dipilih dari sheet yang sama pada semua dokumen terpilih.",
+										State: FormFieldStateSpec{
+											Visible: true,
+										},
+									},
+									{
+										Key:          "headerRowNumber",
+										Kind:         FormFieldKindNumber,
+										Label:        "Baris Header",
+										Required:     true,
+										DefaultValue: 1,
+										HelpText:     "Nomor baris header pada sheet yang dipilih.",
+										Placeholder:  "1",
+										State: FormFieldStateSpec{
+											Visible: true,
+										},
+									},
+									{
+										Key:         "startingChequeNumber",
+										Kind:        FormFieldKindNumber,
+										Label:       "Nomor Awal Cheque",
+										Required:    false,
+										HelpText:    "Opsional. Kosongkan jika nomor cheque ingin dibuat otomatis oleh MYOB.",
+										Placeholder: "17500",
+										State: FormFieldStateSpec{
+											Visible: true,
+										},
+									},
+								},
+							},
+							{
+								Key:   "output",
+								Title: "Output",
+								Fields: []FormFieldSpec{
+									{
+										Key:         "outputFilename",
+										Kind:        FormFieldKindText,
+										Label:       "Nama Output",
+										Required:    true,
+										Placeholder: "cashflow-myob",
+										HelpText:    "Tanpa ekstensi file.",
+										State: FormFieldStateSpec{
+											Visible: true,
+										},
+									},
+									{
+										Key:      "chequeAccount",
+										Kind:     FormFieldKindText,
+										Label:    "Cheque Account",
+										Required: true,
+										HelpText: "Akun cheque utama untuk file MYOB.",
+										State:    FormFieldStateSpec{Visible: true},
+									},
+									{
+										Key:          "cashflowFormat",
+										Kind:         FormFieldKindSelect,
+										Label:        "Format Cashflow",
+										Required:     true,
+										DefaultValue: "default",
+										Options: []FormFieldOption{
+											{Label: "Default", Value: "default"},
+											{Label: "Influencer", Value: "influencer"},
+										},
+										State: FormFieldStateSpec{Visible: true},
+									},
+									{
+										Key:          "cashflowType",
+										Kind:         FormFieldKindSelect,
+										Label:        "Tipe Cashflow",
+										Required:     true,
+										DefaultValue: "spend_money",
+										Options: []FormFieldOption{
+											{Label: "Spend Money", Value: "spend_money"},
+										},
+										HelpText: "Sementara hanya Spend Money yang didukung.",
+										State:    FormFieldStateSpec{Visible: true},
+									},
+									{
+										Key:          "skipPositiveTotal",
+										Kind:         FormFieldKindCheckbox,
+										Label:        "Lewati Total Positif",
+										Required:     false,
+										DefaultValue: false,
+										HelpText:     "Abaikan baris dengan total positif.",
+										State:        FormFieldStateSpec{Visible: true},
+									},
+								},
+							},
+							{
+								Key:   "default_format",
+								Title: "Format Default",
+								Fields: []FormFieldSpec{
+									{
+										Key:          "remarkDelimiter",
+										Kind:         FormFieldKindText,
+										Label:        "Remark Delimiter",
+										Required:     false,
+										DefaultValue: "*",
+										Placeholder:  "*",
+										HelpText:     "Wajib untuk format default.",
+										Rules: []FormFieldRuleSpec{
+											{Type: FormFieldRuleRequiredIf, Field: "cashflowFormat", Equals: "default", Message: "Remark Delimiter wajib diisi"},
+										},
+										State: FormFieldStateSpec{Visible: true},
+									},
+									{
+										Key:          "otherCostsAccountCode",
+										Kind:         FormFieldKindText,
+										Label:        "Kode Akun Biaya Lain",
+										Required:     false,
+										DefaultValue: "62099",
+										HelpText:     "Wajib untuk format default.",
+										Rules: []FormFieldRuleSpec{
+											{Type: FormFieldRuleRequiredIf, Field: "cashflowFormat", Equals: "default", Message: "Kode akun biaya lain wajib diisi"},
+										},
+										State: FormFieldStateSpec{Visible: true},
+									},
+								},
+							},
+							{
+								Key:   "influencer_format",
+								Title: "Format Influencer",
+								Fields: []FormFieldSpec{
+									{
+										Key:          "defaultIAccountCode",
+										Kind:         FormFieldKindText,
+										Label:        "Default Influencer Account Code",
+										Required:     false,
+										DefaultValue: "62004",
+										Rules: []FormFieldRuleSpec{
+											{Type: FormFieldRuleRequiredIf, Field: "cashflowFormat", Equals: "influencer", Message: "Default Influencer Account Code wajib diisi"},
+										},
+										State: FormFieldStateSpec{Visible: true},
+									},
+									{
+										Key:          "defaultBAccountCode",
+										Kind:         FormFieldKindText,
+										Label:        "Default Bank Account Code",
+										Required:     false,
+										DefaultValue: "90900",
+										Rules: []FormFieldRuleSpec{
+											{Type: FormFieldRuleRequiredIf, Field: "cashflowFormat", Equals: "influencer", Message: "Default Bank Account Code wajib diisi"},
+										},
+										State: FormFieldStateSpec{Visible: true},
+									},
+								},
+							},
+						},
+					},
+					Requirements: []ActionRequirementSpec{
+						{
+							Key:      "cashflowTaxAccounts",
+							Label:    "Tax Accounts",
+							Required: true,
+						},
+					},
+					MasterData: map[string]ActionMasterDataSpec{
+						"tax": {
+							Relative:     "tax_accounts.csv",
+							LookupKey:    "name",
+							RequiredCols: []string{"name", "account"},
+						},
+					},
+					Outputs: []ActionOutputSpec{
+						{
+							Kind:       "file",
+							MimeType:   "text/plain",
+							Ext:        "txt",
+							DownloadOK: true,
+						},
+					},
+				},
+			},
+		}, true
 	default:
-		return DocumentTypeSpec{}, false
+		return CollectionSpec{}, false
 	}
 }
 
-func buildBukpotDocumentTypeSpec(
-	docType DocumentType,
+func buildBukpotCollectionSpec(
+	collectionKind CollectionKind,
 	label string,
 	description string,
-) DocumentTypeSpec {
+) CollectionSpec {
 	actions := []ActionSpec{}
 	actions = append(actions, ActionSpec{
 		ActionType:  "rename_bukpot",
 		Label:       "Rename Bukpot",
 		Description: "Ganti nama file bukpot berdasarkan template placeholder dan hasilkan ZIP.",
-		Enabled:     true,
+		State: ActionStateSpec{
+			Enabled: true,
+		},
+		Presentation: ActionPresentationSpec{
+			Mode:  "inline",
+			Width: "md",
+		},
 		Selection: ActionSelectionSpec{
 			Mode:           "manual",
 			AllowCheckAll:  true,
 			AllowedStatus:  []string{"ready", "warning"},
 			MinDocumentCnt: 1,
 		},
-		Params: []ActionParamFieldSpec{
-			{
-				Key:      "filenameTemplate",
-				Type:     ActionParamTypeString,
-				Label:    "Template Nama File",
-				Required: true,
-				Default:  "{{nomorBuktiPotong}} - {{namaPenerima}}",
-				UI: &ActionParamUISpec{
-					Editor: "template",
+		Form: &FormSpec{
+			Title: "Pengaturan Rename",
+			Sections: []FormSectionSpec{
+				{
+					Key:   "main",
+					Title: "Template Nama File",
+					Fields: []FormFieldSpec{
+						{
+							Key:          "filenameTemplate",
+							Kind:         FormFieldKindTemplate,
+							Label:        "Template Nama File",
+							Required:     true,
+							DefaultValue: "{{nomorBuktiPotong}} - {{namaPenerima}}",
+							Suggestions:  buildBukpotTemplateSuggestions(collectionKind),
+							HelpText:     "Gunakan placeholder yang tersedia. Ekstensi .pdf akan ditambahkan otomatis.",
+							Placeholder:  "{{nomorBuktiPotong}} - {{namaPenerima}}",
+							State: FormFieldStateSpec{
+								Visible: true,
+							},
+						},
+					},
 				},
-				Suggestions: buildBukpotTemplateSuggestions(docType),
-				Description: "Gunakan placeholder yang tersedia. Ekstensi .pdf akan ditambahkan otomatis.",
-				Placeholder: "{{nomorBuktiPotong}} - {{namaPenerima}}",
 			},
 		},
 		Outputs: []ActionOutputSpec{
@@ -355,19 +679,24 @@ func buildBukpotDocumentTypeSpec(
 		},
 	})
 
-	if docType == DocumentTypePDFBukpotBPPU || docType == DocumentTypePDFBukpotBP21 {
+	if collectionKind == CollectionKindBukpotBPPU || collectionKind == CollectionKindBukpotBP21 {
 		actions = append(actions, ActionSpec{
 			ActionType:  "rename_by_category",
 			Label:       "Rename by Category",
 			Description: "Kelompokkan bukpot ke folder kategori dari Dokumen Referensi Nomor lalu hasilkan ZIP.",
-			Enabled:     true,
+			State: ActionStateSpec{
+				Enabled: true,
+			},
+			Presentation: ActionPresentationSpec{
+				Mode:  "inline",
+				Width: "md",
+			},
 			Selection: ActionSelectionSpec{
 				Mode:           "manual",
 				AllowCheckAll:  true,
 				AllowedStatus:  []string{"ready", "warning"},
 				MinDocumentCnt: 1,
 			},
-			Params: []ActionParamFieldSpec{},
 			Outputs: []ActionOutputSpec{
 				{
 					Kind:       "file",
@@ -379,10 +708,11 @@ func buildBukpotDocumentTypeSpec(
 		})
 	}
 
-	return DocumentTypeSpec{
-		DocumentType: docType,
-		Label:        label,
-		Description:  description,
+	return CollectionSpec{
+		CollectionKind: collectionKind,
+		SourceFormat:   SourceFormatPDF,
+		Label:          label,
+		Description:    description,
 		Upload: UploadRuleSpec{
 			AcceptExtensions: []string{".pdf"},
 			AcceptMIMETypes:  []string{"application/pdf"},
@@ -402,8 +732,16 @@ func buildBukpotDocumentTypeSpec(
 	}
 }
 
-func buildBukpotTemplateSuggestions(docType DocumentType) []ActionParamSuggestion {
-	suggestions := []ActionParamSuggestion{
+func ResolveCollectionSourceFormat(collectionKind CollectionKind) SourceFormat {
+	spec, ok := BuildCollectionSpec(collectionKind)
+	if !ok || !spec.SourceFormat.IsValid() {
+		return SourceFormatPDF
+	}
+	return spec.SourceFormat
+}
+
+func buildBukpotTemplateSuggestions(collectionKind CollectionKind) []FormSuggestionSpec {
+	suggestions := []FormSuggestionSpec{
 		{Token: "nomorBuktiPotong", Label: "Nomor Bukti Potong", Example: "{{nomorBuktiPotong}}"},
 		{Token: "namaPenerima", Label: "Nama Penerima", Example: "{{namaPenerima}}"},
 		{Token: "sifatPemotongan", Label: "Sifat Pemotongan", Example: "{{sifatPemotongan}}"},
@@ -415,19 +753,19 @@ func buildBukpotTemplateSuggestions(docType DocumentType) []ActionParamSuggestio
 		{Token: "sourceName", Label: "Nama File Asal", Example: "{{sourceName}}"},
 	}
 
-	switch docType {
-	case DocumentTypePDFBukpotBPPU, DocumentTypePDFBukpotBP21:
+	switch collectionKind {
+	case CollectionKindBukpotBPPU, CollectionKindBukpotBP21:
 		suggestions = append(suggestions,
-			ActionParamSuggestion{Token: "dokumenReferensiNomor", Label: "Nomor Dokumen Referensi", Example: "{{dokumenReferensiNomor}}"},
-			ActionParamSuggestion{Token: "dokumenReferensiJenis", Label: "Jenis Dokumen Referensi", Example: "{{dokumenReferensiJenis}}"},
-			ActionParamSuggestion{Token: "dokumenReferensiTanggal", Label: "Tanggal Dokumen Referensi", Example: "{{dokumenReferensiTanggal}}"},
-			ActionParamSuggestion{Token: "masaPajak", Label: "Masa Pajak", Example: "{{masaPajak}}"},
+			FormSuggestionSpec{Token: "dokumenReferensiNomor", Label: "Nomor Dokumen Referensi", Example: "{{dokumenReferensiNomor}}"},
+			FormSuggestionSpec{Token: "dokumenReferensiJenis", Label: "Jenis Dokumen Referensi", Example: "{{dokumenReferensiJenis}}"},
+			FormSuggestionSpec{Token: "dokumenReferensiTanggal", Label: "Tanggal Dokumen Referensi", Example: "{{dokumenReferensiTanggal}}"},
+			FormSuggestionSpec{Token: "masaPajak", Label: "Masa Pajak", Example: "{{masaPajak}}"},
 		)
-	case DocumentTypePDFBukpotBPA1:
+	case CollectionKindBukpotBPA1:
 		suggestions = append(suggestions,
-			ActionParamSuggestion{Token: "periodePenghasilan", Label: "Periode Penghasilan", Example: "{{periodePenghasilan}}"},
-			ActionParamSuggestion{Token: "posisi", Label: "Posisi", Example: "{{posisi}}"},
-			ActionParamSuggestion{Token: "statusPtkp", Label: "Status PTKP", Example: "{{statusPtkp}}"},
+			FormSuggestionSpec{Token: "periodePenghasilan", Label: "Periode Penghasilan", Example: "{{periodePenghasilan}}"},
+			FormSuggestionSpec{Token: "posisi", Label: "Posisi", Example: "{{posisi}}"},
+			FormSuggestionSpec{Token: "statusPtkp", Label: "Status PTKP", Example: "{{statusPtkp}}"},
 		)
 	}
 

@@ -177,8 +177,8 @@ func (h *CollectionPipelineHandler) GetDocumentInvoice(c *fiber.Ctx) error {
 		}
 	}
 
-	if doc.DocumentType != document.DocumentTypePDFInvoice {
-		return SendError(c, fiber.StatusBadRequest, "invoice view only available for pdf_invoice")
+	if doc.CollectionKind != document.CollectionKindInvoiceCompany {
+		return SendError(c, fiber.StatusBadRequest, "invoice view only available for invoice_company")
 	}
 
 	inv, err := h.invoiceService.LoadInvoice(ctx, collectionID, doc.NormalizedRef)

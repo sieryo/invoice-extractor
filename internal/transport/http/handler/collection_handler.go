@@ -28,13 +28,12 @@ func NewCollectionHandler(collectionService *collection.CollectionService) *Coll
 }
 
 type CreateCollectionRequest struct {
-	Name               string  `json:"name"`
-	NodeType           string  `json:"nodeType,omitempty"`
-	ParentID           *string `json:"parentId,omitempty"`
-	DocumentType       *string `json:"documentType,omitempty"`
-	LegacyNodeType     string  `json:"node_type,omitempty"`
-	LegacyParentID     *string `json:"parent_id,omitempty"`
-	LegacyDocumentType *string `json:"document_type,omitempty"`
+	Name           string  `json:"name"`
+	NodeType       string  `json:"nodeType,omitempty"`
+	ParentID       *string `json:"parentId,omitempty"`
+	CollectionKind *string `json:"collectionKind,omitempty"`
+	LegacyNodeType string  `json:"node_type,omitempty"`
+	LegacyParentID *string `json:"parent_id,omitempty"`
 }
 
 type RenameCollectionRequest struct {
@@ -97,23 +96,19 @@ func (h *CollectionHandler) createNode(c *fiber.Ctx, legacyDefault bool) error {
 	case dcollection.NodeTypeFolder:
 		coll, err = h.collectionService.CreateFolder(ctx, newID, name, userID, parentID)
 	case dcollection.NodeTypeCollection:
-		docType := dcollection.DocumentTypePDFInvoice
-		documentType := req.DocumentType
-		if documentType == nil {
-			documentType = req.LegacyDocumentType
+		kind := dcollection.CollectionKindInvoiceCompany
+		if req.CollectionKind != nil && strings.TrimSpace(*req.CollectionKind) != "" {
+			kind = dcollection.CollectionKind(strings.ToLower(strings.TrimSpace(*req.CollectionKind)))
 		}
-		if documentType != nil && strings.TrimSpace(*documentType) != "" {
-			docType = dcollection.DocumentType(strings.ToLower(strings.TrimSpace(*documentType)))
-		}
-		coll, err = h.collectionService.CreateTypedCollection(ctx, newID, name, userID, parentID, docType)
+		coll, err = h.collectionService.CreateTypedCollection(ctx, newID, name, userID, parentID, kind)
 	default:
 		return SendError(c, fiber.StatusBadRequest, "invalid node_type")
 	}
 
 	if err != nil {
 		switch {
-		case errors.Is(err, dcollection.ErrInvalidDocumentType):
-			return SendError(c, fiber.StatusBadRequest, "invalid document_type")
+		case errors.Is(err, dcollection.ErrInvalidCollectionKind):
+			return SendError(c, fiber.StatusBadRequest, "invalid collectionKind")
 		case errors.Is(err, dcollection.ErrInvalidCollectionName):
 			return SendError(c, fiber.StatusBadRequest, "nama wajib diisi")
 		case errors.Is(err, dcollection.ErrCollectionNameConflict):

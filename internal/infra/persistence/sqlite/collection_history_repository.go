@@ -81,11 +81,11 @@ func (r *CollectionHistoryRepository) AddItems(ctx context.Context, items []*ing
 
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO collection_history_items (
-			id, history_id, user_id, collection_id, document_type,
+			id, history_id, user_id, collection_id, collection_kind, source_format, document_type,
 			source_name, source_size_bytes, source_mime, source_sha256, source_order,
 			item_status, message, document_id, duplicate_of_id, duplicate_key,
 			warnings_json, errors_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
@@ -98,7 +98,8 @@ func (r *CollectionHistoryRepository) AddItems(ctx context.Context, items []*ing
 			item.HistoryID,
 			item.UserID,
 			item.CollectionID,
-			item.DocumentType,
+			item.CollectionKind,
+			item.SourceFormat,
 			item.SourceName,
 			item.SourceSizeBytes,
 			item.SourceMIME,
@@ -214,7 +215,7 @@ func (r *CollectionHistoryRepository) ListItems(
 ) ([]*ingest.CollectionHistoryItem, error) {
 	query := `
 		SELECT
-			id, history_id, user_id, collection_id, document_type,
+			id, history_id, user_id, collection_id, collection_kind, source_format,
 			source_name, source_size_bytes, source_mime, source_sha256, source_order,
 			item_status, message, document_id, duplicate_of_id, duplicate_key,
 			warnings_json, errors_json, created_at
@@ -297,18 +298,19 @@ func scanCollectionHistoryItem(row rowScanner) (*ingest.CollectionHistoryItem, e
 	var (
 		item ingest.CollectionHistoryItem
 
-		docTypeRaw    string
-		sourceSize    sql.NullInt64
-		sourceMIME    sql.NullString
-		sourceSHA     sql.NullString
-		sourceOrder   sql.NullInt64
-		message       sql.NullString
-		documentID    sql.NullString
-		duplicateOfID sql.NullString
-		duplicateKey  sql.NullString
-		warningsRaw   []byte
-		errorsRaw     []byte
-		createdAt     time.Time
+		collectionKindRaw string
+		sourceFormatRaw   string
+		sourceSize        sql.NullInt64
+		sourceMIME        sql.NullString
+		sourceSHA         sql.NullString
+		sourceOrder       sql.NullInt64
+		message           sql.NullString
+		documentID        sql.NullString
+		duplicateOfID     sql.NullString
+		duplicateKey      sql.NullString
+		warningsRaw       []byte
+		errorsRaw         []byte
+		createdAt         time.Time
 	)
 
 	if err := row.Scan(
@@ -316,7 +318,8 @@ func scanCollectionHistoryItem(row rowScanner) (*ingest.CollectionHistoryItem, e
 		&item.HistoryID,
 		&item.UserID,
 		&item.CollectionID,
-		&docTypeRaw,
+		&collectionKindRaw,
+		&sourceFormatRaw,
 		&item.SourceName,
 		&sourceSize,
 		&sourceMIME,
@@ -334,7 +337,8 @@ func scanCollectionHistoryItem(row rowScanner) (*ingest.CollectionHistoryItem, e
 		return nil, err
 	}
 
-	item.DocumentType = document.DocumentType(docTypeRaw)
+	item.CollectionKind = document.CollectionKind(collectionKindRaw)
+	item.SourceFormat = document.SourceFormat(sourceFormatRaw)
 	if sourceSize.Valid {
 		item.SourceSizeBytes = sourceSize.Int64
 	}

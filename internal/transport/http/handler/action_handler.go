@@ -31,17 +31,17 @@ func NewActionHandler(actionService *action.Service, fileStore file.FileStore) *
 }
 
 type RunActionRequest struct {
-	ActionType             string          `json:"actionType"`
-	Params                 json.RawMessage `json:"params,omitempty"`
-	DocumentIDs            []string        `json:"documentIds,omitempty"`
-	DocumentStatuses       []string        `json:"documentStatuses,omitempty"`
-	IdempotencyKey         *string         `json:"idempotencyKey,omitempty"`
-	RerunOfActionID        *string         `json:"rerunOfActionId,omitempty"`
-	LegacyActionType       string          `json:"action_type,omitempty"`
-	LegacyDocumentIDs      []string        `json:"document_ids,omitempty"`
-	LegacyDocumentStatuses []string        `json:"document_statuses,omitempty"`
-	LegacyIdempotencyKey   *string         `json:"idempotency_key,omitempty"`
-	LegacyRerunOfActionID  *string         `json:"rerun_of_action_id,omitempty"`
+	ActionType       string          `json:"actionType"`
+	Input            json.RawMessage `json:"input,omitempty"`
+	DocumentIDs      []string        `json:"documentIds,omitempty"`
+	DocumentStatuses []string        `json:"documentStatuses,omitempty"`
+	IdempotencyKey   *string         `json:"idempotencyKey,omitempty"`
+	RerunOfActionID  *string         `json:"rerunOfActionId,omitempty"`
+}
+
+type ResolveActionSpecRequest struct {
+	ActionType  string   `json:"actionType"`
+	DocumentIDs []string `json:"documentIds,omitempty"`
 }
 
 func (h *ActionHandler) RunAction(c *fiber.Ctx) error {
@@ -61,36 +61,15 @@ func (h *ActionHandler) RunAction(c *fiber.Ctx) error {
 		return SendError(c, fiber.StatusBadRequest, "invalid request body")
 	}
 
-	actionType := req.ActionType
-	if actionType == "" {
-		actionType = req.LegacyActionType
-	}
-	documentIDs := req.DocumentIDs
-	if len(documentIDs) == 0 {
-		documentIDs = req.LegacyDocumentIDs
-	}
-	documentStatuses := req.DocumentStatuses
-	if len(documentStatuses) == 0 {
-		documentStatuses = req.LegacyDocumentStatuses
-	}
-	idempotencyKey := req.IdempotencyKey
-	if idempotencyKey == nil {
-		idempotencyKey = req.LegacyIdempotencyKey
-	}
-	rerunOfActionID := req.RerunOfActionID
-	if rerunOfActionID == nil {
-		rerunOfActionID = req.LegacyRerunOfActionID
-	}
-
 	actionRecord, err := h.actionService.RunAction(ctx, action.RunRequest{
 		UserID:           userID,
 		CollectionID:     collectionID,
-		ActionType:       actionType,
-		Params:           req.Params,
-		DocumentIDs:      documentIDs,
-		DocumentStatuses: documentStatuses,
-		IdempotencyKey:   idempotencyKey,
-		RerunOfActionID:  rerunOfActionID,
+		ActionType:       req.ActionType,
+		Input:            req.Input,
+		DocumentIDs:      req.DocumentIDs,
+		DocumentStatuses: req.DocumentStatuses,
+		IdempotencyKey:   req.IdempotencyKey,
+		RerunOfActionID:  req.RerunOfActionID,
 	})
 	if err != nil {
 		switch {
@@ -101,9 +80,9 @@ func (h *ActionHandler) RunAction(c *fiber.Ctx) error {
 		case errors.Is(err, dcollection.ErrInvalidNodeType):
 			return SendError(c, fiber.StatusBadRequest, "target must be a typed collection")
 		case errors.Is(err, action.ErrInvalidActionType):
-			return SendError(c, fiber.StatusBadRequest, "action_type is required")
+			return SendError(c, fiber.StatusBadRequest, "actionType is required")
 		case errors.Is(err, action.ErrActionNotSupported):
-			return SendError(c, fiber.StatusBadRequest, "action_type is not available for this document type")
+			return SendError(c, fiber.StatusBadRequest, "actionType is not available for this document type")
 		case errors.Is(err, action.ErrActionDisabled):
 			return SendError(c, fiber.StatusBadRequest, err.Error())
 		case errors.Is(err, action.ErrActionRequirement):
@@ -113,9 +92,9 @@ func (h *ActionHandler) RunAction(c *fiber.Ctx) error {
 		case errors.Is(err, action.ErrInvalidActionSpec):
 			return SendError(c, fiber.StatusBadRequest, "action spec is invalid")
 		case errors.Is(err, action.ErrInvalidDocumentIDs):
-			return SendError(c, fiber.StatusBadRequest, "invalid document_ids")
+			return SendError(c, fiber.StatusBadRequest, "invalid documentIds")
 		case errors.Is(err, action.ErrInvalidDocumentStatus):
-			return SendError(c, fiber.StatusBadRequest, "invalid document_statuses filter")
+			return SendError(c, fiber.StatusBadRequest, "invalid documentStatuses filter")
 		case errors.Is(err, action.ErrMinDocumentsRequired):
 			return SendError(c, fiber.StatusBadRequest, "minimum selected documents for action is not met")
 		case errors.Is(err, action.ErrSnapshotDocStatus):
@@ -230,6 +209,53 @@ func (h *ActionHandler) GetActionSpec(c *fiber.Ctx) error {
 	return SendSuccess(c, fiber.StatusOK, spec, "action spec retrieved")
 }
 
+func (h *ActionHandler) ResolveActionSpec(c *fiber.Ctx) error {
+	ctx := c.Context()
+	userID, ok := c.Locals("userId").(string)
+	if !ok {
+		return fiber.ErrUnauthorized
+	}
+
+	collectionID := c.Params("id")
+	if collectionID == "" {
+		return SendError(c, fiber.StatusBadRequest, "collection id is required")
+	}
+
+	var req ResolveActionSpecRequest
+	if err := c.BodyParser(&req); err != nil {
+		return SendError(c, fiber.StatusBadRequest, "invalid request body")
+	}
+
+	spec, err := h.actionService.ResolveActionSpec(ctx, action.ResolveSpecRequest{
+		UserID:       userID,
+		CollectionID: collectionID,
+		ActionType:   req.ActionType,
+		DocumentIDs:  req.DocumentIDs,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, dcollection.ErrCollectionNotFound):
+			return SendError(c, fiber.StatusNotFound, "collection not found")
+		case errors.Is(err, dcollection.ErrInvalidNodeType):
+			return SendError(c, fiber.StatusBadRequest, "target must be a typed collection")
+		case errors.Is(err, action.ErrSpecNotFound):
+			return SendError(c, fiber.StatusNotFound, "action spec not found")
+		case errors.Is(err, action.ErrActionNotSupported):
+			return SendError(c, fiber.StatusBadRequest, "actionType is not available for this collection")
+		case errors.Is(err, action.ErrInvalidDocumentIDs):
+			return SendError(c, fiber.StatusBadRequest, "invalid documentIds")
+		case errors.Is(err, action.ErrSnapshotDocNotFound):
+			return SendError(c, fiber.StatusBadRequest, "some selected documents are not available")
+		case errors.Is(err, action.ErrSnapshotDocStatus):
+			return SendError(c, fiber.StatusBadRequest, "selected documents must be ready or warning")
+		default:
+			return SendError(c, fiber.StatusInternalServerError, err.Error())
+		}
+	}
+
+	return SendSuccess(c, fiber.StatusOK, spec, "action spec resolved")
+}
+
 func (h *ActionHandler) DownloadActionOutput(c *fiber.Ctx) error {
 	ctx := c.Context()
 	userID, ok := c.Locals("userId").(string)
@@ -340,8 +366,8 @@ func (h *ActionHandler) UploadActionArtifact(c *fiber.Ctx) error {
 	if !found {
 		return SendError(c, fiber.StatusBadRequest, "action type is not available for this collection")
 	}
-	if !actionSpec.Enabled {
-		reason := strings.TrimSpace(actionSpec.Reason)
+	if !actionSpec.State.Enabled {
+		reason := strings.TrimSpace(actionSpec.State.Message)
 		if reason == "" {
 			reason = "action tidak tersedia untuk collection ini"
 		}

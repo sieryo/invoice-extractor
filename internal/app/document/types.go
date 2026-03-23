@@ -8,14 +8,20 @@ import (
 	dcollection "github.com/sieryo/invoice-extractor/internal/domain/collection"
 )
 
-type DocumentType = dcollection.DocumentType
+type CollectionKind = dcollection.CollectionKind
+type SourceFormat = dcollection.SourceFormat
 
 const (
-	DocumentTypePDFInvoice    = dcollection.DocumentTypePDFInvoice
-	DocumentTypePDFTaxInvoice = dcollection.DocumentTypePDFTaxInvoice
-	DocumentTypePDFBukpotBPPU = dcollection.DocumentTypePDFBukpotBPPU
-	DocumentTypePDFBukpotBP21 = dcollection.DocumentTypePDFBukpotBP21
-	DocumentTypePDFBukpotBPA1 = dcollection.DocumentTypePDFBukpotBPA1
+	CollectionKindInvoiceCompany    = dcollection.CollectionKindInvoiceCompany
+	CollectionKindTaxInvoiceCoretax = dcollection.CollectionKindTaxInvoiceCoretax
+	CollectionKindBukpotBPPU        = dcollection.CollectionKindBukpotBPPU
+	CollectionKindBukpotBP21        = dcollection.CollectionKindBukpotBP21
+	CollectionKindBukpotBPA1        = dcollection.CollectionKindBukpotBPA1
+	CollectionKindCashflowImport    = dcollection.CollectionKindCashflowImport
+
+	SourceFormatPDF  = dcollection.SourceFormatPDF
+	SourceFormatXLSX = dcollection.SourceFormatXLSX
+	SourceFormatCSV  = dcollection.SourceFormatCSV
 )
 
 type Artifact struct {
@@ -43,14 +49,15 @@ type IngestSource struct {
 }
 
 type IngestRequest struct {
-	RequestID    string       `json:"request_id"`
-	UserID       string       `json:"user_id"`
-	CollectionID string       `json:"collection_id"`
-	DocumentType DocumentType `json:"document_type"`
-	Sources      []IngestSource
-	Policy       IngestPolicy    `json:"policy"`
-	Options      json.RawMessage `json:"options,omitempty"`
-	RequestedAt  time.Time       `json:"requested_at"`
+	RequestID      string         `json:"request_id"`
+	UserID         string         `json:"user_id"`
+	CollectionID   string         `json:"collection_id"`
+	CollectionKind CollectionKind `json:"collection_kind"`
+	SourceFormat   SourceFormat   `json:"source_format"`
+	Sources        []IngestSource
+	Policy         IngestPolicy    `json:"policy"`
+	Options        json.RawMessage `json:"options,omitempty"`
+	RequestedAt    time.Time       `json:"requested_at"`
 }
 
 type IngestItemStatus string
@@ -103,15 +110,16 @@ type ActionSnapshotDocument struct {
 }
 
 type ActionRequest struct {
-	ActionID      string       `json:"action_id"`
-	UserID        string       `json:"user_id"`
-	CollectionID  string       `json:"collection_id"`
-	DocumentType  DocumentType `json:"document_type"`
-	ActionType    string       `json:"action_type"`
-	SnapshotDocID []string     `json:"snapshot_doc_ids"`
-	SnapshotDocs  []ActionSnapshotDocument
-	Params        json.RawMessage `json:"params,omitempty"`
-	RequestedAt   time.Time       `json:"requested_at"`
+	ActionID       string         `json:"action_id"`
+	UserID         string         `json:"user_id"`
+	CollectionID   string         `json:"collection_id"`
+	CollectionKind CollectionKind `json:"collection_kind"`
+	SourceFormat   SourceFormat   `json:"source_format"`
+	ActionType     string         `json:"action_type"`
+	SnapshotDocID  []string       `json:"snapshot_doc_ids"`
+	SnapshotDocs   []ActionSnapshotDocument
+	Input          json.RawMessage `json:"input,omitempty"`
+	RequestedAt    time.Time       `json:"requested_at"`
 }
 
 type ActionOutput struct {
@@ -148,7 +156,7 @@ type ActionResult struct {
 }
 
 type DocumentProcessor interface {
-	Type() DocumentType
+	Key() ProcessorKey
 	Ingest(ctx context.Context, req IngestRequest) (IngestResult, error)
 	RunAction(ctx context.Context, req ActionRequest) (ActionResult, error)
 }
