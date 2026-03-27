@@ -22,7 +22,9 @@ func TestXLSXCashflowProcessor_RunActionSpendMoney(t *testing.T) {
 	ctx := context.Background()
 	tempDir := t.TempDir()
 	fileStore := filestore.NewLocalFileStore(filepath.Join(tempDir, "storage"))
-	taxAccountsPath := filepath.Join(tempDir, "tax_accounts.csv")
+	profileID := "user-1"
+	taxAccountsPath := filepath.Join(tempDir, "profiles", profileID, "tax_accounts.csv")
+	require.NoError(t, os.MkdirAll(filepath.Dir(taxAccountsPath), 0o755))
 	require.NoError(t, os.WriteFile(taxAccountsPath, []byte(strings.Join([]string{
 		"name,account",
 		"PPH 23,22003",
@@ -30,7 +32,7 @@ func TestXLSXCashflowProcessor_RunActionSpendMoney(t *testing.T) {
 		"Admin Bank,66108",
 	}, "\n")), 0644))
 
-	taxService := appcashflow.NewTaxAccountService(taxAccountsPath)
+	taxService := appcashflow.NewTaxAccountService(tempDir)
 	processor := NewXLSXCashflowProcessor(fileStore, taxService)
 
 	workbookPath := filepath.Join(tempDir, "cashflow.xlsx")
@@ -38,7 +40,7 @@ func TestXLSXCashflowProcessor_RunActionSpendMoney(t *testing.T) {
 
 	ingestReq := IngestRequest{
 		RequestID:      "req-1",
-		UserID:         "user-1",
+		UserID:         profileID,
 		CollectionID:   "collection-1",
 		CollectionKind: CollectionKindCashflowImport,
 		SourceFormat:   SourceFormatXLSX,
@@ -86,7 +88,7 @@ func TestXLSXCashflowProcessor_RunActionSpendMoney(t *testing.T) {
 
 	result, err := processor.RunAction(ctx, ActionRequest{
 		ActionID:       "action-1",
-		UserID:         "user-1",
+		UserID:         profileID,
 		CollectionID:   "collection-1",
 		CollectionKind: CollectionKindCashflowImport,
 		SourceFormat:   SourceFormatXLSX,

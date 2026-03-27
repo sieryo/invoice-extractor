@@ -22,14 +22,15 @@ func NewTaxAccountHandler(service *appcashflow.TaxAccountService) *TaxAccountHan
 }
 
 func (h *TaxAccountHandler) List(c *fiber.Ctx) error {
-	accounts, err := h.service.List()
+	profileID, _ := c.Locals("userId").(string)
+	accounts, err := h.service.List(profileID)
 	if err != nil {
 		var pathErr *parser.TaxAccountSchemaMismatchError
 		if errors.As(err, &pathErr) || os.IsNotExist(err) {
 			return SendSuccess(c, fiber.StatusOK, fiber.Map{
 				"accounts": []appcashflow.TaxAccount{},
 				"count":    0,
-				"status":   h.service.Status(),
+				"status":   h.service.Status(profileID),
 				"version":  h.service.Spec().SchemaVersion,
 			}, "tax account list retrieved")
 		}
@@ -38,7 +39,7 @@ func (h *TaxAccountHandler) List(c *fiber.Ctx) error {
 	return SendSuccess(c, fiber.StatusOK, fiber.Map{
 		"accounts": accounts,
 		"count":    len(accounts),
-		"status":   h.service.Status(),
+		"status":   h.service.Status(profileID),
 		"version":  h.service.Spec().SchemaVersion,
 	}, "tax account list retrieved")
 }
@@ -48,10 +49,12 @@ func (h *TaxAccountHandler) Spec(c *fiber.Ctx) error {
 }
 
 func (h *TaxAccountHandler) Status(c *fiber.Ctx) error {
-	return SendSuccess(c, fiber.StatusOK, h.service.Status(), "tax account status retrieved")
+	profileID, _ := c.Locals("userId").(string)
+	return SendSuccess(c, fiber.StatusOK, h.service.Status(profileID), "tax account status retrieved")
 }
 
 func (h *TaxAccountHandler) Update(c *fiber.Ctx) error {
+	profileID, _ := c.Locals("userId").(string)
 	file, err := c.FormFile("file")
 	if err != nil {
 		return SendError(c, fiber.StatusBadRequest, "file required")
@@ -74,12 +77,12 @@ func (h *TaxAccountHandler) Update(c *fiber.Ctx) error {
 		)
 	}
 
-	tmpPath := h.service.TempFilePath()
+	tmpPath := h.service.TempFilePath(profileID)
 	if err := c.SaveFile(file, tmpPath); err != nil {
 		return SendError(c, fiber.StatusInternalServerError, "failed to save file")
 	}
 
-	count, issues, err := h.service.Update(tmpPath)
+	count, issues, err := h.service.Update(profileID, tmpPath)
 	if err != nil {
 		var schemaErr *parser.TaxAccountSchemaMismatchError
 		if errors.As(err, &schemaErr) {
@@ -102,7 +105,7 @@ func (h *TaxAccountHandler) Update(c *fiber.Ctx) error {
 	return SendSuccess(c, fiber.StatusOK, fiber.Map{
 		"count":  count,
 		"issues": sanitizeValidationIssues(issues),
-		"status": h.service.Status(),
+		"status": h.service.Status(profileID),
 	}, "tax account uploaded successfully")
 }
 

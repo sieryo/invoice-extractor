@@ -21,11 +21,11 @@ import (
 )
 
 type BuyerRegistryStatusProvider interface {
-	Status() appbuyer.BuyerRegistryStatus
+	Status(profileID string) appbuyer.BuyerRegistryStatus
 }
 
 type CashflowTaxAccountStatusProvider interface {
-	Status() appcashflow.TaxAccountStatus
+	Status(profileID string) appcashflow.TaxAccountStatus
 }
 
 type Service struct {
@@ -116,7 +116,7 @@ func (s *Service) RunAction(ctx context.Context, req RunRequest) (*CollectionAct
 	if !ok {
 		return nil, ErrSpecNotFound
 	}
-	spec = s.applyRuntimeRequirements(spec)
+	spec = s.applyRuntimeRequirements(spec, coll.UserID)
 
 	actionSpec, ok := spec.FindActionSpec(actionType)
 	if !ok {
@@ -280,7 +280,7 @@ func (s *Service) GetActionSpec(
 	if !ok {
 		return nil, ErrSpecNotFound
 	}
-	spec = s.applyRuntimeRequirements(spec)
+	spec = s.applyRuntimeRequirements(spec, coll.UserID)
 	if coll.IsFrozen() {
 		spec = applyFrozenCollectionSpec(spec)
 	}
@@ -304,7 +304,7 @@ func (s *Service) ResolveActionSpec(
 	if !ok {
 		return nil, ErrSpecNotFound
 	}
-	spec = s.applyRuntimeRequirements(spec)
+	spec = s.applyRuntimeRequirements(spec, coll.UserID)
 	if coll.IsFrozen() {
 		spec = applyFrozenCollectionSpec(spec)
 	}
@@ -1195,7 +1195,7 @@ func validateSnapshotStatuses(snapshotDocs []SnapshotDocument, allowed []string)
 	return nil
 }
 
-func (s *Service) applyRuntimeRequirements(spec document.CollectionSpec) document.CollectionSpec {
+func (s *Service) applyRuntimeRequirements(spec document.CollectionSpec, profileID string) document.CollectionSpec {
 	actions := make([]document.ActionSpec, 0, len(spec.Actions))
 	for _, item := range spec.Actions {
 		actionSpec := item
@@ -1203,11 +1203,11 @@ func (s *Service) applyRuntimeRequirements(spec document.CollectionSpec) documen
 
 		if spec.CollectionKind == document.CollectionKindInvoiceCompany &&
 			strings.EqualFold(strings.TrimSpace(actionSpec.ActionType), "export_faktur_keluaran") {
-			actionSpec = s.applyBuyerRegistryRequirement(actionSpec)
+			actionSpec = s.applyBuyerRegistryRequirement(actionSpec, profileID)
 		}
 		if spec.CollectionKind == document.CollectionKindCashflowImport &&
 			strings.EqualFold(strings.TrimSpace(actionSpec.ActionType), "export_cashflow_myob") {
-			actionSpec = s.applyCashflowTaxAccountRequirement(actionSpec)
+			actionSpec = s.applyCashflowTaxAccountRequirement(actionSpec, profileID)
 		}
 
 		actions = append(actions, actionSpec)
@@ -1216,14 +1216,14 @@ func (s *Service) applyRuntimeRequirements(spec document.CollectionSpec) documen
 	return spec
 }
 
-func (s *Service) applyBuyerRegistryRequirement(actionSpec document.ActionSpec) document.ActionSpec {
+func (s *Service) applyBuyerRegistryRequirement(actionSpec document.ActionSpec, profileID string) document.ActionSpec {
 	status := appbuyer.BuyerRegistryStatus{
 		Loaded:  false,
 		Code:    "BUYER_REGISTRY_STATUS_UNAVAILABLE",
 		Message: "Buyer registry checker tidak tersedia.",
 	}
 	if s.buyerRegistry != nil {
-		status = s.buyerRegistry.Status()
+		status = s.buyerRegistry.Status(profileID)
 	}
 
 	updated := false
@@ -1262,14 +1262,14 @@ func (s *Service) applyBuyerRegistryRequirement(actionSpec document.ActionSpec) 
 	return actionSpec
 }
 
-func (s *Service) applyCashflowTaxAccountRequirement(actionSpec document.ActionSpec) document.ActionSpec {
+func (s *Service) applyCashflowTaxAccountRequirement(actionSpec document.ActionSpec, profileID string) document.ActionSpec {
 	status := appcashflow.TaxAccountStatus{
 		Loaded:  false,
 		Code:    "CASHFLOW_TAX_ACCOUNTS_UNAVAILABLE",
 		Message: "Master data tax accounts belum tersedia.",
 	}
 	if s.taxAccounts != nil {
-		status = s.taxAccounts.Status()
+		status = s.taxAccounts.Status(profileID)
 	}
 
 	updated := false

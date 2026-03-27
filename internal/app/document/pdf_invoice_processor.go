@@ -67,7 +67,7 @@ func (p *PDFInvoiceProcessor) Ingest(ctx context.Context, req IngestRequest) (In
 		})
 	}
 
-	batch, err := p.extractor.ExtractBatch(ctx, resolved, nil)
+	batch, err := p.extractor.ExtractBatch(ctx, resolved, nil, req.UserID)
 	if err != nil {
 		result.FinishedAt = time.Now()
 		return result, err

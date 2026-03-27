@@ -95,7 +95,7 @@ func (p *XLSXCashflowProcessor) RunAction(ctx context.Context, req ActionRequest
 		return result, errors.New("cashflow tax account provider is nil")
 	}
 
-	taxAccounts, err := p.taxAccounts.Load()
+	taxAccounts, err := p.taxAccounts.Load(req.UserID)
 	if err != nil {
 		result.Status = "failed"
 		result.Message = "master data tax accounts belum siap"

@@ -5,12 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/sieryo/invoice-extractor/internal/infra/parser"
 	"github.com/sieryo/invoice-extractor/internal/infra/storage"
+	"github.com/sieryo/invoice-extractor/internal/profilepath"
 )
 
 type TaxAccountStatus struct {
@@ -21,16 +21,14 @@ type TaxAccountStatus struct {
 }
 
 type TaxAccountService struct {
-	path   string
-	parser *parser.TaxAccountExcelParser
-	store  *storage.TaxAccountCSVStore
+	rootDir string
+	parser  *parser.TaxAccountExcelParser
 }
 
-func NewTaxAccountService(path string) *TaxAccountService {
+func NewTaxAccountService(rootDir string) *TaxAccountService {
 	return &TaxAccountService{
-		path:   path,
-		parser: parser.NewTaxAccountExcelParser(),
-		store:  storage.NewTaxAccountCSVStore(path),
+		rootDir: rootDir,
+		parser:  parser.NewTaxAccountExcelParser(),
 	}
 }
 
@@ -38,8 +36,8 @@ func (s *TaxAccountService) Spec() parser.TaxAccountSchemaSpec {
 	return s.parser.SchemaSpec()
 }
 
-func (s *TaxAccountService) Status() TaxAccountStatus {
-	accounts, err := s.Load()
+func (s *TaxAccountService) Status(profileID string) TaxAccountStatus {
+	accounts, err := s.Load(profileID)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return TaxAccountStatus{
@@ -81,8 +79,8 @@ func (s *TaxAccountService) Status() TaxAccountStatus {
 	}
 }
 
-func (s *TaxAccountService) List() ([]TaxAccount, error) {
-	accounts, err := s.Load()
+func (s *TaxAccountService) List(profileID string) ([]TaxAccount, error) {
+	accounts, err := s.Load(profileID)
 	if err != nil {
 		return nil, err
 	}
@@ -96,8 +94,9 @@ func (s *TaxAccountService) List() ([]TaxAccount, error) {
 	return out, nil
 }
 
-func (s *TaxAccountService) Load() (map[string]TaxAccount, error) {
-	f, err := os.Open(s.path)
+func (s *TaxAccountService) Load(profileID string) (map[string]TaxAccount, error) {
+	path := profilepath.TaxAccountsCSV(s.rootDir, profileID)
+	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
@@ -129,8 +128,8 @@ func (s *TaxAccountService) Load() (map[string]TaxAccount, error) {
 	return accounts, nil
 }
 
-func (s *TaxAccountService) Lookup(name string) (TaxAccount, bool, error) {
-	accounts, err := s.Load()
+func (s *TaxAccountService) Lookup(profileID string, name string) (TaxAccount, bool, error) {
+	accounts, err := s.Load(profileID)
 	if err != nil {
 		return TaxAccount{}, false, err
 	}
@@ -138,11 +137,15 @@ func (s *TaxAccountService) Lookup(name string) (TaxAccount, bool, error) {
 	return account, ok, nil
 }
 
-func (s *TaxAccountService) Update(filePath string) (int, []parser.ValidationIssue, error) {
+func (s *TaxAccountService) Update(profileID string, filePath string) (int, []parser.ValidationIssue, error) {
 	accounts, issues, err := s.parser.Parse(filePath)
 	if err != nil {
 		return 0, nil, err
 	}
+	if err := os.MkdirAll(profilepath.ProfileDir(s.rootDir, profileID), 0o755); err != nil {
+		return 0, nil, err
+	}
+	store := storage.NewTaxAccountCSVStore(profilepath.TaxAccountsCSV(s.rootDir, profileID))
 	rows := make([]storage.TaxAccountCSVRecord, 0, len(accounts))
 	for _, account := range accounts {
 		rows = append(rows, storage.TaxAccountCSVRecord{
@@ -150,19 +153,19 @@ func (s *TaxAccountService) Update(filePath string) (int, []parser.ValidationIss
 			Account: account.Account,
 		})
 	}
-	if err := s.store.Save(rows); err != nil {
+	if err := store.Save(rows); err != nil {
 		return 0, nil, err
 	}
 	return len(accounts), issues, nil
 }
 
-func (s *TaxAccountService) TempFilePath() string {
-	return filepath.Join(filepath.Dir(s.path), "tax_accounts_upload.xlsx")
+func (s *TaxAccountService) TempFilePath(profileID string) string {
+	return profilepath.TaxAccountsUploadTempXLSX(s.rootDir, profileID)
 }
 
 func (s *TaxAccountService) IsAcceptedUpload(filename string, sizeBytes int64) (bool, string) {
 	spec := s.Spec()
-	ext := strings.ToLower(strings.TrimSpace(filepath.Ext(filename)))
+	ext := strings.ToLower(strings.TrimSpace(filepathExt(filename)))
 	if ext == "" {
 		return false, "format file tidak dikenali"
 	}
@@ -175,6 +178,14 @@ func (s *TaxAccountService) IsAcceptedUpload(filename string, sizeBytes int64) (
 		}
 	}
 	return false, "format file tidak didukung"
+}
+
+func filepathExt(filename string) string {
+	dot := strings.LastIndex(filename, ".")
+	if dot < 0 {
+		return ""
+	}
+	return filename[dot:]
 }
 
 func normalizeTaxLookupKey(raw string) string {
@@ -226,3 +237,4 @@ func requiredTaxColumns(spec parser.TaxAccountSchemaSpec) []string {
 	sort.Strings(columns)
 	return columns
 }
+

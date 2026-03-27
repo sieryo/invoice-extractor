@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"database/sql"
-	"log"
 	"log/slog"
 	"path/filepath"
 
@@ -34,8 +33,6 @@ import (
 	"github.com/sieryo/invoice-extractor/internal/infra/filestore"
 	"github.com/sieryo/invoice-extractor/internal/infra/jobrunner"
 	repository "github.com/sieryo/invoice-extractor/internal/infra/persistence/sqlite"
-	"github.com/sieryo/invoice-extractor/internal/infra/storage"
-	"github.com/sieryo/invoice-extractor/internal/infra/watcher"
 )
 
 type App struct {
@@ -52,8 +49,6 @@ type App struct {
 	Logger    *slog.Logger
 	FileStore file.FileStore
 
-	BuyerRegistry        *buyer.Registry
-	BuyerStore           *storage.BuyerCSVStore
 	BuyerRegistryService *buyer.BuyerRegistryService
 	TaxAccountService    *appcashflow.TaxAccountService
 
@@ -65,40 +60,19 @@ type App struct {
 }
 
 func New(db *sql.DB, logger *slog.Logger, rootDir string, cfg config.Config) *App {
-	// Path
-	csvPath := filepath.Join(rootDir, "buyers.csv")
-	taxAccountsPath := filepath.Join(rootDir, "tax_accounts.csv")
 	document.SetFeatureFlags(document.FeatureFlags{
 		EnableCashflowXLSX: cfg.Features.EnableCashflowXLSX,
 	})
 
-	// Registry
 	templateRegistry := template.NewRegistry()
 	templateRegistry.Register(seamakeup.NewSeaMakeupTemplate())
 	templateRegistry.Register(goodsaletech.NewGoodSaleTechTemplate())
 	templateRegistry.Register(giaprima.NewGiaPrimaTemplate())
-	buyerRegistry := buyer.NewRegistry()
 
-	// infra
 	fs := filestore.NewLocalFileStore(filepath.Join(rootDir, "storage"))
-	buyerStore := storage.NewBuyerCSVStore(csvPath)
-
-	watcher := watcher.NewCSVWatcher(
-		buyerRegistry,
-		buyerStore,
-		csvPath,
-	)
-
-	go func() {
-		if err := watcher.Run(context.Background()); err != nil {
-			log.Fatal(err)
-		}
-	}()
-
 	invoiceExporter := excel.NewExcelExporter(templateRegistry)
 
-	// repositories
-	userRepo := repository.NewUserRepository(db)
+	profileRepo := repository.NewProfileRepository(db)
 	sessionRepo := repository.NewSessionRepository(db)
 	jobRepo := repository.NewJobRepository(db)
 	collectionRepo := repository.NewCollectionRepository(db)
@@ -109,9 +83,9 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string, cfg config.Config) *Ap
 	collectionHistoryRepo := repository.NewCollectionHistoryRepository(db)
 	collectionActionRepo := repository.NewCollectionActionRepository(db)
 
-	// services
-	authService := auth.NewService(userRepo, sessionRepo, logger)
-	invoiceExtractService := invoiceextract.NewInvoiceExtractService(templateRegistry, buyerRegistry)
+	authService := auth.NewService(profileRepo, sessionRepo, logger, rootDir)
+	buyerRegistryService := buyer.NewBuyerRegistryService(rootDir)
+	invoiceExtractService := invoiceextract.NewInvoiceExtractService(templateRegistry, buyerRegistryService)
 	invoiceService := invoice.NewInvoiceService(invoiceExporter, fs)
 	taxInvoiceExtractService := extract.NewTaxInvoiceExtractService()
 	renameTaxInvoiceService := rename.NewTaxInvoiceRenameService(taxInvoiceExtractService)
@@ -128,11 +102,9 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string, cfg config.Config) *Ap
 	collectionService := collection.NewCollectionService(collectionRepo, documentRepoV2, fs)
 	fileService := appfile.NewFileService(fs, fileRepo, collectionRepo)
 
-	// registry services
-	buyerRegistryService := buyer.NewBuyerRegistryService(buyerRegistry, buyerStore, rootDir)
 	var taxAccountService *appcashflow.TaxAccountService
 	if cfg.Features.EnableCashflowXLSX {
-		taxAccountService = appcashflow.NewTaxAccountService(taxAccountsPath)
+		taxAccountService = appcashflow.NewTaxAccountService(rootDir)
 	}
 	templateRegistryService := template.NewTemplateRegistryService(templateRegistry)
 	documentRegistry := document.NewRegistry()
@@ -166,10 +138,8 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string, cfg config.Config) *Ap
 	)
 	actionService.StartPool(context.Background())
 
-	// dispatcher & handler
 	dispatcher := jobrunner.NewDispatcher()
 	invoiceHandler := invoiceextract.NewInvoiceExtractJob(invoiceExtractService, fs, fileRepo)
-
 	renameTaxInvoiceHandler := rename.NewTaxInvoiceRenameJob(renameTaxInvoiceService, fs, fileRepo)
 
 	dispatcher.MustRegister(jobdomain.JobTypeExtractInvoice, invoiceHandler)
@@ -179,7 +149,6 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string, cfg config.Config) *Ap
 	ctx := context.Background()
 	jobRunner.StartPool(ctx)
 
-	// job service
 	jobService := jobapp.NewJobService(jobRepo, jobRunner, fs)
 
 	return &App{
@@ -194,8 +163,6 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string, cfg config.Config) *Ap
 		Logger:                  logger,
 		FileStore:               fs,
 		JobRunner:               jobRunner,
-		BuyerRegistry:           buyerRegistry,
-		BuyerStore:              buyerStore,
 		BuyerRegistryService:    buyerRegistryService,
 		TaxAccountService:       taxAccountService,
 		TemplateRegistryService: templateRegistryService,

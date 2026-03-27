@@ -19,7 +19,7 @@ func (r *SessionRepository) Create(s *session.Session) error {
 	_, err := r.db.Exec(`
 		INSERT INTO sessions (id, user_id, expires_at)
 		VALUES (?, ?, ?)
-	`, s.ID, s.UserID, s.ExpiresAt)
+	`, s.ID, s.ProfileID, s.ExpiresAt)
 	return err
 }
 
@@ -31,7 +31,7 @@ func (r *SessionRepository) GetByID(id string) (*session.Session, error) {
 	`, id)
 
 	var s session.Session
-	if err := row.Scan(&s.ID, &s.UserID, &s.ExpiresAt); err != nil {
+	if err := row.Scan(&s.ID, &s.ProfileID, &s.ExpiresAt); err != nil {
 		return nil, err
 	}
 	return &s, nil

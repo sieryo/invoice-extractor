@@ -4,16 +4,15 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"regexp"
-	"strconv"
-
-	"github.com/sieryo/invoice-extractor/internal/app/buyer"
+	domainbuyer "github.com/sieryo/invoice-extractor/internal/domain/buyer"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/parserhelper"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/template"
@@ -41,11 +40,15 @@ func extractLeadingNumber(filename string) (int, bool) {
 }
 
 type InvoiceExtractorService struct {
-	buyerRegistry    *buyer.Registry
+	buyerRegistry    BuyerLookupProvider
 	templateRegistry *template.Registry
 }
 
-func NewInvoiceExtractService(t *template.Registry, b *buyer.Registry) *InvoiceExtractorService {
+type BuyerLookupProvider interface {
+	Lookup(profileID string, name string) (domainbuyer.Buyer, bool, error)
+}
+
+func NewInvoiceExtractService(t *template.Registry, b BuyerLookupProvider) *InvoiceExtractorService {
 	return &InvoiceExtractorService{
 		buyerRegistry:    b,
 		templateRegistry: t,
@@ -56,6 +59,7 @@ func (i *InvoiceExtractorService) ExtractBatch(
 	ctx context.Context,
 	inputFiles []file.ResolvedFile,
 	templateID *string,
+	profileID string,
 ) (*BatchExtractResult, error) {
 
 	var wg sync.WaitGroup
@@ -174,8 +178,8 @@ func (i *InvoiceExtractorService) ExtractBatch(
 			}
 
 			// buyer enrichment
-			if inv.Buyer != nil && inv.Buyer.Name != "" {
-				if b, ok := i.buyerRegistry.GetByName(inv.Buyer.Name); ok {
+			if inv.Buyer != nil && inv.Buyer.Name != "" && i.buyerRegistry != nil {
+				if b, ok, lookupErr := i.buyerRegistry.Lookup(profileID, inv.Buyer.Name); lookupErr == nil && ok {
 					rawTaxID := b.PrimaryTaxID()
 					rawTKU := b.TKU()
 
@@ -208,6 +212,8 @@ func (i *InvoiceExtractorService) ExtractBatch(
 					audit.Buyer.TaxIDKind = taxIDKind
 					audit.Buyer.TaxIDValid = taxIDValid
 					audit.Buyer.TKUValid = tkuValid
+				} else if lookupErr != nil {
+					inv.Metadata.Warnings = append(inv.Metadata.Warnings, "buyer registry unavailable")
 				}
 			}
 

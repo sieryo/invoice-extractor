@@ -9,6 +9,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/sieryo/invoice-extractor/internal/app/buyer"
+	domainbuyer "github.com/sieryo/invoice-extractor/internal/domain/buyer"
 	"github.com/sieryo/invoice-extractor/internal/infra/parser"
 )
 
@@ -23,11 +24,20 @@ func NewBuyerRegistryHandler(service *buyer.BuyerRegistryService) *BuyerRegistry
 }
 
 func (h *BuyerRegistryHandler) List(c *fiber.Ctx) error {
-	buyers := h.service.List()
+	profileID, _ := c.Locals("userId").(string)
+	buyers, err := h.service.List(profileID)
+	if err != nil {
+		return SendSuccess(c, fiber.StatusOK, fiber.Map{
+			"buyers":  []domainbuyer.Buyer{},
+			"count":   0,
+			"status":  h.service.Status(profileID),
+			"version": h.service.Spec().SchemaVersion,
+		}, "buyer list retrieved")
+	}
 	return SendSuccess(c, fiber.StatusOK, fiber.Map{
 		"buyers":  buyers,
 		"count":   len(buyers),
-		"status":  h.service.Status(),
+		"status":  h.service.Status(profileID),
 		"version": h.service.Spec().SchemaVersion,
 	}, "buyer list retrieved")
 }
@@ -37,6 +47,7 @@ func (h *BuyerRegistryHandler) Spec(c *fiber.Ctx) error {
 }
 
 func (h *BuyerRegistryHandler) Update(c *fiber.Ctx) error {
+	profileID, _ := c.Locals("userId").(string)
 	file, err := c.FormFile("file")
 	if err != nil {
 		return SendError(c, fiber.StatusBadRequest, "file required")
@@ -59,12 +70,12 @@ func (h *BuyerRegistryHandler) Update(c *fiber.Ctx) error {
 		)
 	}
 
-	tmpPath := h.service.TempFilePath()
+	tmpPath := h.service.TempFilePath(profileID)
 	if err := c.SaveFile(file, tmpPath); err != nil {
 		return SendError(c, fiber.StatusInternalServerError, "failed to save file")
 	}
 
-	count, issues, err := h.service.Update(tmpPath)
+	count, issues, err := h.service.Update(profileID, tmpPath)
 	if err != nil {
 		var schemaErr *parser.BuyerSchemaMismatchError
 		if errors.As(err, &schemaErr) {
@@ -84,15 +95,16 @@ func (h *BuyerRegistryHandler) Update(c *fiber.Ctx) error {
 		return SendError(c, fiber.StatusBadRequest, err.Error())
 	}
 
-	return SendSuccess(c, fiber.StatusOK, fiber.Map{
+		return SendSuccess(c, fiber.StatusOK, fiber.Map{
 		"count":  count,
 		"issues": sanitizeValidationIssues(issues),
-		"status": h.service.Status(),
+		"status": h.service.Status(profileID),
 	}, "buyer data uploaded successfully")
 }
 
 func (h *BuyerRegistryHandler) IsLoaded(c *fiber.Ctx) error {
-	return SendSuccess(c, fiber.StatusOK, h.service.Status(), "buyer data status retrieved")
+	profileID, _ := c.Locals("userId").(string)
+	return SendSuccess(c, fiber.StatusOK, h.service.Status(profileID), "buyer data status retrieved")
 }
 
 func sanitizeValidationIssues(issues []parser.ValidationIssue) []parser.ValidationIssue {

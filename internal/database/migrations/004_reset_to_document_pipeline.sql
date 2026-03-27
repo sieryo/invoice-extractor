@@ -18,7 +18,11 @@ PRAGMA foreign_keys = ON;
 
 CREATE TABLE users (
 	id TEXT PRIMARY KEY,
-	username TEXT UNIQUE NOT NULL,
+	name TEXT UNIQUE NOT NULL,
+	alias TEXT UNIQUE NOT NULL,
+	cutoff_date INTEGER NOT NULL DEFAULT 15 CHECK (cutoff_date >= 1 AND cutoff_date <= 31),
+	npwp TEXT,
+	tku_id TEXT,
 	password_hash TEXT,
 	created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

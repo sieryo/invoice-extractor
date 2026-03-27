@@ -56,8 +56,8 @@ type XLSXCashflowProcessor struct {
 }
 
 type CashflowTaxAccountProvider interface {
-	Status() appcashflow.TaxAccountStatus
-	Load() (map[string]appcashflow.TaxAccount, error)
+	Status(profileID string) appcashflow.TaxAccountStatus
+	Load(profileID string) (map[string]appcashflow.TaxAccount, error)
 }
 
 func NewXLSXCashflowProcessor(

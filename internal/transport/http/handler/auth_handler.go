@@ -18,22 +18,30 @@ func NewAuthHandler(authService *auth.AuthService) *AuthHandler {
 }
 
 type RegisterRequest struct {
-	Username string `json:"username"`
+	Name       string `json:"name"`
+	Alias      string `json:"alias"`
+	CutoffDate int    `json:"cutoff_date"`
+	NPWP       string `json:"npwp"`
+	TKUID      string `json:"tku_id"`
 }
 
 type LoginRequest struct {
-	Username string `json:"username"`
+	Name     string `json:"name"`
 	Password string `json:"password"`
 }
 
-type LoginByIDRequest struct {
-	UserID string `json:"user_id"`
+type LoginByProfileIDRequest struct {
+	ProfileID string `json:"profile_id"`
 }
 
-type UserInfoResponse struct {
-	ID        string    `json:"id"`
-	Username  string    `json:"username"`
-	CreatedAt time.Time `json:"created_at"`
+type ProfileInfoResponse struct {
+	ID         string    `json:"id"`
+	Name       string    `json:"name"`
+	Alias      string    `json:"alias"`
+	CutoffDate int       `json:"cutoff_date"`
+	NPWP       string    `json:"npwp,omitempty"`
+	TKUID      string    `json:"tku_id,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 func (h *AuthHandler) Register(c *fiber.Ctx) error {
@@ -42,15 +50,24 @@ func (h *AuthHandler) Register(c *fiber.Ctx) error {
 		return SendError(c, fiber.StatusBadRequest, "invalid request body")
 	}
 
-	if req.Username == "" {
-		return SendError(c, fiber.StatusBadRequest, "username are required")
+	if req.Name == "" || req.Alias == "" {
+		return SendError(c, fiber.StatusBadRequest, "name and alias are required")
+	}
+	if req.CutoffDate <= 0 || req.CutoffDate > 31 {
+		return SendError(c, fiber.StatusBadRequest, "cutoff_date must be between 1 and 31")
 	}
 
-	if err := h.authService.Register(req.Username); err != nil {
+	if err := h.authService.Register(auth.RegisterProfileInput{
+		Name:       req.Name,
+		Alias:      req.Alias,
+		CutoffDate: req.CutoffDate,
+		NPWP:       req.NPWP,
+		TKUID:      req.TKUID,
+	}); err != nil {
 		return SendError(c, fiber.StatusBadRequest, err.Error())
 	}
 
-	return SendSuccess(c, fiber.StatusCreated, nil, "user registered successfully")
+	return SendSuccess(c, fiber.StatusCreated, nil, "profile registered successfully")
 }
 
 func (h *AuthHandler) Login(c *fiber.Ctx) error {
@@ -59,11 +76,11 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 		return SendError(c, fiber.StatusBadRequest, "invalid request body")
 	}
 
-	if req.Username == "" || req.Password == "" {
-		return SendError(c, fiber.StatusBadRequest, "username and password are required")
+	if req.Name == "" || req.Password == "" {
+		return SendError(c, fiber.StatusBadRequest, "name and password are required")
 	}
 
-	sessionID, err := h.authService.Login(req.Username, req.Password)
+	sessionID, err := h.authService.Login(req.Name, req.Password)
 	if err != nil {
 		return SendError(c, fiber.StatusUnauthorized, "invalid credentials")
 	}
@@ -73,17 +90,17 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 	}, "login successful")
 }
 
-func (h *AuthHandler) LoginByID(c *fiber.Ctx) error {
-	var req LoginByIDRequest
+func (h *AuthHandler) LoginByProfileID(c *fiber.Ctx) error {
+	var req LoginByProfileIDRequest
 	if err := c.BodyParser(&req); err != nil {
 		return SendError(c, fiber.StatusBadRequest, "invalid request body")
 	}
 
-	if req.UserID == "" {
-		return SendError(c, fiber.StatusBadRequest, "user_id is required")
+	if req.ProfileID == "" {
+		return SendError(c, fiber.StatusBadRequest, "profile_id is required")
 	}
 
-	sessionID, err := h.authService.LoginByID(req.UserID)
+	sessionID, err := h.authService.LoginByProfileID(req.ProfileID)
 	if err != nil {
 		return SendError(c, fiber.StatusUnauthorized, "invalid credentials")
 	}
@@ -112,36 +129,44 @@ func (h *AuthHandler) Me(c *fiber.Ctx) error {
 		return SendError(c, fiber.StatusUnauthorized, "unauthorized")
 	}
 
-	u, err := h.authService.GetUserBySessionID(sessionID.(string))
+	p, err := h.authService.GetProfileBySessionID(sessionID.(string))
 	if err != nil {
-		return SendError(c, fiber.StatusUnauthorized, "user not found")
+		return SendError(c, fiber.StatusUnauthorized, "profile not found")
 	}
 
 	return SendSuccess(c, fiber.StatusOK, fiber.Map{
-		"id":         u.ID,
-		"username":   u.Username,
-		"created_at": u.CreatedAt,
-	}, "user retrieved successfully")
+		"id":          p.ID,
+		"name":        p.Name,
+		"alias":       p.Alias,
+		"cutoff_date": p.CutoffDate,
+		"npwp":        p.NPWP,
+		"tku_id":      p.TKUID,
+		"created_at":  p.CreatedAt,
+	}, "profile retrieved successfully")
 }
 
-func (h *AuthHandler) ListUsers(c *fiber.Ctx) error {
-	users, err := h.authService.ListUsers()
+func (h *AuthHandler) ListProfiles(c *fiber.Ctx) error {
+	profiles, err := h.authService.ListProfiles()
 	if err != nil {
-		return SendError(c, fiber.StatusInternalServerError, "failed to retrieve users")
+		return SendError(c, fiber.StatusInternalServerError, "failed to retrieve profiles")
 	}
 
-	if len(users) == 0 {
-		return SendSuccess(c, fiber.StatusOK, []UserInfoResponse{}, "users retrieved successfully")
+	if len(profiles) == 0 {
+		return SendSuccess(c, fiber.StatusOK, []ProfileInfoResponse{}, "profiles retrieved successfully")
 	}
 
-	resp := make([]UserInfoResponse, 0, len(users))
-	for _, u := range users {
-		resp = append(resp, UserInfoResponse{
-			ID:        u.ID,
-			Username:  u.Username,
-			CreatedAt: u.CreatedAt,
+	resp := make([]ProfileInfoResponse, 0, len(profiles))
+	for _, p := range profiles {
+		resp = append(resp, ProfileInfoResponse{
+			ID:         p.ID,
+			Name:       p.Name,
+			Alias:      p.Alias,
+			CutoffDate: p.CutoffDate,
+			NPWP:       p.NPWP,
+			TKUID:      p.TKUID,
+			CreatedAt:  p.CreatedAt,
 		})
 	}
 
-	return SendSuccess(c, fiber.StatusOK, resp, "users retrieved successfully")
+	return SendSuccess(c, fiber.StatusOK, resp, "profiles retrieved successfully")
 }

@@ -19,7 +19,6 @@ func (s *Server) registerMiddleware() {
 	}))
 }
 
-// AuthMiddleware validates session token and extracts userId
 func (s *Server) AuthMiddleware() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		authHeader := c.Get("Authorization")
@@ -29,7 +28,6 @@ func (s *Server) AuthMiddleware() fiber.Handler {
 			})
 		}
 
-		// Extract token from "Bearer <token>"
 		parts := strings.Split(authHeader, " ")
 		if len(parts) != 2 || parts[0] != "Bearer" {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
@@ -39,7 +37,6 @@ func (s *Server) AuthMiddleware() fiber.Handler {
 
 		sessionID := parts[1]
 
-		// Get session from repository
 		sess, err := s.appCtx.AuthService.GetSession(sessionID)
 		if err != nil {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
@@ -47,15 +44,14 @@ func (s *Server) AuthMiddleware() fiber.Handler {
 			})
 		}
 
-		// Check if session is expired
 		if sess.ExpiresAt.Before(time.Now()) {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 				"error": "session expired",
 			})
 		}
 
-		// Store userId and sessionID in context
-		c.Locals("userId", sess.UserID)
+		c.Locals("profileId", sess.ProfileID)
+		c.Locals("userId", sess.ProfileID)
 		c.Locals("sessionID", sessionID)
 
 		return c.Next()

@@ -12,16 +12,19 @@ func TestTaxAccountService_LoadAndLookup(t *testing.T) {
 	t.Parallel()
 
 	tempDir := t.TempDir()
-	path := filepath.Join(tempDir, "tax_accounts.csv")
-	err := os.WriteFile(path, []byte("name,account\nPPH 23,22003\nPPN,10107\nAdmin Bank,66108\n"), 0644)
+	profileID := "profile-1"
+	path := filepath.Join(tempDir, "profiles", profileID, "tax_accounts.csv")
+	err := os.MkdirAll(filepath.Dir(path), 0o755)
+	require.NoError(t, err)
+	err = os.WriteFile(path, []byte("name,account\nPPH 23,22003\nPPN,10107\nAdmin Bank,66108\n"), 0644)
 	require.NoError(t, err)
 
-	service := NewTaxAccountService(path)
-	status := service.Status()
+	service := NewTaxAccountService(tempDir)
+	status := service.Status(profileID)
 	require.True(t, status.Loaded)
 	require.Equal(t, 3, status.Count)
 
-	record, ok, err := service.Lookup("pph 23")
+	record, ok, err := service.Lookup(profileID, "pph 23")
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, "22003", record.Account)

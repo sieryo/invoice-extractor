@@ -4,6 +4,6 @@ import "time"
 
 type Session struct {
 	ID        string
-	UserID    string
+	ProfileID string
 	ExpiresAt time.Time
 }
