@@ -28,6 +28,7 @@ import (
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/template/seamakeup"
 	"github.com/sieryo/invoice-extractor/internal/app/job"
 	jobapp "github.com/sieryo/invoice-extractor/internal/app/job"
+	"github.com/sieryo/invoice-extractor/internal/config"
 	"github.com/sieryo/invoice-extractor/internal/domain/file"
 	jobdomain "github.com/sieryo/invoice-extractor/internal/domain/job"
 	"github.com/sieryo/invoice-extractor/internal/infra/filestore"
@@ -60,12 +61,16 @@ type App struct {
 	DocumentProcessors      *document.Registry
 
 	JobRunner *jobrunner.JobQueueRunner
+	Features  config.FeatureFlags
 }
 
-func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
+func New(db *sql.DB, logger *slog.Logger, rootDir string, cfg config.Config) *App {
 	// Path
 	csvPath := filepath.Join(rootDir, "buyers.csv")
 	taxAccountsPath := filepath.Join(rootDir, "tax_accounts.csv")
+	document.SetFeatureFlags(document.FeatureFlags{
+		EnableCashflowXLSX: cfg.Features.EnableCashflowXLSX,
+	})
 
 	// Registry
 	templateRegistry := template.NewRegistry()
@@ -125,7 +130,10 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 
 	// registry services
 	buyerRegistryService := buyer.NewBuyerRegistryService(buyerRegistry, buyerStore, rootDir)
-	taxAccountService := appcashflow.NewTaxAccountService(taxAccountsPath)
+	var taxAccountService *appcashflow.TaxAccountService
+	if cfg.Features.EnableCashflowXLSX {
+		taxAccountService = appcashflow.NewTaxAccountService(taxAccountsPath)
+	}
 	templateRegistryService := template.NewTemplateRegistryService(templateRegistry)
 	documentRegistry := document.NewRegistry()
 	documentRegistry.MustRegister(document.NewPDFInvoiceProcessor(invoiceExtractService, invoiceService, fs))
@@ -133,7 +141,9 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 	documentRegistry.MustRegister(document.NewPDFBukpotProcessor(document.CollectionKindBukpotBPPU, bukpotService, fs))
 	documentRegistry.MustRegister(document.NewPDFBukpotProcessor(document.CollectionKindBukpotBP21, bukpotService, fs))
 	documentRegistry.MustRegister(document.NewPDFBukpotProcessor(document.CollectionKindBukpotBPA1, bukpotService, fs))
-	documentRegistry.MustRegister(document.NewXLSXCashflowProcessor(fs, taxAccountService))
+	if cfg.Features.EnableCashflowXLSX && taxAccountService != nil {
+		documentRegistry.MustRegister(document.NewXLSXCashflowProcessor(fs, taxAccountService))
+	}
 	ingestService := ingest.NewIngestService(
 		uploadSessionRepo,
 		uploadChunkRepo,
@@ -190,5 +200,6 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string) *App {
 		TaxAccountService:       taxAccountService,
 		TemplateRegistryService: templateRegistryService,
 		DocumentProcessors:      documentRegistry,
+		Features:                cfg.Features,
 	}
 }

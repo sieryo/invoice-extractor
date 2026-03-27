@@ -93,6 +93,9 @@ func (s *IngestService) CreateSession(
 	if !coll.IsCollection() || coll.CollectionKind == nil {
 		return nil, collection.ErrInvalidNodeType
 	}
+	if !document.IsCollectionKindEnabled(document.CollectionKind(*coll.CollectionKind)) {
+		return nil, collection.ErrInvalidCollectionKind
+	}
 	if coll.IsFrozen() {
 		return nil, collection.ErrCollectionFrozen
 	}
@@ -1072,7 +1075,7 @@ func isDedupUniqueError(err error) bool {
 func isAllowedUploadBySpec(collectionKind document.CollectionKind, fileName string) bool {
 	spec, ok := document.BuildCollectionSpec(collectionKind)
 	if !ok {
-		return true
+		return false
 	}
 	ext := strings.ToLower(filepath.Ext(fileName))
 	if ext == "" {

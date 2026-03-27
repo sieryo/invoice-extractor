@@ -37,7 +37,8 @@ CREATE TABLE collections (
 	parent_id TEXT,
 	name TEXT NOT NULL,
 	node_type TEXT NOT NULL CHECK (node_type IN ('folder', 'collection')),
-	document_type TEXT CHECK (document_type IN ('pdf_invoice', 'pdf_tax_invoice', 'pdf_bppu', 'pdf_bp21', 'pdf_bpa1')),
+	document_type TEXT,
+	collection_kind TEXT,
 	phase TEXT NOT NULL DEFAULT 'ready' CHECK (phase IN ('ready', 'uploading', 'processing')),
 	total_count INTEGER NOT NULL DEFAULT 0,
 	ready_count INTEGER NOT NULL DEFAULT 0,
@@ -49,12 +50,14 @@ CREATE TABLE collections (
 	deleted_at DATETIME,
 	deleted_by TEXT,
 	delete_reason TEXT,
+	frozen_at DATETIME,
+	frozen_by TEXT,
 	FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
 	FOREIGN KEY(parent_id) REFERENCES collections(id) ON DELETE CASCADE,
 	CHECK (id <> parent_id),
 	CHECK (
-		(node_type = 'folder' AND document_type IS NULL) OR
-		(node_type = 'collection' AND document_type IS NOT NULL)
+		(node_type = 'folder' AND collection_kind IS NULL) OR
+		(node_type = 'collection' AND collection_kind IS NOT NULL)
 	)
 );
 
@@ -68,11 +71,16 @@ ON collections (parent_id, deleted_at);
 CREATE INDEX idx_collections_user_active
 ON collections (user_id, deleted_at);
 
+CREATE INDEX idx_collections_collection_kind
+ON collections (collection_kind, deleted_at);
+
 CREATE TABLE documents (
 	id TEXT PRIMARY KEY,
 	user_id TEXT NOT NULL,
 	collection_id TEXT NOT NULL,
-	document_type TEXT NOT NULL CHECK (document_type IN ('pdf_invoice', 'pdf_tax_invoice', 'pdf_bppu', 'pdf_bp21', 'pdf_bpa1')),
+	collection_kind TEXT NOT NULL,
+	source_format TEXT NOT NULL CHECK (source_format IN ('pdf', 'xlsx', 'csv')),
+	document_type TEXT,
 	document_tag TEXT,
 	source_name TEXT NOT NULL,
 	source_size_bytes INTEGER,
@@ -94,7 +102,7 @@ CREATE TABLE documents (
 );
 
 CREATE UNIQUE INDEX idx_documents_dedup_active
-ON documents (collection_id, document_type, source_sha256)
+ON documents (collection_id, collection_kind, source_sha256)
 WHERE deleted_at IS NULL;
 
 CREATE INDEX idx_documents_collection_status_active
@@ -103,11 +111,16 @@ ON documents (collection_id, status, deleted_at);
 CREATE INDEX idx_documents_source_order_active
 ON documents (collection_id, source_order, deleted_at);
 
+CREATE INDEX idx_documents_kind_format_active
+ON documents (collection_id, collection_kind, source_format, deleted_at);
+
 CREATE TABLE upload_sessions (
 	id TEXT PRIMARY KEY,
 	user_id TEXT NOT NULL,
 	collection_id TEXT NOT NULL,
-	document_type TEXT NOT NULL CHECK (document_type IN ('pdf_invoice', 'pdf_tax_invoice', 'pdf_bppu', 'pdf_bp21', 'pdf_bpa1')),
+	collection_kind TEXT NOT NULL,
+	source_format TEXT NOT NULL CHECK (source_format IN ('pdf', 'xlsx', 'csv')),
+	document_type TEXT,
 	status TEXT NOT NULL CHECK (
 		status IN (
 			'created',
@@ -142,6 +155,9 @@ WHERE client_session_key IS NOT NULL;
 CREATE INDEX idx_upload_sessions_collection_status
 ON upload_sessions (collection_id, status);
 
+CREATE INDEX idx_upload_sessions_kind_format
+ON upload_sessions (collection_id, collection_kind, source_format, status);
+
 CREATE TABLE upload_session_chunks (
 	id TEXT PRIMARY KEY,
 	session_id TEXT NOT NULL,
@@ -155,6 +171,7 @@ CREATE TABLE upload_session_chunks (
 	size_bytes INTEGER NOT NULL DEFAULT 0,
 	job_id TEXT,
 	error_message TEXT,
+	payload_json TEXT,
 	created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	started_at DATETIME,
 	finished_at DATETIME,
@@ -202,7 +219,9 @@ CREATE TABLE collection_history_items (
 	history_id TEXT NOT NULL,
 	user_id TEXT NOT NULL,
 	collection_id TEXT NOT NULL,
-	document_type TEXT NOT NULL CHECK (document_type IN ('pdf_invoice', 'pdf_tax_invoice', 'pdf_bppu', 'pdf_bp21', 'pdf_bpa1')),
+	collection_kind TEXT NOT NULL,
+	source_format TEXT NOT NULL CHECK (source_format IN ('pdf', 'xlsx', 'csv')),
+	document_type TEXT,
 	source_name TEXT NOT NULL,
 	source_size_bytes INTEGER,
 	source_mime TEXT,
@@ -235,7 +254,9 @@ CREATE TABLE collection_actions (
 	id TEXT PRIMARY KEY,
 	user_id TEXT NOT NULL,
 	collection_id TEXT NOT NULL,
-	document_type TEXT NOT NULL CHECK (document_type IN ('pdf_invoice', 'pdf_tax_invoice', 'pdf_bppu', 'pdf_bp21', 'pdf_bpa1')),
+	collection_kind TEXT NOT NULL,
+	source_format TEXT NOT NULL CHECK (source_format IN ('pdf', 'xlsx', 'csv')),
+	document_type TEXT,
 	action_type TEXT NOT NULL,
 	status TEXT NOT NULL DEFAULT 'queued' CHECK (
 		status IN ('queued', 'running', 'success', 'warning', 'partial', 'failed', 'canceled')
@@ -271,6 +292,9 @@ ON collection_actions (collection_id, created_at DESC);
 CREATE INDEX idx_collection_actions_status
 ON collection_actions (collection_id, status);
 
+CREATE INDEX idx_collection_actions_kind_format
+ON collection_actions (collection_id, collection_kind, source_format, created_at DESC);
+
 CREATE TABLE collection_action_items (
 	id TEXT PRIMARY KEY,
 	action_id TEXT NOT NULL,
@@ -305,3 +329,41 @@ CREATE TABLE collection_action_outputs (
 
 CREATE INDEX idx_collection_action_outputs_action
 ON collection_action_outputs (action_id, created_at ASC);
+
+CREATE TABLE jobs (
+	id TEXT PRIMARY KEY,
+	user_id TEXT,
+	type TEXT NOT NULL,
+	status TEXT NOT NULL,
+	progress INTEGER NOT NULL,
+	input_payload TEXT NOT NULL,
+	output_manifest TEXT,
+	error_message TEXT,
+	collection_id TEXT,
+	archive_count INTEGER NOT NULL DEFAULT 0,
+	archive_latest DATETIME,
+	archived INTEGER NOT NULL DEFAULT 0,
+	archive_file_name TEXT,
+	archive_size INTEGER,
+	archive_mime_type TEXT,
+	created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	started_at DATETIME,
+	finished_at DATETIME,
+	expired_at DATETIME,
+	FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+	FOREIGN KEY(collection_id) REFERENCES collections(id) ON DELETE SET NULL
+);
+
+CREATE INDEX idx_jobs_collection_id ON jobs(collection_id);
+
+CREATE TABLE files (
+	id TEXT PRIMARY KEY,
+	collection_id TEXT NOT NULL,
+	name TEXT NOT NULL,
+	state TEXT NOT NULL,
+	path TEXT NOT NULL,
+	size INTEGER,
+	mime_type TEXT,
+	created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	FOREIGN KEY(collection_id) REFERENCES collections(id) ON DELETE CASCADE
+);

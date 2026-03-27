@@ -1,2 +1,1 @@
-ALTER TABLE collections ADD COLUMN frozen_at DATETIME;
-ALTER TABLE collections ADD COLUMN frozen_by TEXT;
+-- no-op: frozen_at dan frozen_by sudah ada di schema reset utama

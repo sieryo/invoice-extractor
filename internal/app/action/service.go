@@ -1029,6 +1029,9 @@ func (s *Service) resolveCashflowActionSpec(
 	if len(normalizedIDs) == 0 {
 		field.Options = nil
 		field.HelpText = "Pilih minimal satu dokumen cashflow untuk melihat sheet yang tersedia."
+		field.State.Disabled = true
+		field.State.Message = "Sheet akan tersedia setelah Anda memilih dokumen cashflow."
+		field.DefaultValue = ""
 		updateFormField(actionSpec.Form, field)
 		return actionSpec, nil
 	}
@@ -1057,6 +1060,9 @@ func (s *Service) resolveCashflowActionSpec(
 		actionSpec.State.Message = "Dokumen terpilih tidak memiliki nama sheet yang sama untuk diproses bersama."
 		field.Options = nil
 		field.HelpText = actionSpec.State.Message
+		field.State.Disabled = true
+		field.State.Message = actionSpec.State.Message
+		field.DefaultValue = ""
 		updateFormField(actionSpec.Form, field)
 		return actionSpec, nil
 	}
@@ -1069,8 +1075,12 @@ func (s *Service) resolveCashflowActionSpec(
 		})
 	}
 	field.HelpText = "Sheet yang tersedia pada semua dokumen terpilih."
+	field.State.Disabled = false
+	field.State.Message = ""
 	if defaultSheet != "" {
 		field.DefaultValue = defaultSheet
+	} else {
+		field.DefaultValue = ""
 	}
 	updateFormField(actionSpec.Form, field)
 

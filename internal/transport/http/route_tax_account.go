@@ -6,6 +6,10 @@ import (
 )
 
 func (s *Server) registerTaxAccountRoutes(protected fiber.Router) {
+	if !s.appCtx.Features.EnableCashflowXLSX || s.appCtx.TaxAccountService == nil {
+		return
+	}
+
 	taxAccountHandler := handler.NewTaxAccountHandler(
 		s.appCtx.TaxAccountService,
 	)

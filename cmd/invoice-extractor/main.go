@@ -44,7 +44,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	appContainer := app.New(db, ilogger, appDir)
+	appContainer := app.New(db, ilogger, appDir, cfg)
 	server := http.NewServer(appContainer)
 
 	port, err := netutil.FindAvailablePort(cfg.Port, cfg.PortMax)

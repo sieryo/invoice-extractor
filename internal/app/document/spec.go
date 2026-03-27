@@ -2,6 +2,29 @@ package document
 
 import "strings"
 
+type FeatureFlags struct {
+	EnableCashflowXLSX bool
+}
+
+var featureFlags = FeatureFlags{}
+
+func SetFeatureFlags(flags FeatureFlags) {
+	featureFlags = flags
+}
+
+func GetFeatureFlags() FeatureFlags {
+	return featureFlags
+}
+
+func IsCollectionKindEnabled(collectionKind CollectionKind) bool {
+	switch collectionKind {
+	case CollectionKindCashflowImport:
+		return featureFlags.EnableCashflowXLSX
+	default:
+		return true
+	}
+}
+
 const (
 	FormFieldKindText     = "text"
 	FormFieldKindTextarea = "textarea"
@@ -53,6 +76,7 @@ type FormSectionSpec struct {
 	Key         string          `json:"key"`
 	Title       string          `json:"title"`
 	Description string          `json:"description,omitempty"`
+	Columns     int             `json:"columns,omitempty"`
 	Fields      []FormFieldSpec `json:"fields"`
 }
 
@@ -68,6 +92,7 @@ type FormFieldSpec struct {
 	Suggestions  []FormSuggestionSpec `json:"suggestions,omitempty"`
 	HelpText     string               `json:"helpText,omitempty"`
 	Placeholder  string               `json:"placeholder,omitempty"`
+	Span         int                  `json:"span,omitempty"`
 }
 
 type FormFieldOption struct {
@@ -184,6 +209,10 @@ func (s CollectionSpec) FindActionSpec(actionType string) (ActionSpec, bool) {
 }
 
 func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
+	if !IsCollectionKindEnabled(collectionKind) {
+		return CollectionSpec{}, false
+	}
+
 	switch collectionKind {
 	case CollectionKindInvoiceCompany:
 		return CollectionSpec{
@@ -230,6 +259,7 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 							{
 								Key:   "general",
 								Title: "Umum",
+								Columns: 1,
 								Fields: []FormFieldSpec{
 									{
 										Key:          "filenamePrefix",
@@ -311,6 +341,7 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 							{
 								Key:   "main",
 								Title: "Template Nama File",
+								Columns: 1,
 								Fields: []FormFieldSpec{
 									{
 										Key:          "filenameTemplate",
@@ -422,7 +453,7 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 					},
 					Presentation: ActionPresentationSpec{
 						Mode:  "inline",
-						Width: "lg",
+						Width: "xl",
 					},
 					Selection: ActionSelectionSpec{
 						Mode:           "manual",
@@ -437,15 +468,19 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 							{
 								Key:   "source",
 								Title: "Sumber Data",
+								Columns: 3,
 								Fields: []FormFieldSpec{
 									{
 										Key:      "sheetName",
 										Kind:     FormFieldKindSelect,
 										Label:    "Sheet",
 										Required: true,
-										HelpText: "Dipilih dari sheet yang sama pada semua dokumen terpilih.",
+										DefaultValue: "",
+										HelpText: "Pilih dokumen cashflow terlebih dahulu untuk melihat sheet yang tersedia.",
+										Span:     2,
 										State: FormFieldStateSpec{
-											Visible: true,
+											Visible:  true,
+											Disabled: true,
 										},
 									},
 									{
@@ -476,12 +511,14 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 							{
 								Key:   "output",
 								Title: "Output",
+								Columns: 3,
 								Fields: []FormFieldSpec{
 									{
 										Key:         "outputFilename",
 										Kind:        FormFieldKindText,
 										Label:       "Nama Output",
 										Required:    true,
+										DefaultValue: "spend_money",
 										Placeholder: "cashflow-myob",
 										HelpText:    "Tanpa ekstensi file.",
 										State: FormFieldStateSpec{
@@ -493,6 +530,7 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 										Kind:     FormFieldKindText,
 										Label:    "Cheque Account",
 										Required: true,
+										DefaultValue: "12021",
 										HelpText: "Akun cheque utama untuk file MYOB.",
 										State:    FormFieldStateSpec{Visible: true},
 									},
@@ -525,7 +563,7 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 										Kind:         FormFieldKindCheckbox,
 										Label:        "Lewati Total Positif",
 										Required:     false,
-										DefaultValue: false,
+										DefaultValue: true,
 										HelpText:     "Abaikan baris dengan total positif.",
 										State:        FormFieldStateSpec{Visible: true},
 									},
@@ -534,6 +572,7 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 							{
 								Key:   "default_format",
 								Title: "Format Default",
+								Columns: 2,
 								Fields: []FormFieldSpec{
 									{
 										Key:          "remarkDelimiter",
@@ -565,6 +604,7 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 							{
 								Key:   "influencer_format",
 								Title: "Format Influencer",
+								Columns: 2,
 								Fields: []FormFieldSpec{
 									{
 										Key:          "defaultIAccountCode",
@@ -651,6 +691,7 @@ func buildBukpotCollectionSpec(
 				{
 					Key:   "main",
 					Title: "Template Nama File",
+					Columns: 1,
 					Fields: []FormFieldSpec{
 						{
 							Key:          "filenameTemplate",

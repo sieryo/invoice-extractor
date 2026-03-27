@@ -1,1 +1,1 @@
-ALTER TABLE upload_session_chunks ADD COLUMN payload_json TEXT;
+-- no-op: payload_json sudah ada di schema reset utama

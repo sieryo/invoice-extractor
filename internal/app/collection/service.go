@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sieryo/invoice-extractor/internal/app/document"
 	"github.com/sieryo/invoice-extractor/internal/app/ingest"
 	domain "github.com/sieryo/invoice-extractor/internal/domain/collection"
 	"github.com/sieryo/invoice-extractor/internal/domain/file"
@@ -104,6 +105,9 @@ func (s *CollectionService) CreateTypedCollection(
 	collectionKind domain.CollectionKind,
 ) (*domain.Collection, error) {
 	if !collectionKind.IsValid() {
+		return nil, domain.ErrInvalidCollectionKind
+	}
+	if !document.IsCollectionKindEnabled(document.CollectionKind(collectionKind)) {
 		return nil, domain.ErrInvalidCollectionKind
 	}
 	normalizedName, err := normalizeCollectionName(name)

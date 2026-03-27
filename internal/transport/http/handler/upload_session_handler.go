@@ -52,6 +52,8 @@ func (h *UploadSessionHandler) StartSession(c *fiber.Ctx) error {
 		switch {
 		case err == dcollection.ErrCollectionNotFound:
 			return SendError(c, fiber.StatusNotFound, "collection not found")
+		case err == dcollection.ErrInvalidCollectionKind:
+			return SendError(c, fiber.StatusBadRequest, "jenis collection ini sedang dinonaktifkan")
 		case err == dcollection.ErrCollectionFrozen:
 			return SendError(c, fiber.StatusConflict, "collection sudah freeze dan tidak bisa menerima dokumen baru")
 		default:
