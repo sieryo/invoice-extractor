@@ -10,10 +10,12 @@ $backendDir = Resolve-Path (Join-Path $scriptDir "..")
 Set-Location $backendDir
 
 $appName = "invoice-extractor"
+$packageName = "document-workspace"
+$exeName = "document-workspace"
 $productName = "Document Workspace"
 $certName = if ($env:APP_SIGN_CERT_NAME) { $env:APP_SIGN_CERT_NAME } else { $productName }
 $outDir = Join-Path $backendDir "build/release"
-$exePath = Join-Path $outDir "$appName.exe"
+$exePath = Join-Path $outDir "$exeName.exe"
 $repoRoot = Resolve-Path (Join-Path $backendDir "..")
 $versionFilePath = Join-Path $repoRoot "Version.txt"
 
@@ -92,14 +94,14 @@ if (-not $SkipSign) {
 }
 
 Write-Host ">> Creating zip package"
-$zipPath = Join-Path $backendDir "build/$appName-$Version.zip"
+$zipPath = Join-Path $backendDir "build/$packageName-$Version.zip"
 if (Test-Path $zipPath) {
     Remove-Item $zipPath -Force
 }
 Compress-Archive -Path (Join-Path $outDir "*") -DestinationPath $zipPath -CompressionLevel Optimal
 
 Write-Host ">> Uploading zip to Google Drive"
-$driveFolder = "invoice-extractor"
+$driveFolder = "document-workspace"
 $saveDrive = Get-Command save-drive -ErrorAction SilentlyContinue
 if ($null -eq $saveDrive) {
     throw "save-drive command not found. Install or add it to PATH."
@@ -107,8 +109,27 @@ if ($null -eq $saveDrive) {
 
 $zipName = [IO.Path]::GetFileName($zipPath)
 $useReplace = $false
-$listOutput = & save-drive list --from $driveFolder 2>&1
-if ($LASTEXITCODE -eq 0) {
+$listOutput = $null
+$listExitCode = 0
+$nativeErrorPreference = $null
+try {
+    if (Get-Variable PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue) {
+        $nativeErrorPreference = $PSNativeCommandUseErrorActionPreference
+        $PSNativeCommandUseErrorActionPreference = $false
+    }
+
+    $listOutput = & save-drive list --from $driveFolder 2>&1
+    $listExitCode = $LASTEXITCODE
+} catch {
+    $listExitCode = if ($LASTEXITCODE) { $LASTEXITCODE } else { 1 }
+    $listOutput = $_.ToString()
+} finally {
+    if ($null -ne $nativeErrorPreference) {
+        $PSNativeCommandUseErrorActionPreference = $nativeErrorPreference
+    }
+}
+
+if ($listExitCode -eq 0) {
     if ($listOutput | Select-String -SimpleMatch $zipName) {
         $useReplace = $true
         Write-Host ">> Existing same-version file found. Replacing $zipName"
@@ -116,7 +137,7 @@ if ($LASTEXITCODE -eq 0) {
         Write-Host ">> No same-version file found. Uploading without replace"
     }
 } else {
-    Write-Warning "save-drive list failed; uploading without replace to avoid deleting different versions"
+    Write-Warning "Drive folder '$driveFolder' not found yet. It will be created on upload."
 }
 
 $pushArgs = @("push", "--file", $zipPath, "--to", $driveFolder, "--mkdir")
@@ -131,8 +152,10 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host ">> Generating checksum"
 Get-FileHash $exePath -Algorithm SHA256 |
-  Out-File (Join-Path $outDir "$appName.exe.sha256")
+  Out-File (Join-Path $outDir "$exeName.exe.sha256")
 
 Write-Host ">> Release done: $outDir"
 Write-Host ">> Product: $productName"
+Write-Host ">> Package: $packageName"
+Write-Host ">> Executable: $exeName.exe"
 Write-Host ">> Zip package: $zipPath"
