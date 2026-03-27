@@ -1,6 +1,11 @@
 package document
 
-import "strings"
+import (
+	"strconv"
+	"strings"
+
+	"github.com/sieryo/invoice-extractor/internal/app/specutil"
+)
 
 type FeatureFlags struct {
 	EnableCashflowXLSX bool
@@ -196,6 +201,30 @@ type CollectionSpec struct {
 	Actions        []ActionSpec   `json:"actions"`
 }
 
+func buildHeaderRowField(label string, helpText string) FormFieldSpec {
+	options := make([]FormFieldOption, 0, 10)
+	for _, row := range specutil.HeaderRowNumbers(10) {
+		value := strconv.Itoa(row)
+		options = append(options, FormFieldOption{
+			Label: value,
+			Value: value,
+		})
+	}
+
+	return FormFieldSpec{
+		Key:          "headerRowNumber",
+		Kind:         FormFieldKindSelect,
+		Label:        label,
+		Required:     true,
+		DefaultValue: "1",
+		Options:      options,
+		HelpText:     helpText,
+		State: FormFieldStateSpec{
+			Visible: true,
+		},
+	}
+}
+
 func (s CollectionSpec) FindActionSpec(actionType string) (ActionSpec, bool) {
 	target := strings.ToLower(strings.TrimSpace(actionType))
 	if target == "" {
@@ -333,9 +362,10 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 					},
 					Selection: ActionSelectionSpec{
 						Mode:           "manual",
-						AllowCheckAll:  true,
+						AllowCheckAll:  false,
 						AllowedStatus:  []string{"ready", "warning"},
 						MinDocumentCnt: 1,
+						MaxDocumentCnt: 1,
 					},
 					Form: &FormSpec{
 						Title: "Pengaturan Rename",
@@ -485,18 +515,7 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 											Disabled: true,
 										},
 									},
-									{
-										Key:          "headerRowNumber",
-										Kind:         FormFieldKindNumber,
-										Label:        "Baris Header",
-										Required:     true,
-										DefaultValue: 1,
-										HelpText:     "Nomor baris header pada sheet yang dipilih.",
-										Placeholder:  "1",
-										State: FormFieldStateSpec{
-											Visible: true,
-										},
-									},
+									buildHeaderRowField("Baris Header", "Nomor baris header pada sheet yang dipilih."),
 									{
 										Key:         "startingChequeNumber",
 										Kind:        FormFieldKindNumber,
@@ -686,7 +705,7 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 					CollectionKind: string(collectionKind),
 					ActionType:     "request_bukpot_gst_deduction_mt",
 					Label:          "Request Bukpot GST Deduction MT",
-					Description:    "Generate ZIP berisi template Excel dan XML Coretax dari source GST Deduction MT.",
+					Description:    "Generate ZIP berisi template Excel dan XML Coretax. Hanya row dengan nilai Entity yang sama dengan Alias profil aktif yang akan diproses.",
 					State:          ActionStateSpec{Enabled: true},
 					Presentation:   ActionPresentationSpec{Mode: "inline", Width: "xl"},
 					Selection: ActionSelectionSpec{
@@ -697,7 +716,7 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 					},
 					Form: &FormSpec{
 						Title:       "Pengaturan Request Bukpot",
-						Description: "Default profil akan dipakai otomatis, lalu bisa diubah untuk eksekusi ini saja.",
+						Description: "Default profil akan dipakai otomatis, lalu bisa diubah untuk eksekusi ini saja. Sistem hanya memproses row dengan nilai Entity yang sama dengan Alias profil aktif.",
 						Sections: []FormSectionSpec{
 							{
 								Key:         "source",
@@ -715,16 +734,7 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 										HelpText:     "Pilih dokumen terlebih dahulu untuk melihat sheet yang tersedia.",
 										State:        FormFieldStateSpec{Visible: true, Disabled: true},
 									},
-									{
-										Key:          "headerRowNumber",
-										Kind:         FormFieldKindNumber,
-										Label:        "Baris Header",
-										Required:     true,
-										DefaultValue: 1,
-										Placeholder:  "1",
-										HelpText:     "Dipakai untuk validasi kolom dan pembacaan row data.",
-										State:        FormFieldStateSpec{Visible: true},
-									},
+									buildHeaderRowField("Baris Header", "Dipakai untuk validasi kolom dan pembacaan row data."),
 								},
 							},
 							{

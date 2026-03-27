@@ -251,7 +251,8 @@ func (p *XLSXCashflowProcessor) buildSpendMoneyDocumentRows(
 			continue
 		}
 
-		record, rowWarnings, recordErr := parseCashflowRow(rawRow, rowNumber, headerIndex)
+		cellRow := spreadsheetCashflowCellRowAt(sheet.RawCellRows, idx)
+		record, rowWarnings, recordErr := parseCashflowRow(rawRow, cellRow, rowNumber, headerIndex)
 		if recordErr != nil {
 			warnings = append(warnings, fmt.Sprintf("row %d: %s", rowNumber, recordErr.Error()))
 			continue
@@ -327,24 +328,26 @@ func resolveCashflowHeaders(sheet SpreadsheetSheet, headerRowNumber int) ([]stri
 	return headers, fieldIndex, nil
 }
 
-func parseCashflowRow(row []string, rowNumber int, fieldIndex map[string]int) (cashflowRowRecord, []string, error) {
+func parseCashflowRow(row []string, cellRow []SpreadsheetCell, rowNumber int, fieldIndex map[string]int) (cashflowRowRecord, []string, error) {
 	record := cashflowRowRecord{RowNumber: rowNumber}
-	record.Information = cashflowCell(row, fieldIndex, "information")
-	record.COA = cashflowCell(row, fieldIndex, "coa")
-	record.Remark = cashflowCell(row, fieldIndex, "remark")
+	record.Information = cashflowCellValue(row, cellRow, fieldIndex, "information")
+	record.COA = cashflowCellValue(row, cellRow, fieldIndex, "coa")
+	record.Remark = cashflowCellValue(row, cellRow, fieldIndex, "remark")
 
-	dateValue := cashflowCell(row, fieldIndex, "date")
+	dateCell := cashflowTypedCell(row, cellRow, fieldIndex, "date")
+	dateValue := SpreadsheetCellText(dateCell)
 	if dateValue == "" {
 		return record, nil, errors.New("tanggal kosong")
 	}
-	date, err := parseCashflowDate(dateValue)
-	if err != nil {
+	date, ok := SpreadsheetCellDate(dateCell)
+	if !ok {
 		return record, nil, fmt.Errorf("tanggal tidak valid: %s", dateValue)
 	}
 	record.Date = date
 
-	total, err := parseCashflowAmount(cashflowCell(row, fieldIndex, "total"))
-	if err != nil {
+	totalCell := cashflowTypedCell(row, cellRow, fieldIndex, "total")
+	total, ok := SpreadsheetCellFloat(totalCell)
+	if !ok {
 		return record, nil, fmt.Errorf("total tidak valid")
 	}
 	record.Total = total
@@ -352,13 +355,13 @@ func parseCashflowRow(row []string, rowNumber int, fieldIndex map[string]int) (c
 		return record, nil, errors.New("keterangan kosong")
 	}
 
-	record.OtherCost, _ = parseOptionalCashflowAmount(cashflowCell(row, fieldIndex, "otherCost"))
-	record.PP23, _ = parseOptionalCashflowAmount(cashflowCell(row, fieldIndex, "pp23"))
-	record.PPH15, _ = parseOptionalCashflowAmount(cashflowCell(row, fieldIndex, "pph15"))
-	record.PPH21, _ = parseOptionalCashflowAmount(cashflowCell(row, fieldIndex, "pph21"))
-	record.PPH23, _ = parseOptionalCashflowAmount(cashflowCell(row, fieldIndex, "pph23"))
-	record.PPH42, _ = parseOptionalCashflowAmount(cashflowCell(row, fieldIndex, "pph42"))
-	record.PPN, _ = parseOptionalCashflowAmount(cashflowCell(row, fieldIndex, "ppn"))
+	record.OtherCost, _ = parseOptionalCashflowTypedAmount(cashflowTypedCell(row, cellRow, fieldIndex, "otherCost"))
+	record.PP23, _ = parseOptionalCashflowTypedAmount(cashflowTypedCell(row, cellRow, fieldIndex, "pp23"))
+	record.PPH15, _ = parseOptionalCashflowTypedAmount(cashflowTypedCell(row, cellRow, fieldIndex, "pph15"))
+	record.PPH21, _ = parseOptionalCashflowTypedAmount(cashflowTypedCell(row, cellRow, fieldIndex, "pph21"))
+	record.PPH23, _ = parseOptionalCashflowTypedAmount(cashflowTypedCell(row, cellRow, fieldIndex, "pph23"))
+	record.PPH42, _ = parseOptionalCashflowTypedAmount(cashflowTypedCell(row, cellRow, fieldIndex, "pph42"))
+	record.PPN, _ = parseOptionalCashflowTypedAmount(cashflowTypedCell(row, cellRow, fieldIndex, "ppn"))
 
 	return record, nil, nil
 }
@@ -584,6 +587,13 @@ func parseOptionalCashflowAmount(raw string) (float64, error) {
 	return parseCashflowAmount(value)
 }
 
+func parseOptionalCashflowTypedAmount(cell SpreadsheetCell) (float64, error) {
+	if value, ok := SpreadsheetCellFloat(cell); ok {
+		return value, nil
+	}
+	return parseOptionalCashflowAmount(SpreadsheetCellText(cell))
+}
+
 func cashflowFieldDefinitions() []cashflowFieldDefinition {
 	return []cashflowFieldDefinition{
 		{Key: "date", Required: true, Aliases: []string{"tanggal", "date"}},
@@ -630,6 +640,29 @@ func cashflowCell(row []string, fieldIndex map[string]int, key string) string {
 		return ""
 	}
 	return strings.TrimSpace(row[idx])
+}
+
+func spreadsheetCashflowCellRowAt(rows [][]SpreadsheetCell, idx int) []SpreadsheetCell {
+	if idx < 0 || idx >= len(rows) {
+		return nil
+	}
+	return rows[idx]
+}
+
+func cashflowTypedCell(row []string, cells []SpreadsheetCell, fieldIndex map[string]int, key string) SpreadsheetCell {
+	cell := SpreadsheetCellAt(cells, fieldIndex, key)
+	if SpreadsheetCellText(cell) != "" || cell.FloatValue != nil || cell.DateValue != "" || cell.BoolValue != nil {
+		return cell
+	}
+	return SpreadsheetCell{
+		Display:     cashflowCell(row, fieldIndex, key),
+		StringValue: cashflowCell(row, fieldIndex, key),
+		ValueType:   SpreadsheetCellValueTypeString,
+	}
+}
+
+func cashflowCellValue(row []string, cells []SpreadsheetCell, fieldIndex map[string]int, key string) string {
+	return SpreadsheetCellText(cashflowTypedCell(row, cells, fieldIndex, key))
 }
 
 func prefixWarnings(rowNumber int, warnings []string) []string {

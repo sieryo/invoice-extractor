@@ -438,12 +438,13 @@ func (p *XLSXBukpotRequestProcessor) buildBukpotRequestRecords(
 			continue
 		}
 
-		entity := strings.TrimSpace(spreadsheetCell(rawRow, headerIndex, "entity"))
+		cellRow := spreadsheetCellRowAt(sheet.RawCellRows, idx)
+		entity := strings.TrimSpace(spreadsheetTextValue(rawRow, cellRow, headerIndex, "entity"))
 		if entity == "" || !strings.EqualFold(entity, profileMeta.Alias) {
 			continue
 		}
 
-		record, err := buildBukpotRequestRecord(rawRow, headerIndex, profileMeta)
+		record, err := buildBukpotRequestRecord(rawRow, cellRow, headerIndex, profileMeta)
 		if err != nil {
 			return nil, fmt.Errorf("%s row %d: %w", sourceName, rowNumber, err)
 		}
@@ -456,57 +457,57 @@ func (p *XLSXBukpotRequestProcessor) buildBukpotRequestRecords(
 	return records, nil
 }
 
-func buildBukpotRequestRecord(row []string, headerIndex map[string]int, profileMeta appprofile.Metadata) (bukpotRequestRecord, error) {
-	settlementRaw := spreadsheetCell(row, headerIndex, "settlementDate")
-	settlementDate, err := parseCashflowDate(settlementRaw)
-	if err != nil {
-		return bukpotRequestRecord{}, fmt.Errorf("Settlement Date tidak valid: %s", settlementRaw)
+func buildBukpotRequestRecord(row []string, cellRow []SpreadsheetCell, headerIndex map[string]int, profileMeta appprofile.Metadata) (bukpotRequestRecord, error) {
+	settlementCell := spreadsheetTypedCell(row, cellRow, headerIndex, "settlementDate")
+	settlementDate, ok := SpreadsheetCellDate(settlementCell)
+	if !ok {
+		return bukpotRequestRecord{}, fmt.Errorf("Settlement Date tidak valid (%s)", describeSpreadsheetCellValue(settlementCell))
 	}
 
-	npwp := strings.TrimSpace(spreadsheetCell(row, headerIndex, "npwp"))
+	npwp := strings.TrimSpace(spreadsheetTextValue(row, cellRow, headerIndex, "npwp"))
 	if npwp == "" {
 		return bukpotRequestRecord{}, errors.New("NPWP kosong")
 	}
 
-	nitku := strings.TrimSpace(spreadsheetCell(row, headerIndex, "nitku"))
+	nitku := strings.TrimSpace(spreadsheetTextValue(row, cellRow, headerIndex, "nitku"))
 	if nitku == "" {
 		return bukpotRequestRecord{}, errors.New("NITKU kosong")
 	}
 
-	taxObjectCode := strings.TrimSpace(spreadsheetCell(row, headerIndex, "taxObjectCode"))
+	taxObjectCode := strings.TrimSpace(spreadsheetTextValue(row, cellRow, headerIndex, "taxObjectCode"))
 	if taxObjectCode == "" {
 		return bukpotRequestRecord{}, errors.New("Kode Objek Pajak kosong")
 	}
 
-	taxBaseRaw := spreadsheetCell(row, headerIndex, "taxBase")
-	taxBase, err := parseCashflowAmount(taxBaseRaw)
-	if err != nil {
-		return bukpotRequestRecord{}, errors.New("DPP tidak valid")
+	taxBaseCell := spreadsheetTypedCell(row, cellRow, headerIndex, "taxBase")
+	taxBase, ok := SpreadsheetCellFloat(taxBaseCell)
+	if !ok {
+		return bukpotRequestRecord{}, fmt.Errorf("DPP tidak valid (%s)", describeSpreadsheetCellValue(taxBaseCell))
 	}
 
-	rateRaw := spreadsheetCell(row, headerIndex, "withholdingRate")
-	rateFraction, err := parseCashflowAmount(rateRaw)
-	if err != nil {
-		return bukpotRequestRecord{}, errors.New("WHT tidak valid")
+	rateCell := spreadsheetTypedCell(row, cellRow, headerIndex, "withholdingRate")
+	rateFraction, ok := SpreadsheetCellPercent(rateCell)
+	if !ok {
+		return bukpotRequestRecord{}, fmt.Errorf("WHT tidak valid (%s)", describeSpreadsheetCellValue(rateCell))
 	}
 
-	facilitySource := strings.TrimSpace(spreadsheetCell(row, headerIndex, "facility"))
+	facilitySource := strings.TrimSpace(spreadsheetTextValue(row, cellRow, headerIndex, "facility"))
 	facilityValue, finalRate, err := mapBukpotRequestFacility(facilitySource, rateFraction)
 	if err != nil {
 		return bukpotRequestRecord{}, err
 	}
 
-	fakturPajakNo := strings.TrimSpace(spreadsheetCell(row, headerIndex, "taxInvoiceNumber"))
-	invoiceNumber := strings.TrimSpace(spreadsheetCell(row, headerIndex, "referenceNumber"))
+	fakturPajakNo := strings.TrimSpace(spreadsheetTextValue(row, cellRow, headerIndex, "taxInvoiceNumber"))
+	invoiceNumber := strings.TrimSpace(spreadsheetTextValue(row, cellRow, headerIndex, "referenceNumber"))
 	documentType, documentNumber := resolveBukpotRequestReference(fakturPajakNo, invoiceNumber)
 	if documentNumber == "" {
 		return bukpotRequestRecord{}, errors.New("Nomor Dok. Referensi kosong")
 	}
 
-	documentDateRaw := spreadsheetCell(row, headerIndex, "referenceDate")
-	documentDate, err := parseCashflowDate(documentDateRaw)
-	if err != nil {
-		return bukpotRequestRecord{}, fmt.Errorf("Tanggal Dok. Referensi tidak valid: %s", documentDateRaw)
+	documentDateCell := spreadsheetTypedCell(row, cellRow, headerIndex, "referenceDate")
+	documentDate, ok := SpreadsheetCellDate(documentDateCell)
+	if !ok {
+		return bukpotRequestRecord{}, fmt.Errorf("Tanggal Dok. Referensi tidak valid (%s)", describeSpreadsheetCellValue(documentDateCell))
 	}
 
 	month := settlementDate.Month()
@@ -741,11 +742,11 @@ func buildBukpotRequestWorkbook(records []bukpotRequestRecord, profileMeta apppr
 			record.RatePercent,
 			record.DocumentType,
 			record.DocumentNumber,
-			record.DocumentDate,
+			formatBukpotWorkbookDate(record.DocumentDate),
 			record.WithholderBusinessActivityID,
 			record.GovTreasurerOption,
 			record.SP2DNumber,
-			record.WithholdingDate,
+			formatBukpotWorkbookDate(record.WithholdingDate),
 		}
 		cell, _ := excelize.CoordinatesToCellName(startCol, row)
 		if err := f.SetSheetRow(bukpotRequestTemplateSheet, cell, &values); err != nil {
@@ -941,6 +942,52 @@ func isSpreadsheetRowEmpty(row []string) bool {
 		}
 	}
 	return true
+}
+
+func spreadsheetCellRowAt(rows [][]SpreadsheetCell, idx int) []SpreadsheetCell {
+	if idx < 0 || idx >= len(rows) {
+		return nil
+	}
+	return rows[idx]
+}
+
+func spreadsheetTypedCell(row []string, cells []SpreadsheetCell, indexes map[string]int, key string) SpreadsheetCell {
+	cell := SpreadsheetCellAt(cells, indexes, key)
+	if SpreadsheetCellText(cell) != "" || cell.FloatValue != nil || cell.DateValue != "" || cell.BoolValue != nil {
+		return cell
+	}
+	return SpreadsheetCell{
+		Display:     spreadsheetCell(row, indexes, key),
+		StringValue: spreadsheetCell(row, indexes, key),
+		ValueType:   SpreadsheetCellValueTypeString,
+	}
+}
+
+func spreadsheetTextValue(row []string, cells []SpreadsheetCell, indexes map[string]int, key string) string {
+	return SpreadsheetCellText(spreadsheetTypedCell(row, cells, indexes, key))
+}
+
+func describeSpreadsheetCellValue(cell SpreadsheetCell) string {
+	display := strings.TrimSpace(cell.Display)
+	raw := strings.TrimSpace(cell.Raw)
+
+	switch {
+	case display != "" && raw != "" && display != raw:
+		return fmt.Sprintf("display=%q, raw=%q", display, raw)
+	case display != "":
+		return fmt.Sprintf("value=%q", display)
+	case raw != "":
+		return fmt.Sprintf("raw=%q", raw)
+	default:
+		return "nilai kosong"
+	}
+}
+
+func formatBukpotWorkbookDate(value time.Time) string {
+	if value.IsZero() {
+		return ""
+	}
+	return value.Format("02/01/2006")
 }
 
 func sanitizeBukpotRequestFilename(raw string) string {

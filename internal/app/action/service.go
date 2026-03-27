@@ -1145,7 +1145,7 @@ func (s *Service) resolveCashflowActionSpec(
 
 	if headerField, ok := findFormField(actionSpec.Form, "headerRowNumber"); ok {
 		if defaultHeaderRow > 0 {
-			headerField.DefaultValue = defaultHeaderRow
+			headerField.DefaultValue = strconv.Itoa(defaultHeaderRow)
 		}
 		updateFormField(actionSpec.Form, headerField)
 	}
@@ -1174,7 +1174,7 @@ func (s *Service) resolveBukpotRequestActionSpec(
 				updateFormField(actionSpec.Form, field)
 			}
 			if field, ok := findFormField(actionSpec.Form, "headerRowNumber"); ok && cfg.Defaults.HeaderRowNumber > 0 {
-				field.DefaultValue = cfg.Defaults.HeaderRowNumber
+				field.DefaultValue = strconv.Itoa(cfg.Defaults.HeaderRowNumber)
 				updateFormField(actionSpec.Form, field)
 			}
 			if field, ok := findFormField(actionSpec.Form, "sheetName"); ok && strings.TrimSpace(cfg.Defaults.SheetName) != "" {
@@ -1249,7 +1249,7 @@ func (s *Service) resolveBukpotRequestActionSpec(
 	updateFormField(actionSpec.Form, field)
 
 	if headerField, ok := findFormField(actionSpec.Form, "headerRowNumber"); ok && defaultHeaderRow > 0 {
-		headerField.DefaultValue = defaultHeaderRow
+		headerField.DefaultValue = strconv.Itoa(defaultHeaderRow)
 		updateFormField(actionSpec.Form, headerField)
 	}
 

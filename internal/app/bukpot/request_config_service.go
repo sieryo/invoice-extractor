@@ -7,15 +7,17 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/sieryo/invoice-extractor/internal/app/specutil"
 	"github.com/sieryo/invoice-extractor/internal/profilepath"
 )
 
 const bukpotRequestConfigSchemaVersion = "1"
 
 type RequestConfigSpec struct {
-	SchemaVersion string                   `json:"schemaVersion"`
-	Defaults      RequestConfigDefaults    `json:"defaults"`
-	Fields        []RequestConfigFieldSpec `json:"fields"`
+	SchemaVersion    string                   `json:"schemaVersion"`
+	Defaults         RequestConfigDefaults    `json:"defaults"`
+	HeaderRowOptions []int                    `json:"headerRowOptions,omitempty"`
+	Fields           []RequestConfigFieldSpec `json:"fields"`
 }
 
 type RequestConfigDefaults struct {
@@ -68,6 +70,7 @@ func (s *RequestConfigService) Spec() RequestConfigSpec {
 			SheetName:       "",
 			HeaderRowNumber: 1,
 		},
+		HeaderRowOptions: specutil.HeaderRowNumbers(10),
 		Fields: []RequestConfigFieldSpec{
 			{Key: "entity", Label: "Entity", Required: true, DefaultValue: "Entity", Description: "Dipakai untuk filter alias profile."},
 			{Key: "settlementDate", Label: "Settlement Date", Required: true, DefaultValue: "Settlemet Date", Description: "Dipakai untuk masa pajak, tahun pajak, dan tanggal pemotongan."},
