@@ -131,6 +131,7 @@ CREATE TABLE upload_sessions (
 			'receiving',
 			'processing',
 			'finalized',
+			'awaiting_resolution',
 			'completed',
 			'failed',
 			'interrupted',

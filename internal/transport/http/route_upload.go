@@ -12,5 +12,6 @@ func (s *Server) registerUploadRoutes(protected fiber.Router) {
 	protected.Post("/collections/:id/upload/session", uploadHandler.StartSession)
 	protected.Post("/upload/session/:id/chunk", uploadHandler.UploadChunk)
 	protected.Post("/upload/session/:id/finalize", uploadHandler.FinalizeSession)
+	protected.Post("/upload/session/:id/resolve-duplicates", uploadHandler.ResolveDuplicates)
 	protected.Get("/upload/session/:id", uploadHandler.GetSession)
 }

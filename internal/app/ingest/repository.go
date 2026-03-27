@@ -8,6 +8,7 @@ type UploadSessionRepository interface {
 	ListActive(ctx context.Context) ([]*UploadSession, error)
 	ListActiveByCollection(ctx context.Context, collectionID string) ([]*UploadSession, error)
 	UpdateStatus(ctx context.Context, id string, status SessionStatus) error
+	UpdateMetadata(ctx context.Context, id string, metadata UploadSessionMetadata) error
 	TouchHeartbeat(ctx context.Context, id string) error
 	IncrementUploadedChunk(ctx context.Context, id string, totalChunkCandidate int) error
 	IncrementProcessedChunk(ctx context.Context, id string, failedDelta int, duplicateDelta int) error
@@ -20,6 +21,7 @@ type UploadChunkRepository interface {
 	FindBySessionAndIndex(ctx context.Context, sessionID string, chunkIndex int) (*UploadChunk, error)
 	ListBySession(ctx context.Context, sessionID string) ([]*UploadChunk, error)
 	UpdateStatus(ctx context.Context, id string, status ChunkStatus, errMsg *string) error
+	UpdatePayload(ctx context.Context, id string, payload []byte) error
 	UpdateJobID(ctx context.Context, id string, jobID string) error
 }
 
@@ -32,6 +34,7 @@ type DocumentRepository interface {
 		sha256 string,
 	) (*DocumentRecord, error)
 	Create(ctx context.Context, doc *DocumentRecord) error
+	Update(ctx context.Context, doc *DocumentRecord) error
 	ListByCollection(
 		ctx context.Context,
 		collectionID string,

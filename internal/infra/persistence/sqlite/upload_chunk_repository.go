@@ -123,6 +123,15 @@ func (r *UploadChunkRepository) UpdateStatus(
 	return err
 }
 
+func (r *UploadChunkRepository) UpdatePayload(ctx context.Context, id string, payload []byte) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE upload_session_chunks
+		SET payload_json = ?
+		WHERE id = ?
+	`, payload, id)
+	return err
+}
+
 func (r *UploadChunkRepository) UpdateJobID(ctx context.Context, id string, jobID string) error {
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE upload_session_chunks

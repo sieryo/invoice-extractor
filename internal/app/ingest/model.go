@@ -14,6 +14,7 @@ const (
 	SessionStatusReceiving   SessionStatus = "receiving"
 	SessionStatusProcessing  SessionStatus = "processing"
 	SessionStatusFinalized   SessionStatus = "finalized"
+	SessionStatusAwaitingResolution SessionStatus = "awaiting_resolution"
 	SessionStatusCompleted   SessionStatus = "completed"
 	SessionStatusFailed      SessionStatus = "failed"
 	SessionStatusInterrupted SessionStatus = "interrupted"
@@ -49,6 +50,28 @@ type UploadSession struct {
 	ExpiresAt        *time.Time              `json:"expiresAt,omitempty"`
 	ClientSessionKey *string                 `json:"clientSessionKey,omitempty"`
 	MetadataJSON     json.RawMessage         `json:"metadata,omitempty"`
+}
+
+type UploadSessionMetadata struct {
+	PendingDuplicates []PendingDuplicateResolution `json:"pendingDuplicates,omitempty"`
+}
+
+type PendingDuplicateResolution struct {
+	Source             PendingDuplicateSource `json:"source"`
+	ExistingDocumentID string                `json:"existingDocumentId"`
+	ExistingSourceName string                `json:"existingSourceName"`
+	ExistingStatus     string                `json:"existingStatus,omitempty"`
+}
+
+type PendingDuplicateSource struct {
+	SourceID     string    `json:"sourceId"`
+	OriginalName string    `json:"originalName"`
+	MimeType     string    `json:"mimeType,omitempty"`
+	SizeBytes    int64     `json:"sizeBytes,omitempty"`
+	SHA256       string    `json:"sha256,omitempty"`
+	SourceOrder  int       `json:"sourceOrder"`
+	TempPath     string    `json:"-"`
+	UploadedAt   time.Time `json:"uploadedAt"`
 }
 
 type UploadChunk struct {
@@ -142,3 +165,10 @@ type SessionDetail struct {
 	Session *UploadSession `json:"session"`
 	Chunks  []*UploadChunk `json:"chunks"`
 }
+
+type ResolveDuplicateDecision string
+
+const (
+	ResolveDuplicateDecisionSkip    ResolveDuplicateDecision = "skip"
+	ResolveDuplicateDecisionReplace ResolveDuplicateDecision = "replace"
+)

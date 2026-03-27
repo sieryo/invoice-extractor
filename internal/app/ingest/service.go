@@ -33,6 +33,18 @@ type IngestService struct {
 	once    sync.Once
 }
 
+type uploadChunkPayload struct {
+	Sources           []document.IngestSource       `json:"sources"`
+	PendingDuplicates []pendingDuplicatePayloadItem `json:"pendingDuplicates,omitempty"`
+}
+
+type pendingDuplicatePayloadItem struct {
+	Source             document.IngestSource `json:"source"`
+	ExistingDocumentID string                `json:"existingDocumentId"`
+	ExistingSourceName string                `json:"existingSourceName"`
+	ExistingStatus     string                `json:"existingStatus,omitempty"`
+}
+
 const (
 	sessionHeartbeatTimeout = 2 * time.Minute
 	sessionSweepInterval    = 30 * time.Second
@@ -168,7 +180,7 @@ func (s *IngestService) UploadChunk(
 		return nil, fmt.Errorf("chunk has no files")
 	}
 
-	payloadJSON, err := json.Marshal(sources)
+	payloadJSON, err := json.Marshal(uploadChunkPayload{Sources: sources})
 	if err != nil {
 		return nil, err
 	}
@@ -250,6 +262,83 @@ func (s *IngestService) GetSessionDetail(ctx context.Context, sessionID string) 
 		Session: session,
 		Chunks:  chunks,
 	}, nil
+}
+
+func (s *IngestService) ResolvePendingDuplicates(
+	ctx context.Context,
+	userID string,
+	sessionID string,
+	decision ResolveDuplicateDecision,
+) (*UploadSession, error) {
+	session, err := s.sessionRepo.FindByID(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	if session.UserID != userID {
+		return nil, ErrSessionNotFound
+	}
+	if session.Status != SessionStatusAwaitingResolution {
+		return nil, fmt.Errorf("upload session is not waiting for duplicate resolution")
+	}
+
+	chunks, err := s.chunkRepo.ListBySession(ctx, session.ID)
+	if err != nil {
+		return nil, err
+	}
+	pendingDuplicates, err := s.collectPendingDuplicates(ctx, chunks)
+	if err != nil {
+		return nil, err
+	}
+	if len(pendingDuplicates) == 0 {
+		if err := s.sessionRepo.SetFinished(ctx, session.ID, SessionStatusCompleted); err != nil {
+			return nil, err
+		}
+		return s.sessionRepo.FindByID(ctx, session.ID)
+	}
+
+	var summary ingestSummary
+	switch decision {
+	case ResolveDuplicateDecisionSkip:
+		summary, err = s.persistPendingDuplicateSkips(ctx, session, pendingDuplicates)
+	case ResolveDuplicateDecisionReplace:
+		summary, err = s.persistPendingDuplicateReplacements(ctx, session, pendingDuplicates)
+	default:
+		return nil, fmt.Errorf("invalid duplicate resolution decision")
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.sessionRepo.UpdateMetadata(ctx, session.ID, UploadSessionMetadata{}); err != nil {
+		return nil, err
+	}
+
+	finalStatus := SessionStatusCompleted
+	if summary.total > 0 && summary.failed == summary.total {
+		finalStatus = SessionStatusFailed
+	}
+	if err := s.sessionRepo.SetFinished(ctx, session.ID, finalStatus); err != nil {
+		return nil, err
+	}
+
+	history, historyErr := s.historyRepo.EnsureUploadHistory(ctx, session.UserID, session.CollectionID, session.ID)
+	if historyErr == nil {
+		historyStatus := "success"
+		if summary.failed > 0 && summary.failed == summary.total {
+			historyStatus = "failed"
+		} else if summary.failed > 0 {
+			historyStatus = "partial"
+		} else if summary.duplicate > 0 {
+			historyStatus = "warning"
+		}
+		_ = s.historyRepo.SetStatus(ctx, history.ID, historyStatus)
+	}
+
+	if err := s.reconcileCollectionPhase(ctx, session.CollectionID); err != nil {
+		return nil, err
+	}
+
+	return s.sessionRepo.FindByID(ctx, session.ID)
 }
 
 func (s *IngestService) ListDocuments(
@@ -436,15 +525,20 @@ func (s *IngestService) processChunk(ctx context.Context, chunkID string) error 
 		return err
 	}
 
-	var sources []document.IngestSource
-	if err := json.Unmarshal(chunk.PayloadJSON, &sources); err != nil {
+	var payload uploadChunkPayload
+	if err := json.Unmarshal(chunk.PayloadJSON, &payload); err != nil {
 		msg := "failed to decode chunk payload"
 		_ = s.chunkRepo.UpdateStatus(ctx, chunk.ID, ChunkStatusFailed, &msg)
 		_ = s.sessionRepo.IncrementProcessedChunk(ctx, session.ID, 1, 0)
 		return err
 	}
+	sources := payload.Sources
 
-	dupItems, uniqueSources, sourceByID := s.filterDuplicateSources(ctx, session, sources)
+	dupCandidates, uniqueSources, sourceByID := s.filterDuplicateSources(ctx, session, sources)
+	payload.PendingDuplicates = dupCandidates
+	if nextPayloadJSON, err := json.Marshal(payload); err == nil {
+		_ = s.chunkRepo.UpdatePayload(ctx, chunk.ID, nextPayloadJSON)
+	}
 
 	processor, ok := s.processors.Get(document.ProcessorKey{
 		CollectionKind: session.CollectionKind,
@@ -487,11 +581,7 @@ func (s *IngestService) processChunk(ctx context.Context, chunkID string) error 
 		}
 	}
 
-	allItems := make([]document.IngestItemResult, 0, len(dupItems)+len(ingestItems))
-	allItems = append(allItems, dupItems...)
-	allItems = append(allItems, ingestItems...)
-
-	summary, persistErr := s.persistChunkResult(ctx, session, allItems, sourceByID)
+	summary, persistErr := s.persistChunkResult(ctx, session, ingestItems, sourceByID)
 	if persistErr != nil {
 		msg := persistErr.Error()
 		_ = s.chunkRepo.UpdateStatus(ctx, chunk.ID, ChunkStatusFailed, &msg)
@@ -504,10 +594,10 @@ func (s *IngestService) processChunk(ctx context.Context, chunkID string) error 
 	chunkFailedDelta := 0
 	chunkDuplicateDelta := 0
 
-	if summary.total > 0 && summary.duplicate == summary.total {
+	if len(dupCandidates) > 0 && len(uniqueSources) == 0 && summary.failed == 0 {
 		chunkStatus = ChunkStatusDuplicate
 		chunkDuplicateDelta = 1
-	} else if summary.total > 0 && summary.failed == summary.total {
+	} else if len(uniqueSources) > 0 && summary.total > 0 && summary.failed == summary.total {
 		chunkStatus = ChunkStatusFailed
 		chunkFailedDelta = 1
 	}
@@ -519,7 +609,11 @@ func (s *IngestService) processChunk(ctx context.Context, chunkID string) error 
 		return err
 	}
 
-	s.cleanupTempSources(sources, defaultIngestPolicy(session.CollectionKind))
+	if len(dupCandidates) == 0 {
+		s.cleanupTempSources(sources, defaultIngestPolicy(session.CollectionKind))
+	} else {
+		s.cleanupTempSources(uniqueSources, defaultIngestPolicy(session.CollectionKind))
+	}
 
 	latestSession, err := s.sessionRepo.FindByID(ctx, session.ID)
 	if err == nil {
@@ -545,6 +639,22 @@ func (s *IngestService) tryCompleteSession(ctx context.Context, session *UploadS
 				return nil
 			}
 		}
+	}
+
+	pendingDuplicates, err := s.collectPendingDuplicates(ctx, chunks)
+	if err != nil {
+		return err
+	}
+	if err := s.sessionRepo.UpdateMetadata(ctx, session.ID, UploadSessionMetadata{
+		PendingDuplicates: summarizePendingDuplicates(pendingDuplicates),
+	}); err != nil {
+		return err
+	}
+	if len(pendingDuplicates) > 0 {
+		if err := s.sessionRepo.UpdateStatus(ctx, session.ID, SessionStatusAwaitingResolution); err != nil {
+			return err
+		}
+		return s.reconcileCollectionPhase(ctx, session.CollectionID)
 	}
 
 	finalStatus := SessionStatusCompleted
@@ -748,8 +858,8 @@ func (s *IngestService) filterDuplicateSources(
 	ctx context.Context,
 	session *UploadSession,
 	sources []document.IngestSource,
-) ([]document.IngestItemResult, []document.IngestSource, map[string]document.IngestSource) {
-	dupItems := make([]document.IngestItemResult, 0)
+) ([]pendingDuplicatePayloadItem, []document.IngestSource, map[string]document.IngestSource) {
+	dupItems := make([]pendingDuplicatePayloadItem, 0)
 	unique := make([]document.IngestSource, 0, len(sources))
 	sourceByID := make(map[string]document.IngestSource, len(sources))
 
@@ -767,14 +877,11 @@ func (s *IngestService) filterDuplicateSources(
 			continue
 		}
 
-		dupID := existing.ID
-		dupItems = append(dupItems, document.IngestItemResult{
-			SourceID:      src.SourceID,
-			OriginalName:  src.OriginalName,
-			SHA256:        src.SHA256,
-			Status:        document.IngestStatusDuplicate,
-			Message:       "duplicate source skipped",
-			DuplicateOfID: &dupID,
+		dupItems = append(dupItems, pendingDuplicatePayloadItem{
+			Source:             src,
+			ExistingDocumentID: existing.ID,
+			ExistingSourceName: existing.SourceName,
+			ExistingStatus:     existing.Status,
 		})
 	}
 
@@ -978,6 +1085,331 @@ func normalizeIngestItems(
 	return out
 }
 
+func (s *IngestService) collectPendingDuplicates(
+	ctx context.Context,
+	chunks []*UploadChunk,
+) ([]pendingDuplicatePayloadItem, error) {
+	out := make([]pendingDuplicatePayloadItem, 0)
+	for _, chunk := range chunks {
+		if len(chunk.PayloadJSON) == 0 {
+			continue
+		}
+
+		var payload uploadChunkPayload
+		if err := json.Unmarshal(chunk.PayloadJSON, &payload); err != nil {
+			return nil, err
+		}
+		if len(payload.PendingDuplicates) == 0 {
+			continue
+		}
+		out = append(out, payload.PendingDuplicates...)
+	}
+
+	return out, nil
+}
+
+func (s *IngestService) persistPendingDuplicateSkips(
+	ctx context.Context,
+	session *UploadSession,
+	duplicates []pendingDuplicatePayloadItem,
+) (ingestSummary, error) {
+	summary := ingestSummary{}
+	history, err := s.historyRepo.EnsureUploadHistory(ctx, session.UserID, session.CollectionID, session.ID)
+	if err != nil {
+		return summary, err
+	}
+
+	historyItems := make([]*CollectionHistoryItem, 0, len(duplicates))
+	for _, candidate := range duplicates {
+		summary.total++
+		summary.duplicate++
+
+		existingID := candidate.ExistingDocumentID
+		source := candidate.Source
+		historyItems = append(historyItems, &CollectionHistoryItem{
+			ID:              uuid.NewString(),
+			HistoryID:       history.ID,
+			UserID:          session.UserID,
+			CollectionID:    session.CollectionID,
+			CollectionKind:  session.CollectionKind,
+			SourceFormat:    session.SourceFormat,
+			SourceName:      source.OriginalName,
+			SourceSizeBytes: source.SizeBytes,
+			SourceMIME:      source.MimeType,
+			SourceSHA256:    source.SHA256,
+			SourceOrder:     source.SourceOrder,
+			ItemStatus:      string(document.IngestStatusDuplicate),
+			Message:         "duplicate source skipped",
+			DuplicateOfID:   &existingID,
+			DuplicateKey:    ptrIfNotEmpty(source.SHA256),
+		})
+	}
+
+	if err := s.historyRepo.AddItems(ctx, historyItems); err != nil {
+		return summary, err
+	}
+	if err := s.historyRepo.IncrementSummary(ctx, history.ID, summary.total, 0, 0, 0, summary.duplicate); err != nil {
+		return summary, err
+	}
+
+	if coll, err := s.collectionRepo.FindByID(ctx, session.CollectionID); err == nil {
+		_ = s.collectionRepo.UpdateSummary(
+			ctx,
+			session.CollectionID,
+			coll.TotalCount+summary.total,
+			coll.ReadyCount,
+			coll.WarningCount,
+			coll.FailedCount,
+			coll.DuplicateCount+summary.duplicate,
+		)
+	}
+
+	s.cleanupTempSources(pendingDuplicateSources(duplicates), defaultIngestPolicy(session.CollectionKind))
+	return summary, nil
+}
+
+func (s *IngestService) persistPendingDuplicateReplacements(
+	ctx context.Context,
+	session *UploadSession,
+	duplicates []pendingDuplicatePayloadItem,
+) (ingestSummary, error) {
+	summary := ingestSummary{}
+	if len(duplicates) == 0 {
+		return summary, nil
+	}
+
+	processor, ok := s.processors.Get(document.ProcessorKey{
+		CollectionKind: session.CollectionKind,
+		SourceFormat:   session.SourceFormat,
+	})
+	if !ok {
+		processor = document.NewNoopProcessor(document.ProcessorKey{
+			CollectionKind: session.CollectionKind,
+			SourceFormat:   session.SourceFormat,
+		})
+	}
+
+	sources := pendingDuplicateSources(duplicates)
+	req := document.IngestRequest{
+		RequestID:      session.ID,
+		UserID:         session.UserID,
+		CollectionID:   session.CollectionID,
+		CollectionKind: session.CollectionKind,
+		SourceFormat:   session.SourceFormat,
+		Sources:        sources,
+		Policy:         defaultIngestPolicy(session.CollectionKind),
+		RequestedAt:    time.Now(),
+	}
+
+	res, err := processor.Ingest(ctx, req)
+	items := res.Items
+	if err != nil && len(items) == 0 {
+		items = make([]document.IngestItemResult, 0, len(sources))
+		for _, src := range sources {
+			items = append(items, document.IngestItemResult{
+				SourceID:     src.SourceID,
+				OriginalName: src.OriginalName,
+				SHA256:       src.SHA256,
+				Status:       document.IngestStatusFailed,
+				Message:      "processor failed",
+				Errors:       []string{err.Error()},
+			})
+		}
+	}
+	items = normalizeIngestItems(sources, items)
+
+	history, err := s.historyRepo.EnsureUploadHistory(ctx, session.UserID, session.CollectionID, session.ID)
+	if err != nil {
+		return summary, err
+	}
+
+	candidateBySourceID := make(map[string]pendingDuplicatePayloadItem, len(duplicates))
+	for _, candidate := range duplicates {
+		candidateBySourceID[candidate.Source.SourceID] = candidate
+	}
+
+	historyItems := make([]*CollectionHistoryItem, 0, len(items))
+	coll, _ := s.collectionRepo.FindByID(ctx, session.CollectionID)
+	updatedSummary := false
+
+	for _, item := range items {
+		summary.total++
+		candidate, ok := candidateBySourceID[item.SourceID]
+		if !ok {
+			summary.failed++
+			continue
+		}
+
+		src := candidate.Source
+		status := string(item.Status)
+		msg := item.Message
+		docID := &candidate.ExistingDocumentID
+		dupKey := ptrIfNotEmpty(src.SHA256)
+		warningsJSON, _ := json.Marshal(item.Warnings)
+		errorsJSON, _ := json.Marshal(item.Errors)
+
+		switch item.Status {
+		case document.IngestStatusReady, document.IngestStatusWarning:
+			existingDoc, findErr := s.documentRepo.FindByID(ctx, candidate.ExistingDocumentID)
+			if findErr != nil || existingDoc == nil {
+				status = string(document.IngestStatusFailed)
+				msg = "existing document not found for replacement"
+				summary.failed++
+				docID = nil
+				break
+			}
+
+			normalizedRef := pickArtifactRef(item.Artifacts, "normalized")
+			if normalizedRef == "" {
+				status = string(document.IngestStatusFailed)
+				msg = "normalized artifact missing"
+				summary.failed++
+				docID = nil
+				break
+			}
+
+			oldStatus := existingDoc.Status
+			oldNormalizedRef := existingDoc.NormalizedRef
+			oldAuditRef := existingDoc.AuditRef
+			oldRawRef := existingDoc.RawRef
+
+			existingDoc.DocumentTag = strings.TrimSpace(item.DocumentTag)
+			existingDoc.SourceName = src.OriginalName
+			existingDoc.SourceSizeBytes = src.SizeBytes
+			existingDoc.SourceMIME = src.MimeType
+			existingDoc.SourceSHA256 = src.SHA256
+			existingDoc.SourceOrder = src.SourceOrder
+			existingDoc.Status = status
+			existingDoc.Message = msg
+			existingDoc.NormalizedRef = normalizedRef
+			existingDoc.AuditRef = ptrIfNotEmpty(pickArtifactRef(item.Artifacts, "audit"))
+			existingDoc.RawRef = ptrIfNotEmpty(pickArtifactRef(item.Artifacts, "raw"))
+
+			if updateErr := s.documentRepo.Update(ctx, existingDoc); updateErr != nil {
+				status = string(document.IngestStatusFailed)
+				msg = updateErr.Error()
+				summary.failed++
+				docID = nil
+				break
+			}
+
+			if coll != nil {
+				if oldStatus == "ready" && status == "warning" {
+					coll.ReadyCount--
+					coll.WarningCount++
+					updatedSummary = true
+				} else if oldStatus == "warning" && status == "ready" {
+					coll.WarningCount--
+					coll.ReadyCount++
+					updatedSummary = true
+				}
+			}
+
+			deleteReplacedArtifact(ctx, s.fileStore, session.CollectionID, oldNormalizedRef, existingDoc.NormalizedRef)
+			deleteReplacedArtifact(ctx, s.fileStore, session.CollectionID, stringPtrValue(oldAuditRef), stringPtrValue(existingDoc.AuditRef))
+			deleteReplacedArtifact(ctx, s.fileStore, session.CollectionID, stringPtrValue(oldRawRef), stringPtrValue(existingDoc.RawRef))
+
+			if item.Status == document.IngestStatusWarning {
+				summary.warning++
+			} else {
+				summary.ready++
+			}
+
+		default:
+			summary.failed++
+			docID = nil
+		}
+
+		historyItems = append(historyItems, &CollectionHistoryItem{
+			ID:              uuid.NewString(),
+			HistoryID:       history.ID,
+			UserID:          session.UserID,
+			CollectionID:    session.CollectionID,
+			CollectionKind:  session.CollectionKind,
+			SourceFormat:    session.SourceFormat,
+			SourceName:      src.OriginalName,
+			SourceSizeBytes: src.SizeBytes,
+			SourceMIME:      src.MimeType,
+			SourceSHA256:    src.SHA256,
+			SourceOrder:     src.SourceOrder,
+			ItemStatus:      status,
+			Message:         msg,
+			DocumentID:      docID,
+			DuplicateKey:    dupKey,
+			WarningsJSON:    warningsJSON,
+			ErrorsJSON:      errorsJSON,
+		})
+	}
+
+	if err := s.historyRepo.AddItems(ctx, historyItems); err != nil {
+		return summary, err
+	}
+	if err := s.historyRepo.IncrementSummary(ctx, history.ID, summary.total, summary.ready, summary.warning, summary.failed, 0); err != nil {
+		return summary, err
+	}
+
+	if coll != nil && updatedSummary {
+		_ = s.collectionRepo.UpdateSummary(
+			ctx,
+			session.CollectionID,
+			coll.TotalCount,
+			coll.ReadyCount,
+			coll.WarningCount,
+			coll.FailedCount,
+			coll.DuplicateCount,
+		)
+	}
+
+	s.cleanupTempSources(sources, defaultIngestPolicy(session.CollectionKind))
+	return summary, nil
+}
+
+func decodeUploadSessionMetadata(raw json.RawMessage) UploadSessionMetadata {
+	if len(raw) == 0 {
+		return UploadSessionMetadata{}
+	}
+
+	var metadata UploadSessionMetadata
+	if err := json.Unmarshal(raw, &metadata); err != nil {
+		return UploadSessionMetadata{}
+	}
+	return metadata
+}
+
+func pendingDuplicateSources(duplicates []pendingDuplicatePayloadItem) []document.IngestSource {
+	out := make([]document.IngestSource, 0, len(duplicates))
+	for _, candidate := range duplicates {
+		out = append(out, candidate.Source)
+	}
+	return out
+}
+
+func summarizePendingDuplicates(items []pendingDuplicatePayloadItem) []PendingDuplicateResolution {
+	out := make([]PendingDuplicateResolution, 0, len(items))
+	for _, item := range items {
+		out = append(out, PendingDuplicateResolution{
+			Source:             newPendingDuplicateSource(item.Source),
+			ExistingDocumentID: item.ExistingDocumentID,
+			ExistingSourceName: item.ExistingSourceName,
+			ExistingStatus:     item.ExistingStatus,
+		})
+	}
+	return out
+}
+
+func newPendingDuplicateSource(src document.IngestSource) PendingDuplicateSource {
+	return PendingDuplicateSource{
+		SourceID:     src.SourceID,
+		OriginalName: src.OriginalName,
+		MimeType:     src.MimeType,
+		SizeBytes:    src.SizeBytes,
+		SHA256:       src.SHA256,
+		SourceOrder:  src.SourceOrder,
+		TempPath:     src.TempPath,
+		UploadedAt:   src.UploadedAt,
+	}
+}
+
 func defaultIngestPolicy(collectionKind document.CollectionKind) document.IngestPolicy {
 	spec, ok := document.BuildCollectionSpec(collectionKind)
 	if ok {
@@ -1022,7 +1454,7 @@ func hasPendingChunks(chunks []*UploadChunk) bool {
 
 func isTerminalSessionStatus(status SessionStatus) bool {
 	switch status {
-	case SessionStatusCompleted, SessionStatusFailed, SessionStatusInterrupted, SessionStatusExpired:
+	case SessionStatusAwaitingResolution, SessionStatusCompleted, SessionStatusFailed, SessionStatusInterrupted, SessionStatusExpired:
 		return true
 	default:
 		return false
@@ -1060,6 +1492,26 @@ func ptrIfNotEmpty(value string) *string {
 		return nil
 	}
 	return &value
+}
+
+func stringPtrValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
+func deleteReplacedArtifact(
+	ctx context.Context,
+	store file.FileStore,
+	collectionID string,
+	oldRef string,
+	newRef string,
+) {
+	if oldRef == "" || oldRef == newRef {
+		return
+	}
+	_ = store.Delete(ctx, collectionID, oldRef)
 }
 
 func isDedupUniqueError(err error) bool {

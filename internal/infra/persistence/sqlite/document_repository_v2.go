@@ -196,6 +196,41 @@ func (r *DocumentRepositoryV2) Create(ctx context.Context, doc *ingest.DocumentR
 	return err
 }
 
+func (r *DocumentRepositoryV2) Update(ctx context.Context, doc *ingest.DocumentRecord) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE documents
+		SET
+			document_tag = ?,
+			source_name = ?,
+			source_size_bytes = ?,
+			source_mime = ?,
+			source_sha256 = ?,
+			source_order = ?,
+			status = ?,
+			message = ?,
+			normalized_ref = ?,
+			audit_ref = ?,
+			raw_ref = ?,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+		  AND deleted_at IS NULL
+	`,
+		doc.DocumentTag,
+		doc.SourceName,
+		doc.SourceSizeBytes,
+		doc.SourceMIME,
+		doc.SourceSHA256,
+		doc.SourceOrder,
+		doc.Status,
+		doc.Message,
+		doc.NormalizedRef,
+		doc.AuditRef,
+		doc.RawRef,
+		doc.ID,
+	)
+	return err
+}
+
 func (r *DocumentRepositoryV2) ListByCollection(
 	ctx context.Context,
 	collectionID string,

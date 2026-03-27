@@ -123,6 +123,24 @@ func (r *UploadSessionRepository) UpdateStatus(ctx context.Context, id string, s
 	return err
 }
 
+func (r *UploadSessionRepository) UpdateMetadata(
+	ctx context.Context,
+	id string,
+	metadata ingest.UploadSessionMetadata,
+) error {
+	payload, err := json.Marshal(metadata)
+	if err != nil {
+		return err
+	}
+
+	_, err = r.db.ExecContext(ctx, `
+		UPDATE upload_sessions
+		SET metadata_json = ?, last_heartbeat_at = ?
+		WHERE id = ?
+	`, payload, time.Now(), id)
+	return err
+}
+
 func (r *UploadSessionRepository) TouchHeartbeat(ctx context.Context, id string) error {
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE upload_sessions

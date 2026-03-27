@@ -24,6 +24,10 @@ type StartUploadSessionRequest struct {
 	LegacyClientSessionKey *string `json:"client_session_key,omitempty"`
 }
 
+type ResolveUploadDuplicatesRequest struct {
+	Decision string `json:"decision"`
+}
+
 func (h *UploadSessionHandler) StartSession(c *fiber.Ctx) error {
 	ctx := c.Context()
 
@@ -173,4 +177,35 @@ func (h *UploadSessionHandler) GetSession(c *fiber.Ctx) error {
 	}
 
 	return SendSuccess(c, fiber.StatusOK, detail, "upload session retrieved")
+}
+
+func (h *UploadSessionHandler) ResolveDuplicates(c *fiber.Ctx) error {
+	ctx := c.Context()
+
+	userID, ok := c.Locals("userId").(string)
+	if !ok {
+		return SendError(c, fiber.StatusUnauthorized, "unauthorized")
+	}
+
+	sessionID := c.Params("id")
+	if sessionID == "" {
+		return SendError(c, fiber.StatusBadRequest, "session_id is required")
+	}
+
+	var req ResolveUploadDuplicatesRequest
+	if err := c.BodyParser(&req); err != nil {
+		return SendError(c, fiber.StatusBadRequest, "invalid request body")
+	}
+
+	session, err := h.ingestService.ResolvePendingDuplicates(
+		ctx,
+		userID,
+		sessionID,
+		ingest.ResolveDuplicateDecision(req.Decision),
+	)
+	if err != nil {
+		return SendError(c, fiber.StatusBadRequest, err.Error())
+	}
+
+	return SendSuccess(c, fiber.StatusOK, session, "duplicate resolution applied")
 }
