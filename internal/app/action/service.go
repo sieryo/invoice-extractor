@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	appbukpot "github.com/sieryo/invoice-extractor/internal/app/bukpot"
 	appbuyer "github.com/sieryo/invoice-extractor/internal/app/buyer"
 	appcashflow "github.com/sieryo/invoice-extractor/internal/app/cashflow"
 	"github.com/sieryo/invoice-extractor/internal/app/document"
@@ -28,13 +29,19 @@ type CashflowTaxAccountStatusProvider interface {
 	Status(profileID string) appcashflow.TaxAccountStatus
 }
 
+type BukpotRequestConfigProvider interface {
+	Status(profileID string) appbukpot.RequestConfigStatus
+	Load(profileID string) (appbukpot.RequestConfig, error)
+}
+
 type Service struct {
-	repo           Repository
-	collectionRepo dcollection.Repository
-	processors     *document.Registry
-	buyerRegistry  BuyerRegistryStatusProvider
-	taxAccounts    CashflowTaxAccountStatusProvider
-	fileStore      file.FileStore
+	repo                Repository
+	collectionRepo      dcollection.Repository
+	processors          *document.Registry
+	buyerRegistry       BuyerRegistryStatusProvider
+	taxAccounts         CashflowTaxAccountStatusProvider
+	bukpotRequestConfig BukpotRequestConfigProvider
+	fileStore           file.FileStore
 
 	queue   chan string
 	workers int
@@ -55,6 +62,7 @@ func NewService(
 	processors *document.Registry,
 	buyerRegistry BuyerRegistryStatusProvider,
 	taxAccounts CashflowTaxAccountStatusProvider,
+	bukpotRequestConfig BukpotRequestConfigProvider,
 	fileStore file.FileStore,
 	workers int,
 ) *Service {
@@ -63,14 +71,15 @@ func NewService(
 	}
 
 	return &Service{
-		repo:           repo,
-		collectionRepo: collectionRepo,
-		processors:     processors,
-		buyerRegistry:  buyerRegistry,
-		taxAccounts:    taxAccounts,
-		fileStore:      fileStore,
-		queue:          make(chan string, 64),
-		workers:        workers,
+		repo:                repo,
+		collectionRepo:      collectionRepo,
+		processors:          processors,
+		buyerRegistry:       buyerRegistry,
+		taxAccounts:         taxAccounts,
+		bukpotRequestConfig: bukpotRequestConfig,
+		fileStore:           fileStore,
+		queue:               make(chan string, 64),
+		workers:             workers,
 	}
 }
 
@@ -147,6 +156,7 @@ func (s *Service) RunAction(ctx context.Context, req RunRequest) (*CollectionAct
 	if minDocumentCnt <= 0 {
 		minDocumentCnt = 1
 	}
+	maxDocumentCnt := actionSpec.Selection.MaxDocumentCnt
 
 	selectedDocumentIDs, err := normalizeDocumentIDs(req.DocumentIDs)
 	if err != nil {
@@ -195,6 +205,49 @@ func (s *Service) RunAction(ctx context.Context, req RunRequest) (*CollectionAct
 	}
 	if len(snapshotDocs) < minDocumentCnt {
 		return nil, ErrMinDocumentsRequired
+	}
+	if maxDocumentCnt > 0 && len(snapshotDocs) > maxDocumentCnt {
+		return nil, &MaxDocumentsError{Limit: maxDocumentCnt}
+	}
+
+	processor, ok := s.processors.Get(document.ProcessorKey{
+		CollectionKind: collectionKind,
+		SourceFormat:   sourceFormat,
+	})
+	if !ok {
+		processor = document.NewNoopProcessor(document.ProcessorKey{
+			CollectionKind: collectionKind,
+			SourceFormat:   sourceFormat,
+		})
+	}
+
+	if validator, ok := processor.(document.ActionPreflightValidator); ok {
+		preflightDocs := make([]document.ActionSnapshotDocument, 0, len(snapshotDocs))
+		for _, doc := range snapshotDocs {
+			preflightDocs = append(preflightDocs, document.ActionSnapshotDocument{
+				DocumentID:    doc.DocumentID,
+				SourceName:    doc.SourceName,
+				SourceOrder:   doc.SourceOrder,
+				Status:        doc.Status,
+				DocumentTag:   doc.DocumentTag,
+				SourceSHA256:  doc.SourceSHA256,
+				NormalizedRef: doc.NormalizedRef,
+				AuditRef:      doc.AuditRef,
+				RawRef:        doc.RawRef,
+			})
+		}
+		if err := validator.ValidateAction(ctx, document.ActionRequest{
+			ActionType:     actionType,
+			UserID:         req.UserID,
+			CollectionID:   req.CollectionID,
+			CollectionKind: collectionKind,
+			SourceFormat:   sourceFormat,
+			SnapshotDocs:   preflightDocs,
+			Input:          inputJSON,
+			RequestedAt:    time.Now(),
+		}); err != nil {
+			return nil, err
+		}
 	}
 
 	snapshotJSON, err := json.Marshal(snapshotDocs)
@@ -317,6 +370,12 @@ func (s *Service) ResolveActionSpec(
 	resolved := actionSpec
 	if collectionKind == document.CollectionKindCashflowImport && strings.EqualFold(strings.TrimSpace(actionSpec.ActionType), "export_cashflow_myob") {
 		resolved, err = s.resolveCashflowActionSpec(ctx, req.CollectionID, collectionKind, sourceFormat, actionSpec, req.DocumentIDs)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if collectionKind == document.CollectionKindBukpotRequestGSTDeductionMT && strings.EqualFold(strings.TrimSpace(actionSpec.ActionType), "request_bukpot_gst_deduction_mt") {
+		resolved, err = s.resolveBukpotRequestActionSpec(ctx, coll.UserID, req.CollectionID, collectionKind, sourceFormat, actionSpec, req.DocumentIDs)
 		if err != nil {
 			return nil, err
 		}
@@ -1094,7 +1153,118 @@ func (s *Service) resolveCashflowActionSpec(
 	return actionSpec, nil
 }
 
+func (s *Service) resolveBukpotRequestActionSpec(
+	ctx context.Context,
+	profileID string,
+	collectionID string,
+	collectionKind document.CollectionKind,
+	sourceFormat document.SourceFormat,
+	actionSpec document.ActionSpec,
+	documentIDs []string,
+) (document.ActionSpec, error) {
+	if s.bukpotRequestConfig != nil {
+		cfg, err := s.bukpotRequestConfig.Load(profileID)
+		if err == nil {
+			for _, item := range cfg.Fields {
+				field, ok := findFormField(actionSpec.Form, item.Key)
+				if !ok {
+					continue
+				}
+				field.DefaultValue = strings.TrimSpace(item.Value)
+				updateFormField(actionSpec.Form, field)
+			}
+			if field, ok := findFormField(actionSpec.Form, "headerRowNumber"); ok && cfg.Defaults.HeaderRowNumber > 0 {
+				field.DefaultValue = cfg.Defaults.HeaderRowNumber
+				updateFormField(actionSpec.Form, field)
+			}
+			if field, ok := findFormField(actionSpec.Form, "sheetName"); ok && strings.TrimSpace(cfg.Defaults.SheetName) != "" {
+				field.DefaultValue = strings.TrimSpace(cfg.Defaults.SheetName)
+				updateFormField(actionSpec.Form, field)
+			}
+		}
+	}
+
+	field, ok := findFormField(actionSpec.Form, "sheetName")
+	if !ok {
+		return actionSpec, nil
+	}
+
+	normalizedIDs, err := normalizeDocumentIDs(documentIDs)
+	if err != nil {
+		return actionSpec, err
+	}
+	if len(normalizedIDs) == 0 {
+		field.Options = nil
+		field.HelpText = "Pilih minimal satu dokumen request bukpot untuk melihat sheet yang tersedia."
+		field.State.Disabled = true
+		field.State.Message = "Sheet akan tersedia setelah Anda memilih dokumen source."
+		field.DefaultValue = ""
+		updateFormField(actionSpec.Form, field)
+		return actionSpec, nil
+	}
+
+	snapshotDocs, err := s.repo.ListSnapshotDocumentsByIDs(ctx, collectionID, collectionKind, sourceFormat, normalizedIDs)
+	if err != nil {
+		return actionSpec, err
+	}
+	if len(snapshotDocs) != len(normalizedIDs) {
+		return actionSpec, ErrSnapshotDocNotFound
+	}
+	if allowed, allowedErr := normalizeAllowedStatuses(actionSpec.Selection.AllowedStatus); allowedErr == nil {
+		if err := validateSnapshotStatuses(snapshotDocs, allowed); err != nil {
+			return actionSpec, err
+		}
+	}
+
+	commonSheetNames, defaultSheet, defaultHeaderRow, resolveErr := s.resolveCommonSpreadsheetSheets(ctx, collectionID, snapshotDocs)
+	if resolveErr != nil {
+		return actionSpec, resolveErr
+	}
+	if len(commonSheetNames) == 0 {
+		actionSpec.State.Enabled = false
+		actionSpec.State.Code = "BUKPOT_REQUEST_COMMON_SHEET_NOT_FOUND"
+		actionSpec.State.Message = "Dokumen terpilih tidak memiliki nama sheet yang sama untuk diproses bersama."
+		field.Options = nil
+		field.HelpText = actionSpec.State.Message
+		field.State.Disabled = true
+		field.State.Message = actionSpec.State.Message
+		field.DefaultValue = ""
+		updateFormField(actionSpec.Form, field)
+		return actionSpec, nil
+	}
+
+	field.Options = make([]document.FormFieldOption, 0, len(commonSheetNames))
+	for _, sheetName := range commonSheetNames {
+		field.Options = append(field.Options, document.FormFieldOption{
+			Label: sheetName,
+			Value: sheetName,
+		})
+	}
+	field.HelpText = "Sheet yang tersedia pada semua dokumen terpilih."
+	field.State.Disabled = false
+	field.State.Message = ""
+	if defaultSheet != "" {
+		field.DefaultValue = defaultSheet
+	}
+	updateFormField(actionSpec.Form, field)
+
+	if headerField, ok := findFormField(actionSpec.Form, "headerRowNumber"); ok && defaultHeaderRow > 0 {
+		headerField.DefaultValue = defaultHeaderRow
+		updateFormField(actionSpec.Form, headerField)
+	}
+
+	return actionSpec, nil
+}
+
 func (s *Service) resolveCommonCashflowSheets(
+	ctx context.Context,
+	collectionID string,
+	snapshotDocs []SnapshotDocument,
+) ([]string, string, int, error) {
+	return s.resolveCommonSpreadsheetSheets(ctx, collectionID, snapshotDocs)
+}
+
+func (s *Service) resolveCommonSpreadsheetSheets(
 	ctx context.Context,
 	collectionID string,
 	snapshotDocs []SnapshotDocument,
@@ -1102,7 +1272,7 @@ func (s *Service) resolveCommonCashflowSheets(
 	var common []string
 	headerBySheet := map[string]int{}
 	for idx, doc := range snapshotDocs {
-		workbook, err := document.LoadCashflowWorkbook(ctx, s.fileStore, collectionID, doc.NormalizedRef)
+		workbook, err := document.LoadSpreadsheetWorkbook(ctx, s.fileStore, collectionID, doc.NormalizedRef)
 		if err != nil {
 			return nil, "", 0, err
 		}
@@ -1209,6 +1379,10 @@ func (s *Service) applyRuntimeRequirements(spec document.CollectionSpec, profile
 			strings.EqualFold(strings.TrimSpace(actionSpec.ActionType), "export_cashflow_myob") {
 			actionSpec = s.applyCashflowTaxAccountRequirement(actionSpec, profileID)
 		}
+		if spec.CollectionKind == document.CollectionKindBukpotRequestGSTDeductionMT &&
+			strings.EqualFold(strings.TrimSpace(actionSpec.ActionType), "request_bukpot_gst_deduction_mt") {
+			actionSpec = s.applyBukpotRequestConfigRequirement(actionSpec, profileID)
+		}
 
 		actions = append(actions, actionSpec)
 	}
@@ -1257,6 +1431,49 @@ func (s *Service) applyBuyerRegistryRequirement(actionSpec document.ActionSpec, 
 			reason = "Buyer registry belum siap."
 		}
 		actionSpec.State.Message = reason
+	}
+
+	return actionSpec
+}
+
+func (s *Service) applyBukpotRequestConfigRequirement(actionSpec document.ActionSpec, profileID string) document.ActionSpec {
+	status := appbukpot.RequestConfigStatus{
+		Configured:    false,
+		Code:          "BUKPOT_REQUEST_CONFIG_UNAVAILABLE",
+		Message:       "Konfigurasi default profil request bukpot belum tersedia.",
+		SchemaVersion: "1",
+	}
+	if s.bukpotRequestConfig != nil {
+		status = s.bukpotRequestConfig.Status(profileID)
+	}
+
+	updated := false
+	for idx, requirement := range actionSpec.Requirements {
+		if !strings.EqualFold(strings.TrimSpace(requirement.Key), "bukpotRequestConfig") {
+			continue
+		}
+		requirement.Satisfied = status.Configured
+		requirement.Code = strings.TrimSpace(status.Code)
+		requirement.Message = strings.TrimSpace(status.Message)
+		actionSpec.Requirements[idx] = requirement
+		updated = true
+	}
+
+	if !updated {
+		actionSpec.Requirements = append(actionSpec.Requirements, document.ActionRequirementSpec{
+			Key:       "bukpotRequestConfig",
+			Label:     "Default Profil Request Bukpot",
+			Required:  true,
+			Satisfied: status.Configured,
+			Code:      strings.TrimSpace(status.Code),
+			Message:   strings.TrimSpace(status.Message),
+		})
+	}
+
+	if !status.Configured {
+		actionSpec.State.Enabled = false
+		actionSpec.State.Code = strings.TrimSpace(status.Code)
+		actionSpec.State.Message = strings.TrimSpace(status.Message)
 	}
 
 	return actionSpec

@@ -21,12 +21,13 @@ const (
 type CollectionKind string
 
 const (
-	CollectionKindInvoiceCompany    CollectionKind = "invoice_company"
-	CollectionKindTaxInvoiceCoretax CollectionKind = "tax_invoice_coretax"
-	CollectionKindBukpotBPPU        CollectionKind = "bukpot_bppu"
-	CollectionKindBukpotBP21        CollectionKind = "bukpot_bp21"
-	CollectionKindBukpotBPA1        CollectionKind = "bukpot_bpa1"
-	CollectionKindCashflowImport    CollectionKind = "cashflow_import"
+	CollectionKindInvoiceCompany              CollectionKind = "invoice_company"
+	CollectionKindTaxInvoiceCoretax           CollectionKind = "tax_invoice_coretax"
+	CollectionKindBukpotBPPU                  CollectionKind = "bukpot_bppu"
+	CollectionKindBukpotBP21                  CollectionKind = "bukpot_bp21"
+	CollectionKindBukpotBPA1                  CollectionKind = "bukpot_bpa1"
+	CollectionKindCashflowImport              CollectionKind = "cashflow_import"
+	CollectionKindBukpotRequestGSTDeductionMT CollectionKind = "bukpot_request_gst_deduction_mt"
 )
 
 func (k CollectionKind) IsValid() bool {
@@ -36,7 +37,8 @@ func (k CollectionKind) IsValid() bool {
 		CollectionKindBukpotBPPU,
 		CollectionKindBukpotBP21,
 		CollectionKindBukpotBPA1,
-		CollectionKindCashflowImport:
+		CollectionKindCashflowImport,
+		CollectionKindBukpotRequestGSTDeductionMT:
 		return true
 	default:
 		return false

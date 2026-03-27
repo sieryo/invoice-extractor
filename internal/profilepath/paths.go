@@ -40,3 +40,7 @@ func BuyerUploadTempXLSX(rootDir string, profileID string) string {
 func TaxAccountsUploadTempXLSX(rootDir string, profileID string) string {
 	return filepath.Join(ProfileDir(rootDir, profileID), "tax_accounts_upload.xlsx")
 }
+
+func BukpotRequestConfigJSON(rootDir string, profileID string) string {
+	return filepath.Join(ProfileDir(rootDir, profileID), "request_bukpot.json")
+}

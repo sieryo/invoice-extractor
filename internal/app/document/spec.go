@@ -125,6 +125,7 @@ type ActionSelectionSpec struct {
 	AllowCheckAll  bool     `json:"allowCheckAll"`
 	AllowedStatus  []string `json:"allowedStatuses"`
 	MinDocumentCnt int      `json:"minDocuments"`
+	MaxDocumentCnt int      `json:"maxDocuments,omitempty"`
 }
 
 type ActionOutputSpec struct {
@@ -252,13 +253,14 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 						AllowCheckAll:  true,
 						AllowedStatus:  []string{"ready", "warning"},
 						MinDocumentCnt: 1,
+						MaxDocumentCnt: 1,
 					},
 					Form: &FormSpec{
 						Title: "Pengaturan Export",
 						Sections: []FormSectionSpec{
 							{
-								Key:   "general",
-								Title: "Umum",
+								Key:     "general",
+								Title:   "Umum",
 								Columns: 1,
 								Fields: []FormFieldSpec{
 									{
@@ -339,8 +341,8 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 						Title: "Pengaturan Rename",
 						Sections: []FormSectionSpec{
 							{
-								Key:   "main",
-								Title: "Template Nama File",
+								Key:     "main",
+								Title:   "Template Nama File",
 								Columns: 1,
 								Fields: []FormFieldSpec{
 									{
@@ -466,18 +468,18 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 						Description: "Pilih sheet sumber dan atur parameter export cashflow.",
 						Sections: []FormSectionSpec{
 							{
-								Key:   "source",
-								Title: "Sumber Data",
+								Key:     "source",
+								Title:   "Sumber Data",
 								Columns: 3,
 								Fields: []FormFieldSpec{
 									{
-										Key:      "sheetName",
-										Kind:     FormFieldKindSelect,
-										Label:    "Sheet",
-										Required: true,
+										Key:          "sheetName",
+										Kind:         FormFieldKindSelect,
+										Label:        "Sheet",
+										Required:     true,
 										DefaultValue: "",
-										HelpText: "Pilih dokumen cashflow terlebih dahulu untuk melihat sheet yang tersedia.",
-										Span:     2,
+										HelpText:     "Pilih dokumen cashflow terlebih dahulu untuk melihat sheet yang tersedia.",
+										Span:         2,
 										State: FormFieldStateSpec{
 											Visible:  true,
 											Disabled: true,
@@ -509,30 +511,30 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 								},
 							},
 							{
-								Key:   "output",
-								Title: "Output",
+								Key:     "output",
+								Title:   "Output",
 								Columns: 3,
 								Fields: []FormFieldSpec{
 									{
-										Key:         "outputFilename",
-										Kind:        FormFieldKindText,
-										Label:       "Nama Output",
-										Required:    true,
+										Key:          "outputFilename",
+										Kind:         FormFieldKindText,
+										Label:        "Nama Output",
+										Required:     true,
 										DefaultValue: "spend_money",
-										Placeholder: "cashflow-myob",
-										HelpText:    "Tanpa ekstensi file.",
+										Placeholder:  "cashflow-myob",
+										HelpText:     "Tanpa ekstensi file.",
 										State: FormFieldStateSpec{
 											Visible: true,
 										},
 									},
 									{
-										Key:      "chequeAccount",
-										Kind:     FormFieldKindText,
-										Label:    "Cheque Account",
-										Required: true,
+										Key:          "chequeAccount",
+										Kind:         FormFieldKindText,
+										Label:        "Cheque Account",
+										Required:     true,
 										DefaultValue: "12021",
-										HelpText: "Akun cheque utama untuk file MYOB.",
-										State:    FormFieldStateSpec{Visible: true},
+										HelpText:     "Akun cheque utama untuk file MYOB.",
+										State:        FormFieldStateSpec{Visible: true},
 									},
 									{
 										Key:          "cashflowFormat",
@@ -570,8 +572,8 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 								},
 							},
 							{
-								Key:   "default_format",
-								Title: "Format Default",
+								Key:     "default_format",
+								Title:   "Format Default",
 								Columns: 2,
 								Fields: []FormFieldSpec{
 									{
@@ -602,8 +604,8 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 								},
 							},
 							{
-								Key:   "influencer_format",
-								Title: "Format Influencer",
+								Key:     "influencer_format",
+								Title:   "Format Influencer",
 								Columns: 2,
 								Fields: []FormFieldSpec{
 									{
@@ -657,6 +659,113 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 				},
 			},
 		}, true
+	case CollectionKindBukpotRequestGSTDeductionMT:
+		return CollectionSpec{
+			CollectionKind: collectionKind,
+			SourceFormat:   SourceFormatXLSX,
+			Label:          "Request Bukpot",
+			Description:    "Spreadsheet XLSX GST Deduction MT untuk generate request bukpot Coretax.",
+			Upload: UploadRuleSpec{
+				AcceptExtensions: []string{".xlsx"},
+				AcceptMIMETypes: []string{
+					"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+				},
+				MaxChunkMB:       20,
+				MaxFilesPerBatch: 200,
+			},
+			Ingest: IngestRuleSpec{
+				KeepRaw:            true,
+				DeleteTempAfterRun: true,
+				Artifacts: []ArtifactRuleSpec{
+					{Kind: "raw", Required: true},
+					{Kind: "normalized", Required: true},
+				},
+			},
+			Actions: []ActionSpec{
+				{
+					CollectionKind: string(collectionKind),
+					ActionType:     "request_bukpot_gst_deduction_mt",
+					Label:          "Request Bukpot GST Deduction MT",
+					Description:    "Generate ZIP berisi template Excel dan XML Coretax dari source GST Deduction MT.",
+					State:          ActionStateSpec{Enabled: true},
+					Presentation:   ActionPresentationSpec{Mode: "inline", Width: "xl"},
+					Selection: ActionSelectionSpec{
+						Mode:           "manual",
+						AllowCheckAll:  true,
+						AllowedStatus:  []string{"ready", "warning"},
+						MinDocumentCnt: 1,
+					},
+					Form: &FormSpec{
+						Title:       "Pengaturan Request Bukpot",
+						Description: "Default profil akan dipakai otomatis, lalu bisa diubah untuk eksekusi ini saja.",
+						Sections: []FormSectionSpec{
+							{
+								Key:         "source",
+								Title:       "Sumber Excel",
+								Description: "Pilih sheet dan baris header dari workbook terpilih.",
+								Columns:     3,
+								Fields: []FormFieldSpec{
+									{
+										Key:          "sheetName",
+										Kind:         FormFieldKindSelect,
+										Label:        "Sheet",
+										Required:     true,
+										DefaultValue: "",
+										Span:         2,
+										HelpText:     "Pilih dokumen terlebih dahulu untuk melihat sheet yang tersedia.",
+										State:        FormFieldStateSpec{Visible: true, Disabled: true},
+									},
+									{
+										Key:          "headerRowNumber",
+										Kind:         FormFieldKindNumber,
+										Label:        "Baris Header",
+										Required:     true,
+										DefaultValue: 1,
+										Placeholder:  "1",
+										HelpText:     "Dipakai untuk validasi kolom dan pembacaan row data.",
+										State:        FormFieldStateSpec{Visible: true},
+									},
+								},
+							},
+							{
+								Key:         "override",
+								Title:       "Override Eksekusi Ini",
+								Description: "Prefill dari Default Profil. Ubah hanya jika file bulan ini memakai nama header yang berbeda.",
+								Columns:     2,
+								Fields: []FormFieldSpec{
+									{Key: "entity", Kind: FormFieldKindText, Label: "Entity", Required: true, DefaultValue: "Entity", State: FormFieldStateSpec{Visible: true}},
+									{Key: "settlementDate", Kind: FormFieldKindText, Label: "Settlement Date", Required: true, DefaultValue: "Settlemet Date", State: FormFieldStateSpec{Visible: true}},
+									{Key: "npwp", Kind: FormFieldKindText, Label: "NPWP", Required: true, DefaultValue: "NPWP", State: FormFieldStateSpec{Visible: true}},
+									{Key: "nitku", Kind: FormFieldKindText, Label: "NITKU", Required: true, DefaultValue: "NITKU", State: FormFieldStateSpec{Visible: true}},
+									{Key: "facility", Kind: FormFieldKindText, Label: "Fasilitas", Required: false, DefaultValue: "Fasilitas", State: FormFieldStateSpec{Visible: true}},
+									{Key: "taxObjectCode", Kind: FormFieldKindText, Label: "Kode Objek Pajak", Required: true, DefaultValue: "Kode Objek Pajak", State: FormFieldStateSpec{Visible: true}},
+									{Key: "taxBase", Kind: FormFieldKindText, Label: "DPP", Required: true, DefaultValue: "(Rp)Total Invoice (Exc VAT)", State: FormFieldStateSpec{Visible: true}},
+									{Key: "withholdingRate", Kind: FormFieldKindText, Label: "Tarif / WHT", Required: true, DefaultValue: "WHT", State: FormFieldStateSpec{Visible: true}},
+									{Key: "taxInvoiceNumber", Kind: FormFieldKindText, Label: "Faktur Pajak No", Required: false, DefaultValue: "Faktur Pajak No", State: FormFieldStateSpec{Visible: true}},
+									{Key: "referenceNumber", Kind: FormFieldKindText, Label: "Invoice / Kwitansi No", Required: true, DefaultValue: "Invoice / Kwitansi No", State: FormFieldStateSpec{Visible: true}},
+									{Key: "referenceDate", Kind: FormFieldKindText, Label: "FP DATE", Required: true, DefaultValue: "FP DATE", State: FormFieldStateSpec{Visible: true}},
+								},
+							},
+						},
+					},
+					Requirements: []ActionRequirementSpec{
+						{
+							Key:      "bukpotRequestConfig",
+							Label:    "Default Profil Request Bukpot",
+							Required: true,
+						},
+					},
+					Outputs: []ActionOutputSpec{
+						{
+							Kind:       "file",
+							MimeType:   "application/zip",
+							Ext:        "zip",
+							DownloadOK: true,
+						},
+					},
+				},
+			},
+		}, true
 	default:
 		return CollectionSpec{}, false
 	}
@@ -689,8 +798,8 @@ func buildBukpotCollectionSpec(
 			Title: "Pengaturan Rename",
 			Sections: []FormSectionSpec{
 				{
-					Key:   "main",
-					Title: "Template Nama File",
+					Key:     "main",
+					Title:   "Template Nama File",
 					Columns: 1,
 					Fields: []FormFieldSpec{
 						{

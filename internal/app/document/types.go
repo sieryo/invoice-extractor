@@ -12,12 +12,13 @@ type CollectionKind = dcollection.CollectionKind
 type SourceFormat = dcollection.SourceFormat
 
 const (
-	CollectionKindInvoiceCompany    = dcollection.CollectionKindInvoiceCompany
-	CollectionKindTaxInvoiceCoretax = dcollection.CollectionKindTaxInvoiceCoretax
-	CollectionKindBukpotBPPU        = dcollection.CollectionKindBukpotBPPU
-	CollectionKindBukpotBP21        = dcollection.CollectionKindBukpotBP21
-	CollectionKindBukpotBPA1        = dcollection.CollectionKindBukpotBPA1
-	CollectionKindCashflowImport    = dcollection.CollectionKindCashflowImport
+	CollectionKindInvoiceCompany              = dcollection.CollectionKindInvoiceCompany
+	CollectionKindTaxInvoiceCoretax           = dcollection.CollectionKindTaxInvoiceCoretax
+	CollectionKindBukpotBPPU                  = dcollection.CollectionKindBukpotBPPU
+	CollectionKindBukpotBP21                  = dcollection.CollectionKindBukpotBP21
+	CollectionKindBukpotBPA1                  = dcollection.CollectionKindBukpotBPA1
+	CollectionKindCashflowImport              = dcollection.CollectionKindCashflowImport
+	CollectionKindBukpotRequestGSTDeductionMT = dcollection.CollectionKindBukpotRequestGSTDeductionMT
 
 	SourceFormatPDF  = dcollection.SourceFormatPDF
 	SourceFormatXLSX = dcollection.SourceFormatXLSX
@@ -159,4 +160,8 @@ type DocumentProcessor interface {
 	Key() ProcessorKey
 	Ingest(ctx context.Context, req IngestRequest) (IngestResult, error)
 	RunAction(ctx context.Context, req ActionRequest) (ActionResult, error)
+}
+
+type ActionPreflightValidator interface {
+	ValidateAction(ctx context.Context, req ActionRequest) error
 }

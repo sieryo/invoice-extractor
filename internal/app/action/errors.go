@@ -14,6 +14,7 @@ var (
 	ErrInvalidActionSpec     = errors.New("invalid action spec")
 	ErrEmptySnapshot         = errors.New("no documents available for action snapshot")
 	ErrMinDocumentsRequired  = errors.New("minimum documents requirement is not met")
+	ErrMaxDocumentsExceeded  = errors.New("maximum documents requirement is exceeded")
 	ErrInvalidDocumentStatus = errors.New("invalid document status filter")
 	ErrInvalidDocumentIDs    = errors.New("invalid document ids")
 	ErrSnapshotDocNotFound   = errors.New("some selected documents are not available for snapshot")
@@ -59,4 +60,19 @@ func (e *RequirementError) Error() string {
 
 func (e *RequirementError) Unwrap() error {
 	return ErrActionRequirement
+}
+
+type MaxDocumentsError struct {
+	Limit int
+}
+
+func (e *MaxDocumentsError) Error() string {
+	if e == nil || e.Limit <= 0 {
+		return ErrMaxDocumentsExceeded.Error()
+	}
+	return "jumlah dokumen melebihi batas maksimum untuk action ini"
+}
+
+func (e *MaxDocumentsError) Unwrap() error {
+	return ErrMaxDocumentsExceeded
 }

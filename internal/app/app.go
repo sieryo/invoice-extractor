@@ -49,8 +49,9 @@ type App struct {
 	Logger    *slog.Logger
 	FileStore file.FileStore
 
-	BuyerRegistryService *buyer.BuyerRegistryService
-	TaxAccountService    *appcashflow.TaxAccountService
+	BuyerRegistryService       *buyer.BuyerRegistryService
+	TaxAccountService          *appcashflow.TaxAccountService
+	BukpotRequestConfigService *appbukpot.RequestConfigService
 
 	TemplateRegistryService *template.TemplateRegistryService
 	DocumentProcessors      *document.Registry
@@ -85,6 +86,7 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string, cfg config.Config) *Ap
 
 	authService := auth.NewService(profileRepo, sessionRepo, logger, rootDir)
 	buyerRegistryService := buyer.NewBuyerRegistryService(rootDir)
+	bukpotRequestConfigService := appbukpot.NewRequestConfigService(rootDir)
 	invoiceExtractService := invoiceextract.NewInvoiceExtractService(templateRegistry, buyerRegistryService)
 	invoiceService := invoice.NewInvoiceService(invoiceExporter, fs)
 	taxInvoiceExtractService := extract.NewTaxInvoiceExtractService()
@@ -113,6 +115,7 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string, cfg config.Config) *Ap
 	documentRegistry.MustRegister(document.NewPDFBukpotProcessor(document.CollectionKindBukpotBPPU, bukpotService, fs))
 	documentRegistry.MustRegister(document.NewPDFBukpotProcessor(document.CollectionKindBukpotBP21, bukpotService, fs))
 	documentRegistry.MustRegister(document.NewPDFBukpotProcessor(document.CollectionKindBukpotBPA1, bukpotService, fs))
+	documentRegistry.MustRegister(document.NewXLSXBukpotRequestProcessor(fs, rootDir, bukpotRequestConfigService))
 	if cfg.Features.EnableCashflowXLSX && taxAccountService != nil {
 		documentRegistry.MustRegister(document.NewXLSXCashflowProcessor(fs, taxAccountService))
 	}
@@ -133,6 +136,7 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string, cfg config.Config) *Ap
 		documentRegistry,
 		buyerRegistryService,
 		taxAccountService,
+		bukpotRequestConfigService,
 		fs,
 		1,
 	)
@@ -152,21 +156,22 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string, cfg config.Config) *Ap
 	jobService := jobapp.NewJobService(jobRepo, jobRunner, fs)
 
 	return &App{
-		RootDir:                 rootDir,
-		AuthService:             authService,
-		CollectionService:       collectionService,
-		FileService:             fileService,
-		IngestService:           ingestService,
-		ActionService:           actionService,
-		JobService:              jobService,
-		InvoiceService:          invoiceService,
-		Logger:                  logger,
-		FileStore:               fs,
-		JobRunner:               jobRunner,
-		BuyerRegistryService:    buyerRegistryService,
-		TaxAccountService:       taxAccountService,
-		TemplateRegistryService: templateRegistryService,
-		DocumentProcessors:      documentRegistry,
-		Features:                cfg.Features,
+		RootDir:                    rootDir,
+		AuthService:                authService,
+		CollectionService:          collectionService,
+		FileService:                fileService,
+		IngestService:              ingestService,
+		ActionService:              actionService,
+		JobService:                 jobService,
+		InvoiceService:             invoiceService,
+		Logger:                     logger,
+		FileStore:                  fs,
+		JobRunner:                  jobRunner,
+		BuyerRegistryService:       buyerRegistryService,
+		TaxAccountService:          taxAccountService,
+		BukpotRequestConfigService: bukpotRequestConfigService,
+		TemplateRegistryService:    templateRegistryService,
+		DocumentProcessors:         documentRegistry,
+		Features:                   cfg.Features,
 	}
 }

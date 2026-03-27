@@ -17,9 +17,8 @@ import (
 )
 
 const (
-	cashflowMYOBActionType   = "export_cashflow_myob"
-	cashflowDefaultTextName  = "cashflow-myob"
-	cashflowSheetLookupError = "sheet cashflow tidak ditemukan"
+	cashflowMYOBActionType  = "export_cashflow_myob"
+	cashflowDefaultTextName = "cashflow-myob"
 )
 
 var cashflowInvalidFilenameCharRegex = regexp.MustCompile(`[<>:"/\\|?*\x00-\x1F]`)
@@ -111,7 +110,7 @@ func (p *XLSXCashflowProcessor) RunAction(ctx context.Context, req ActionRequest
 		nextChequeNumber = *input.StartingChequeNumber
 	}
 	for _, doc := range req.SnapshotDocs {
-		workbook, loadErr := LoadCashflowWorkbook(ctx, p.fileStore, req.CollectionID, doc.NormalizedRef)
+		workbook, loadErr := LoadSpreadsheetWorkbook(ctx, p.fileStore, req.CollectionID, doc.NormalizedRef)
 		if loadErr != nil {
 			result.ItemResults = append(result.ItemResults, ActionItemResult{
 				DocumentID: doc.DocumentID,
@@ -122,7 +121,7 @@ func (p *XLSXCashflowProcessor) RunAction(ctx context.Context, req ActionRequest
 			continue
 		}
 
-		sheet, findErr := findCashflowSheet(*workbook, input.SheetName)
+		sheet, findErr := FindSpreadsheetSheet(*workbook, input.SheetName)
 		if findErr != nil {
 			result.ItemResults = append(result.ItemResults, ActionItemResult{
 				DocumentID: doc.DocumentID,
@@ -231,7 +230,7 @@ func (p *XLSXCashflowProcessor) RunAction(ctx context.Context, req ActionRequest
 
 func (p *XLSXCashflowProcessor) buildSpendMoneyDocumentRows(
 	sourceName string,
-	sheet CashflowSheet,
+	sheet SpreadsheetSheet,
 	input appcashflow.ExportMYOBInput,
 	taxAccounts map[string]appcashflow.TaxAccount,
 	startChequeNumber int,
@@ -247,7 +246,7 @@ func (p *XLSXCashflowProcessor) buildSpendMoneyDocumentRows(
 	processed := 0
 
 	for idx, rawRow := range sheet.RawRows {
-		rowNumber := sheetRowNumberAt(sheet, idx)
+		rowNumber := SpreadsheetRowNumberAt(sheet, idx)
 		if rowNumber <= input.HeaderRowNumber {
 			continue
 		}
@@ -284,10 +283,10 @@ func (p *XLSXCashflowProcessor) buildSpendMoneyDocumentRows(
 	return rows, uniqueStrings(warnings), processed, nil
 }
 
-func resolveCashflowHeaders(sheet CashflowSheet, headerRowNumber int) ([]string, map[string]int, error) {
+func resolveCashflowHeaders(sheet SpreadsheetSheet, headerRowNumber int) ([]string, map[string]int, error) {
 	headerIdx := -1
 	for idx := range sheet.RawRows {
-		if sheetRowNumberAt(sheet, idx) == headerRowNumber {
+		if SpreadsheetRowNumberAt(sheet, idx) == headerRowNumber {
 			headerIdx = idx
 			break
 		}
@@ -631,29 +630,6 @@ func cashflowCell(row []string, fieldIndex map[string]int, key string) string {
 		return ""
 	}
 	return strings.TrimSpace(row[idx])
-}
-
-func sheetRowNumberAt(sheet CashflowSheet, idx int) int {
-	if idx >= 0 && idx < len(sheet.RawRowNumbers) && sheet.RawRowNumbers[idx] > 0 {
-		return sheet.RawRowNumbers[idx]
-	}
-	if idx < len(sheet.RawRows) {
-		return sheet.HeaderRowIndex + idx
-	}
-	return idx + 1
-}
-
-func findCashflowSheet(workbook CashflowWorkbook, sheetName string) (CashflowSheet, error) {
-	target := strings.TrimSpace(sheetName)
-	if target == "" {
-		target = strings.TrimSpace(workbook.PrimarySheet)
-	}
-	for _, sheet := range workbook.Sheets {
-		if strings.EqualFold(strings.TrimSpace(sheet.Name), target) {
-			return sheet, nil
-		}
-	}
-	return CashflowSheet{}, fmt.Errorf("%s: %s", cashflowSheetLookupError, target)
 }
 
 func prefixWarnings(rowNumber int, warnings []string) []string {
