@@ -10,7 +10,8 @@ $backendDir = Resolve-Path (Join-Path $scriptDir "..")
 Set-Location $backendDir
 
 $appName = "invoice-extractor"
-$certName = "Invoice Extractor"
+$productName = "Document Workspace"
+$certName = if ($env:APP_SIGN_CERT_NAME) { $env:APP_SIGN_CERT_NAME } else { $productName }
 $outDir = Join-Path $backendDir "build/release"
 $exePath = Join-Path $outDir "$appName.exe"
 $repoRoot = Resolve-Path (Join-Path $backendDir "..")
@@ -133,4 +134,5 @@ Get-FileHash $exePath -Algorithm SHA256 |
   Out-File (Join-Path $outDir "$appName.exe.sha256")
 
 Write-Host ">> Release done: $outDir"
+Write-Host ">> Product: $productName"
 Write-Host ">> Zip package: $zipPath"
