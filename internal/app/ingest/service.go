@@ -387,6 +387,149 @@ func (s *IngestService) GetDocument(
 	return doc, nil
 }
 
+func (s *IngestService) ReplaceDocumentSource(
+	ctx context.Context,
+	userID string,
+	collectionID string,
+	documentID string,
+	fileName string,
+	fileData []byte,
+) (*DocumentRecord, error) {
+	coll, err := s.ensureCollectionOwner(ctx, userID, collectionID)
+	if err != nil {
+		return nil, err
+	}
+	if coll.IsFrozen() {
+		return nil, collection.ErrCollectionFrozen
+	}
+
+	doc, err := s.documentRepo.FindByID(ctx, documentID)
+	if err != nil {
+		return nil, err
+	}
+	if doc == nil || doc.CollectionID != collectionID {
+		return nil, ErrDocumentNotFound
+	}
+	if doc.SourceFormat == document.SourceFormatPDF {
+		return nil, ErrReplaceSourceNotSupported
+	}
+	if !isAllowedUploadBySpec(doc.CollectionKind, fileName) {
+		return nil, fmt.Errorf("file %s is not allowed for collection kind %s", fileName, doc.CollectionKind)
+	}
+
+	tempObj, err := s.fileStore.SaveTemp(ctx, collectionID, fileName, fileData)
+	if err != nil {
+		return nil, err
+	}
+
+	sum := sha256.Sum256(fileData)
+	sha := hex.EncodeToString(sum[:])
+	source := document.IngestSource{
+		SourceID:     tempObj.ID,
+		OriginalName: fileName,
+		MimeType:     tempObj.MimeType,
+		SizeBytes:    int64(len(fileData)),
+		SHA256:       sha,
+		SourceOrder:  doc.SourceOrder,
+		TempPath:     tempObj.Path,
+		UploadedAt:   time.Now(),
+	}
+
+	processor, ok := s.processors.Get(document.ProcessorKey{
+		CollectionKind: doc.CollectionKind,
+		SourceFormat:   doc.SourceFormat,
+	})
+	if !ok {
+		return nil, fmt.Errorf("processor not found for %s/%s", doc.CollectionKind, doc.SourceFormat)
+	}
+
+	req := document.IngestRequest{
+		RequestID:      uuid.NewString(),
+		UserID:         userID,
+		CollectionID:   collectionID,
+		CollectionKind: doc.CollectionKind,
+		SourceFormat:   doc.SourceFormat,
+		Sources:        []document.IngestSource{source},
+		Policy:         defaultIngestPolicy(doc.CollectionKind),
+		RequestedAt:    time.Now(),
+	}
+
+	res, err := processor.Ingest(ctx, req)
+	items := res.Items
+	if err != nil && len(items) == 0 {
+		s.cleanupTempSources([]document.IngestSource{source}, defaultIngestPolicy(doc.CollectionKind))
+		return nil, fmt.Errorf("extract failed: %w", err)
+	}
+	items = normalizeIngestItems([]document.IngestSource{source}, items)
+	item := items[0]
+	if item.Status != document.IngestStatusReady && item.Status != document.IngestStatusWarning {
+		s.cleanupTempSources([]document.IngestSource{source}, defaultIngestPolicy(doc.CollectionKind))
+		if len(item.Errors) > 0 {
+			return nil, fmt.Errorf("%s", item.Errors[0])
+		}
+		if strings.TrimSpace(item.Message) != "" {
+			return nil, fmt.Errorf("%s", item.Message)
+		}
+		return nil, fmt.Errorf("extract failed")
+	}
+
+	normalizedRef := pickArtifactRef(item.Artifacts, "normalized")
+	if normalizedRef == "" {
+		s.cleanupTempSources([]document.IngestSource{source}, defaultIngestPolicy(doc.CollectionKind))
+		return nil, fmt.Errorf("normalized artifact missing")
+	}
+
+	oldStatus := doc.Status
+	oldNormalizedRef := doc.NormalizedRef
+	oldAuditRef := doc.AuditRef
+	oldRawRef := doc.RawRef
+
+	doc.DocumentTag = strings.TrimSpace(item.DocumentTag)
+	doc.SourceName = source.OriginalName
+	doc.SourceSizeBytes = source.SizeBytes
+	doc.SourceMIME = source.MimeType
+	doc.SourceSHA256 = source.SHA256
+	doc.Status = string(item.Status)
+	doc.Message = item.Message
+	doc.NormalizedRef = normalizedRef
+	doc.AuditRef = ptrIfNotEmpty(pickArtifactRef(item.Artifacts, "audit"))
+	doc.RawRef = ptrIfNotEmpty(pickArtifactRef(item.Artifacts, "raw"))
+
+	if err := s.documentRepo.Update(ctx, doc); err != nil {
+		s.cleanupTempSources([]document.IngestSource{source}, defaultIngestPolicy(doc.CollectionKind))
+		return nil, err
+	}
+
+	if collSummary, findErr := s.collectionRepo.FindByID(ctx, collectionID); findErr == nil && collSummary != nil {
+		ready := collSummary.ReadyCount
+		warning := collSummary.WarningCount
+		switch {
+		case oldStatus == "ready" && doc.Status == "warning":
+			ready--
+			warning++
+		case oldStatus == "warning" && doc.Status == "ready":
+			warning--
+			ready++
+		}
+		_ = s.collectionRepo.UpdateSummary(
+			ctx,
+			collectionID,
+			collSummary.TotalCount,
+			ready,
+			warning,
+			collSummary.FailedCount,
+			collSummary.DuplicateCount,
+		)
+	}
+
+	deleteReplacedArtifact(ctx, s.fileStore, collectionID, oldNormalizedRef, doc.NormalizedRef)
+	deleteReplacedArtifact(ctx, s.fileStore, collectionID, stringPtrValue(oldAuditRef), stringPtrValue(doc.AuditRef))
+	deleteReplacedArtifact(ctx, s.fileStore, collectionID, stringPtrValue(oldRawRef), stringPtrValue(doc.RawRef))
+	s.cleanupTempSources([]document.IngestSource{source}, defaultIngestPolicy(doc.CollectionKind))
+
+	return doc, nil
+}
+
 func (s *IngestService) ListHistory(
 	ctx context.Context,
 	userID string,

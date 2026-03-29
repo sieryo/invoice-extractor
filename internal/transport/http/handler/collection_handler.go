@@ -7,6 +7,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/sieryo/invoice-extractor/internal/app/collection"
+	"github.com/sieryo/invoice-extractor/internal/app/document"
 	dcollection "github.com/sieryo/invoice-extractor/internal/domain/collection"
 )
 
@@ -48,6 +49,11 @@ func (h *CollectionHandler) CreateCollection(c *fiber.Ctx) error {
 
 func (h *CollectionHandler) CreateNode(c *fiber.Ctx) error {
 	return h.createNode(c, false)
+}
+
+func (h *CollectionHandler) GetCreateSpec(c *fiber.Ctx) error {
+	spec := document.BuildCreateCollectionSpec()
+	return SendSuccess(c, fiber.StatusOK, spec, "collection create spec retrieved successfully")
 }
 
 func (h *CollectionHandler) createNode(c *fiber.Ctx, legacyDefault bool) error {

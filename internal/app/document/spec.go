@@ -201,6 +201,26 @@ type CollectionSpec struct {
 	Actions        []ActionSpec   `json:"actions"`
 }
 
+type CreateCollectionSourceFormatSpec struct {
+	Value       SourceFormat `json:"value"`
+	Label       string       `json:"label"`
+	Description string       `json:"description,omitempty"`
+}
+
+type CreateCollectionKindSpec struct {
+	CollectionKind CollectionKind `json:"collectionKind"`
+	Label          string         `json:"label"`
+	Description    string         `json:"description,omitempty"`
+	SourceFormats  []SourceFormat `json:"sourceFormats"`
+	PrimaryActions []string       `json:"primaryActions,omitempty"`
+}
+
+type CreateCollectionSpec struct {
+	DefaultSourceFormat SourceFormat                       `json:"defaultSourceFormat,omitempty"`
+	SourceFormats       []CreateCollectionSourceFormatSpec `json:"sourceFormats"`
+	CollectionKinds     []CreateCollectionKindSpec         `json:"collectionKinds"`
+}
+
 func buildHeaderRowField(label string, helpText string) FormFieldSpec {
 	options := make([]FormFieldOption, 0, 10)
 	for _, row := range specutil.HeaderRowNumbers(10) {
@@ -781,6 +801,74 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 	}
 }
 
+func BuildCreateCollectionSpec() CreateCollectionSpec {
+	kinds := []CollectionKind{
+		CollectionKindInvoiceCompany,
+		CollectionKindTaxInvoiceCoretax,
+		CollectionKindBukpotBPPU,
+		CollectionKindBukpotBP21,
+		CollectionKindBukpotBPA1,
+		CollectionKindBukpotRequestGSTDeductionMT,
+		CollectionKindCashflowImport,
+	}
+
+	sourceFormatOrder := []SourceFormat{
+		SourceFormatPDF,
+		SourceFormatXLSX,
+		SourceFormatCSV,
+	}
+
+	availableFormats := map[SourceFormat]struct{}{}
+	kindSpecs := make([]CreateCollectionKindSpec, 0, len(kinds))
+
+	for _, kind := range kinds {
+		spec, ok := BuildCollectionSpec(kind)
+		if !ok {
+			continue
+		}
+
+		availableFormats[spec.SourceFormat] = struct{}{}
+		primaryActions := make([]string, 0, len(spec.Actions))
+		for _, action := range spec.Actions {
+			label := strings.TrimSpace(action.Label)
+			if label == "" {
+				continue
+			}
+			primaryActions = append(primaryActions, label)
+		}
+
+		kindSpecs = append(kindSpecs, CreateCollectionKindSpec{
+			CollectionKind: spec.CollectionKind,
+			Label:          spec.Label,
+			Description:    spec.Description,
+			SourceFormats:  []SourceFormat{spec.SourceFormat},
+			PrimaryActions: primaryActions,
+		})
+	}
+
+	sourceFormats := make([]CreateCollectionSourceFormatSpec, 0, len(sourceFormatOrder))
+	defaultSourceFormat := SourceFormat("")
+	for _, sourceFormat := range sourceFormatOrder {
+		if _, ok := availableFormats[sourceFormat]; !ok {
+			continue
+		}
+		if !defaultSourceFormat.IsValid() {
+			defaultSourceFormat = sourceFormat
+		}
+		sourceFormats = append(sourceFormats, CreateCollectionSourceFormatSpec{
+			Value:       sourceFormat,
+			Label:       sourceFormatCreateLabel(sourceFormat),
+			Description: sourceFormatCreateDescription(sourceFormat),
+		})
+	}
+
+	return CreateCollectionSpec{
+		DefaultSourceFormat: defaultSourceFormat,
+		SourceFormats:       sourceFormats,
+		CollectionKinds:     kindSpecs,
+	}
+}
+
 func buildBukpotCollectionSpec(
 	collectionKind CollectionKind,
 	label string,
@@ -930,4 +1018,26 @@ func buildBukpotTemplateSuggestions(collectionKind CollectionKind) []FormSuggest
 	}
 
 	return suggestions
+}
+
+func sourceFormatCreateLabel(sourceFormat SourceFormat) string {
+	switch sourceFormat {
+	case SourceFormatXLSX:
+		return "Excel"
+	case SourceFormatCSV:
+		return "CSV"
+	default:
+		return "PDF"
+	}
+}
+
+func sourceFormatCreateDescription(sourceFormat SourceFormat) string {
+	switch sourceFormat {
+	case SourceFormatXLSX:
+		return "Untuk workbook Excel yang diproses sebagai sumber data terstruktur."
+	case SourceFormatCSV:
+		return "Untuk data tabel CSV yang diproses sebagai sumber data terstruktur."
+	default:
+		return "Untuk dokumen PDF yang diparse langsung saat upload."
+	}
 }

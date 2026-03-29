@@ -8,4 +8,5 @@ var (
 	ErrChunkNotFound      = errors.New("upload chunk not found")
 	ErrHistoryNotFound    = errors.New("collection history not found")
 	ErrDocumentNotFound   = errors.New("collection document not found")
+	ErrReplaceSourceNotSupported = errors.New("replace source is not supported for this document")
 )

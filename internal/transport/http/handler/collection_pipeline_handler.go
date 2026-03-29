@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"io"
 	"strconv"
 
 	"github.com/gofiber/fiber/v2"
@@ -187,4 +188,70 @@ func (h *CollectionPipelineHandler) GetDocumentInvoice(c *fiber.Ctx) error {
 	}
 
 	return SendSuccess(c, fiber.StatusOK, inv, "invoice loaded")
+}
+
+func (h *CollectionPipelineHandler) ReplaceDocumentSource(c *fiber.Ctx) error {
+	ctx := c.Context()
+
+	userID, ok := c.Locals("userId").(string)
+	if !ok {
+		return fiber.ErrUnauthorized
+	}
+
+	collectionID := c.Params("id")
+	if collectionID == "" {
+		return SendError(c, fiber.StatusBadRequest, "collection id is required")
+	}
+	documentID := c.Params("documentId")
+	if documentID == "" {
+		return SendError(c, fiber.StatusBadRequest, "document id is required")
+	}
+
+	form, err := c.MultipartForm()
+	if err != nil {
+		return SendError(c, fiber.StatusBadRequest, "invalid multipart form")
+	}
+	rawFiles := form.File["file"]
+	if len(rawFiles) == 0 {
+		return SendError(c, fiber.StatusBadRequest, "file is required")
+	}
+	if len(rawFiles) > 1 {
+		return SendError(c, fiber.StatusBadRequest, "only one file is allowed")
+	}
+
+	src, err := rawFiles[0].Open()
+	if err != nil {
+		return SendError(c, fiber.StatusInternalServerError, "failed to open file")
+	}
+	defer src.Close()
+
+	b, err := io.ReadAll(src)
+	if err != nil {
+		return SendError(c, fiber.StatusInternalServerError, "failed to read file")
+	}
+
+	doc, err := h.ingestService.ReplaceDocumentSource(
+		ctx,
+		userID,
+		collectionID,
+		documentID,
+		rawFiles[0].Filename,
+		b,
+	)
+	if err != nil {
+		switch {
+		case errors.Is(err, dcollection.ErrCollectionNotFound):
+			return SendError(c, fiber.StatusNotFound, "collection not found")
+		case errors.Is(err, ingest.ErrDocumentNotFound):
+			return SendError(c, fiber.StatusNotFound, "document not found")
+		case errors.Is(err, ingest.ErrReplaceSourceNotSupported):
+			return SendError(c, fiber.StatusBadRequest, "replace source hanya tersedia untuk dokumen excel")
+		case errors.Is(err, dcollection.ErrCollectionFrozen):
+			return SendError(c, fiber.StatusConflict, "collection sudah freeze dan tidak bisa mengubah dokumen")
+		default:
+			return SendError(c, fiber.StatusBadRequest, err.Error())
+		}
+	}
+
+	return SendSuccess(c, fiber.StatusOK, doc, "document source replaced")
 }
