@@ -62,6 +62,8 @@ type summaryCount struct {
 	skipped int
 }
 
+const maxStoredItemWarnings = 100
+
 func NewService(
 	repo Repository,
 	collectionRepo dcollection.Repository,
@@ -651,7 +653,7 @@ func buildActionItems(
 			counts.skipped++
 		}
 
-		warningJSON, _ := json.Marshal(warnings)
+		warningJSON, _ := json.Marshal(limitActionWarnings(warnings))
 		items = append(items, &CollectionActionItem{
 			ID:           uuid.NewString(),
 			ActionID:     actionID,
@@ -665,6 +667,16 @@ func buildActionItems(
 	}
 
 	return items, counts
+}
+
+func limitActionWarnings(warnings []string) []string {
+	if len(warnings) <= maxStoredItemWarnings {
+		return warnings
+	}
+
+	trimmed := append([]string(nil), warnings[:maxStoredItemWarnings]...)
+	trimmed = append(trimmed, fmt.Sprintf("+%d warning lainnya disembunyikan", len(warnings)-maxStoredItemWarnings))
+	return trimmed
 }
 
 func buildActionOutputs(actionID string, outputs []document.ActionOutput) []*CollectionActionOutput {

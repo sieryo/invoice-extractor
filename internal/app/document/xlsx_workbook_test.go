@@ -127,6 +127,44 @@ func TestSpreadsheetCellPercent(t *testing.T) {
 	}
 }
 
+func TestSpreadsheetCellMoney_PrefersRawValueLikeLegacyReader(t *testing.T) {
+	t.Parallel()
+
+	cell := SpreadsheetCell{
+		Display:    "1.030.820,39",
+		Raw:        "1030820.394",
+		ValueType:  SpreadsheetCellValueTypeFloat,
+		FloatValue: floatPtr(1030820.394),
+	}
+
+	got, ok := SpreadsheetCellMoney(cell)
+	if !ok {
+		t.Fatal("SpreadsheetCellMoney() returned ok=false")
+	}
+	if got != 1030820.394 {
+		t.Fatalf("SpreadsheetCellMoney() = %v, want %v", got, 1030820.394)
+	}
+}
+
+func TestSpreadsheetCellMoney_FallsBackToDisplayWhenRawEmpty(t *testing.T) {
+	t.Parallel()
+
+	cell := SpreadsheetCell{
+		Display:     "1.030.820,39",
+		Raw:         "",
+		ValueType:   SpreadsheetCellValueTypeString,
+		StringValue: "1.030.820,39",
+	}
+
+	got, ok := SpreadsheetCellMoney(cell)
+	if !ok {
+		t.Fatal("SpreadsheetCellMoney() returned ok=false")
+	}
+	if got != 1030820.39 {
+		t.Fatalf("SpreadsheetCellMoney() = %v, want %v", got, 1030820.39)
+	}
+}
+
 func floatPtr(value float64) *float64 {
 	return &value
 }

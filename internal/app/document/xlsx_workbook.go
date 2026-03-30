@@ -508,6 +508,30 @@ func SpreadsheetCellFloat(cell SpreadsheetCell) (float64, bool) {
 	return parseSpreadsheetFloatValue(cell.Raw, cell.Display)
 }
 
+func SpreadsheetCellMoney(cell SpreadsheetCell) (float64, bool) {
+	candidates := []string{}
+	for _, candidate := range []string{cell.Raw, cell.StringValue, cell.Display} {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			continue
+		}
+		if !containsString(candidates, candidate) {
+			candidates = append(candidates, candidate)
+		}
+	}
+
+	for _, candidate := range candidates {
+		if value, ok := parseSpreadsheetMoneyValue(candidate); ok {
+			return value, true
+		}
+	}
+
+	if cell.FloatValue != nil {
+		return *cell.FloatValue, true
+	}
+	return 0, false
+}
+
 func SpreadsheetCellPercent(cell SpreadsheetCell) (float64, bool) {
 	containsPercent := strings.Contains(cell.Display, "%") || strings.Contains(cell.Raw, "%") || strings.Contains(cell.StringValue, "%")
 	if cell.FloatValue != nil {
@@ -540,6 +564,46 @@ func SpreadsheetCellPercent(cell SpreadsheetCell) (float64, bool) {
 	}
 
 	return SpreadsheetCellFloat(cell)
+}
+
+func parseSpreadsheetMoneyValue(raw string) (float64, bool) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return 0, false
+	}
+	value = strings.ReplaceAll(value, " ", "")
+	value = strings.ReplaceAll(value, "\u00a0", "")
+
+	sign := ""
+	if strings.HasPrefix(value, "-") || strings.HasPrefix(value, "+") {
+		sign = value[:1]
+		value = value[1:]
+	}
+	if value == "" {
+		return 0, false
+	}
+
+	if strings.Contains(value, ",") {
+		value = strings.ReplaceAll(value, ".", "")
+		value = strings.ReplaceAll(value, ",", ".")
+	} else if strings.Count(value, ".") > 1 {
+		value = strings.ReplaceAll(value, ".", "")
+	}
+
+	n, err := strconv.ParseFloat(sign+value, 64)
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 func SpreadsheetCellDate(cell SpreadsheetCell) (time.Time, bool) {

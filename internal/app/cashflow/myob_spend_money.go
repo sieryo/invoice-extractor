@@ -1,8 +1,6 @@
 package cashflow
 
 import (
-	"bytes"
-	"encoding/csv"
 	"fmt"
 	"math"
 	"strings"
@@ -81,8 +79,8 @@ func BuildSpendMoneyRows(tx SpendMoneyTransaction, chequeAccount string) [][]str
 		amount := formatMYOBMoney(item.Amount)
 		itemAllocation := strings.TrimSpace(item.Allocation)
 		rows = append(rows, []string{
-			normalizeAccountCode(chequeAccount),
-			chequeNo,
+			"",
+			"",
 			date,
 			"X",
 			"", "", "", "", "", "",
@@ -109,32 +107,23 @@ func BuildSpendMoneyRows(tx SpendMoneyTransaction, chequeAccount string) [][]str
 }
 
 func EncodeTabDelimitedText(rows [][]string) ([]byte, error) {
-	buf := bytes.NewBuffer(nil)
-	writer := csv.NewWriter(buf)
-	writer.Comma = '\t'
-	writer.UseCRLF = false
-
+	lines := make([]string, 0, len(rows))
 	for _, row := range rows {
 		if len(row) == 0 {
-			writer.Flush()
-			if err := writer.Error(); err != nil {
-				return nil, err
-			}
-			if _, err := buf.WriteString("\n"); err != nil {
-				return nil, err
-			}
+			lines = append(lines, "")
 			continue
 		}
-		if err := writer.Write(row); err != nil {
-			return nil, err
-		}
-	}
 
-	writer.Flush()
-	if err := writer.Error(); err != nil {
-		return nil, err
+		var builder strings.Builder
+		for idx, value := range row {
+			if idx > 0 {
+				builder.WriteByte('\t')
+			}
+			builder.WriteString(strings.ReplaceAll(value, "\t", " "))
+		}
+		lines = append(lines, builder.String())
 	}
-	return buf.Bytes(), nil
+	return []byte(strings.Join(lines, "\n")), nil
 }
 
 func formatMYOBMoney(value float64) string {
@@ -148,15 +137,20 @@ func formatMYOBMoney(value float64) string {
 		fraction = parts[1]
 	}
 
-	chunks := make([]string, 0, len(whole)/3+1)
-	for len(whole) > 3 {
-		chunks = append([]string{whole[len(whole)-3:]}, chunks...)
-		whole = whole[:len(whole)-3]
+	formattedWhole := whole
+	if absValue < 1_000_000_000 {
+		chunks := make([]string, 0, len(whole)/3+1)
+		for len(whole) > 3 {
+			chunks = append([]string{whole[len(whole)-3:]}, chunks...)
+			whole = whole[:len(whole)-3]
+		}
+		if whole != "" {
+			chunks = append([]string{whole}, chunks...)
+		}
+		formattedWhole = strings.Join(chunks, ".")
 	}
-	if whole != "" {
-		chunks = append([]string{whole}, chunks...)
-	}
-	formatted := strings.Join(chunks, ".") + "," + fraction
+
+	formatted := formattedWhole + "," + fraction
 	if negative {
 		return "-" + formatted
 	}

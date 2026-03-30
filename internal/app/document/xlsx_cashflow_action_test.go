@@ -119,10 +119,15 @@ func TestXLSXCashflowProcessor_RunActionSpendMoney(t *testing.T) {
 
 	require.Contains(t, content, "Cheque Account\tCheque #\tDate")
 	require.Contains(t, content, "11102\t17500\t03/01/2026")
-	require.Contains(t, content, "\t17500\t03/01/2026\tX")
-	require.Contains(t, content, "66023\t-6.540.000,00")
-	require.Contains(t, content, "66108\t-26.100,00")
+	require.Contains(t, content, "\n\t\t03/01/2026\tX")
+	require.Contains(t, content, "13.625.000,00\t13.625.000,00")
+	require.Contains(t, content, "66023\t12.500.000,00")
+	require.Contains(t, content, "10107\t1.375.000,00")
+	require.Contains(t, content, "22003\t-250.000,00")
+	require.Contains(t, content, "66108\t26.100,00")
 	require.Contains(t, content, "11102\t17501\t02/01/2026")
+	require.NotContains(t, content, "\"      - Line 2\"")
+	require.NotContains(t, content, "PPh 23 - PPN")
 }
 
 func TestXLSXCashflowProcessor_RunActionReceiveMoney(t *testing.T) {
@@ -301,12 +306,12 @@ func TestXLSXCashflowProcessor_RunActionSpendMoney_SkipsMissingChartOfAccounts(t
 	require.NoError(t, err)
 	require.Equal(t, "warning", result.ItemResults[0].Status)
 	require.NotEmpty(t, result.ItemResults[0].Warnings)
-	require.Contains(t, strings.Join(result.ItemResults[0].Warnings, " | "), `chart of accounts "Admin Bank" tidak ditemukan, row dilewati`)
+	require.Contains(t, strings.Join(result.ItemResults[0].Warnings, " | "), `chart of accounts "ADMIN BANK" tidak ditemukan, row dilewati`)
 
 	body, readErr := os.ReadFile(result.Outputs[0].ObjectRef)
 	require.NoError(t, readErr)
 	content := string(body)
-	require.Contains(t, content, "66023\t-6.540.000,00")
+	require.Contains(t, content, "66023\t6.540.000,00")
 	require.NotContains(t, content, "ADMIN BANK SALARY BA")
 }
 
@@ -323,9 +328,9 @@ func createSpendMoneyWorkbook(t *testing.T, path string) {
 		"03/01/2026",
 		"PT CITRA RETAILINDO UMUM INVCIREUMULFSMUBIX2025 / LISTING FEE 8 SKU THEO SEA",
 		"66023",
-		"",
-		"",
-		-6540000,
+		250000,
+		1375000,
+		-13625000,
 		"PT CITRA RETAILINDO UMUM INVCIREUMULFSMUBIX2025 / LISTING FEE 8 SKU THEO SEA",
 	}))
 	require.NoError(t, file.SetSheetRow("Cashflow", "A3", &[]any{
@@ -404,4 +409,37 @@ func createSpendMoneyWorkbookWithMissingCOA(t *testing.T, path string) {
 
 	require.NoError(t, file.SaveAs(path))
 	require.NoError(t, file.Close())
+}
+
+func TestNormalizeCashflowRecord(t *testing.T) {
+	t.Parallel()
+
+	record := normalizeCashflowRecord(cashflowRowRecord{
+		Information: "Admin Bank",
+		COA:         "ab-120",
+		Total:       -1000,
+		OtherCost:   250,
+		PPH21:       25,
+		PPN:         110,
+	})
+
+	require.Equal(t, "ADMIN BANK", record.Information)
+	require.Equal(t, "AB-120", record.COA)
+	require.Equal(t, 1000.0, record.Total)
+	require.Equal(t, 250.0, record.OtherCost)
+	require.Equal(t, -25.0, record.PPH21)
+	require.Equal(t, 110.0, record.PPN)
+}
+
+func TestResolveCashflowAllocationMemo_UsesTextAfterFirstDelimiter(t *testing.T) {
+	t.Parallel()
+
+	got := resolveCashflowAllocationMemo(cashflowRowRecord{
+		Information: "KETERANGAN UTAMA",
+		Remark:      "PPH*hanya jasa",
+	}, appcashflow.ExportMYOBInput{
+		RemarkDelimiter: "*",
+	})
+
+	require.Equal(t, "hanya jasa", got)
 }

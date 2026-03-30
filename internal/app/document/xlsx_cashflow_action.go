@@ -269,6 +269,7 @@ func (p *XLSXCashflowProcessor) buildCashflowDocumentRows(
 			warnings = append(warnings, fmt.Sprintf("row %d: %s", rowNumber, cashflowSkipReason(input.CashflowType)))
 			continue
 		}
+		record = normalizeCashflowRecord(record)
 
 		currentChequeNumber := 0
 		if startChequeNumber > 0 {
@@ -320,6 +321,27 @@ func cashflowSkipReason(cashflowType appcashflow.Type) string {
 		return "total negatif dilewati untuk mode Receive Money"
 	}
 	return "total positif dilewati untuk mode Spend Money"
+}
+
+func normalizeCashflowRecord(record cashflowRowRecord) cashflowRowRecord {
+	record.Total = normalizeNearZero(math.Abs(record.Total))
+	record.OtherCost = normalizeNearZero(math.Abs(record.OtherCost))
+	record.PP23 = normalizeWithholdingTaxAmount(record.PP23)
+	record.PPH15 = normalizeWithholdingTaxAmount(record.PPH15)
+	record.PPH21 = normalizeWithholdingTaxAmount(record.PPH21)
+	record.PPH23 = normalizeWithholdingTaxAmount(record.PPH23)
+	record.PPH42 = normalizeWithholdingTaxAmount(record.PPH42)
+	record.Information = uppercaseCashflowText(record.Information)
+	record.COA = uppercaseCashflowText(record.COA)
+	return record
+}
+
+func normalizeWithholdingTaxAmount(value float64) float64 {
+	amount := normalizeNearZero(math.Abs(value))
+	if amount == 0 {
+		return 0
+	}
+	return -amount
 }
 
 func buildCashflowRows(
@@ -405,7 +427,7 @@ func parseCashflowRow(row []string, cellRow []SpreadsheetCell, rowNumber int, fi
 	record.Date = date
 
 	totalCell := cashflowTypedCell(row, cellRow, fieldIndex, "total")
-	total, ok := SpreadsheetCellFloat(totalCell)
+	total, ok := SpreadsheetCellMoney(totalCell)
 	if !ok {
 		return record, nil, fmt.Errorf("total tidak valid")
 	}
@@ -433,32 +455,22 @@ func buildSpendMoneyTransaction(
 ) (appcashflow.SpendMoneyTransaction, []string, error) {
 	components := make([]cashflowComponent, 0, 8)
 	warnings := make([]string, 0)
-
-	if amount := normalizeNearZero(record.OtherCost); amount != 0 {
-		accountCode := strings.TrimSpace(input.OtherCostsAccountCode)
-		if accountCode == "" {
-			return appcashflow.SpendMoneyTransaction{}, warnings, errors.New("account code untuk biaya lain belum diatur")
-		}
-		components = append(components, cashflowComponent{
-			AccountCode: accountCode,
-			Amount:      amount,
-			Allocation:  "Biaya Lainnya",
-		})
-	}
+	totalAmount := normalizeNearZero(record.Total)
+	otherCostAmount := normalizeNearZero(math.Abs(record.OtherCost))
 
 	for _, taxComponent := range []struct {
 		Key    string
 		Label  string
 		Amount float64
 	}{
+		{Key: "ppn", Label: "PPN", Amount: record.PPN},
 		{Key: "pp23", Label: "PP 23", Amount: record.PP23},
 		{Key: "pph15", Label: "PPH 15%", Amount: record.PPH15},
 		{Key: "pph21", Label: "PPH 21", Amount: record.PPH21},
 		{Key: "pph23", Label: "PPH 23", Amount: record.PPH23},
 		{Key: "pph42", Label: "PPH 4 (2)", Amount: record.PPH42},
-		{Key: "ppn", Label: "PPN", Amount: record.PPN},
 	} {
-		amount := normalizeNearZero(taxComponent.Amount)
+		amount := normalizeSpendMoneyTaxAmount(taxComponent.Key, taxComponent.Amount)
 		if amount == 0 {
 			continue
 		}
@@ -469,11 +481,23 @@ func buildSpendMoneyTransaction(
 		components = append(components, cashflowComponent{
 			AccountCode: accountCode,
 			Amount:      amount,
-			Allocation:  taxComponent.Label,
+			Allocation:  uppercaseCashflowText(taxComponent.Label),
 		})
 	}
 
-	baseAmount := normalizeNearZero(record.Total - sumCashflowComponents(components))
+	if otherCostAmount != 0 {
+		accountCode := strings.TrimSpace(input.OtherCostsAccountCode)
+		if accountCode == "" {
+			return appcashflow.SpendMoneyTransaction{}, warnings, errors.New("account code untuk biaya lain belum diatur")
+		}
+		components = append(components, cashflowComponent{
+			AccountCode: accountCode,
+			Amount:      otherCostAmount,
+			Allocation:  resolveCashflowAllocationMemo(record, input),
+		})
+	}
+
+	baseAmount := normalizeNearZero(totalAmount - sumCashflowComponents(components))
 	if baseAmount == 0 && len(components) == 0 {
 		return appcashflow.SpendMoneyTransaction{}, warnings, errors.New("row tidak memiliki komponen transaksi")
 	}
@@ -488,7 +512,7 @@ func buildSpendMoneyTransaction(
 		components = append([]cashflowComponent{{
 			AccountCode: baseAccountCode,
 			Amount:      baseAmount,
-			Allocation:  resolveCashflowAllocationMemo(record, input),
+			Allocation:  resolveCashflowPrimaryAllocation(record),
 		}}, components...)
 	}
 
@@ -510,11 +534,22 @@ func buildSpendMoneyTransaction(
 	return appcashflow.SpendMoneyTransaction{
 		ChequeNumber: chequeNumberPtr,
 		Date:         appcashflow.EnsureNonZeroTime(record.Date),
-		Memo:         record.Information,
-		Amount:       record.Total,
-		Allocation:   resolveCashflowAllocationMemo(record, input),
+		Memo:         resolveCashflowPrimaryAllocation(record),
+		Amount:       totalAmount,
+		Allocation:   resolveCashflowPrimaryAllocation(record),
 		Items:        items,
 	}, uniqueStrings(warnings), nil
+}
+
+func normalizeSpendMoneyTaxAmount(internalKey string, rawAmount float64) float64 {
+	amount := normalizeNearZero(rawAmount)
+	if amount == 0 {
+		return 0
+	}
+	if internalKey == "ppn" {
+		return math.Abs(amount)
+	}
+	return -math.Abs(amount)
 }
 
 func buildReceiveMoneyTransaction(
@@ -525,30 +560,19 @@ func buildReceiveMoneyTransaction(
 ) (appcashflow.ReceiveMoneyTransaction, []string, error) {
 	components := make([]cashflowComponent, 0, 8)
 	warnings := make([]string, 0)
-
-	if amount := normalizeNearZero(record.OtherCost); amount != 0 {
-		accountCode := strings.TrimSpace(input.OtherCostsAccountCode)
-		if accountCode == "" {
-			return appcashflow.ReceiveMoneyTransaction{}, warnings, errors.New("account code untuk biaya lain belum diatur")
-		}
-		components = append(components, cashflowComponent{
-			AccountCode: accountCode,
-			Amount:      amount,
-			Allocation:  "Biaya Lainnya",
-		})
-	}
+	otherCostAmount := normalizeNearZero(record.OtherCost)
 
 	for _, taxComponent := range []struct {
 		Key    string
 		Label  string
 		Amount float64
 	}{
+		{Key: "ppn", Label: "PPN", Amount: record.PPN},
 		{Key: "pp23", Label: "PP 23", Amount: record.PP23},
 		{Key: "pph15", Label: "PPH 15%", Amount: record.PPH15},
 		{Key: "pph21", Label: "PPH 21", Amount: record.PPH21},
 		{Key: "pph23", Label: "PPH 23", Amount: record.PPH23},
 		{Key: "pph42", Label: "PPH 4 (2)", Amount: record.PPH42},
-		{Key: "ppn", Label: "PPN", Amount: record.PPN},
 	} {
 		amount := normalizeNearZero(taxComponent.Amount)
 		if amount == 0 {
@@ -561,7 +585,19 @@ func buildReceiveMoneyTransaction(
 		components = append(components, cashflowComponent{
 			AccountCode: accountCode,
 			Amount:      amount,
-			Allocation:  taxComponent.Label,
+			Allocation:  uppercaseCashflowText(taxComponent.Label),
+		})
+	}
+
+	if otherCostAmount != 0 {
+		accountCode := strings.TrimSpace(input.OtherCostsAccountCode)
+		if accountCode == "" {
+			return appcashflow.ReceiveMoneyTransaction{}, warnings, errors.New("account code untuk biaya lain belum diatur")
+		}
+		components = append(components, cashflowComponent{
+			AccountCode: accountCode,
+			Amount:      otherCostAmount,
+			Allocation:  resolveCashflowAllocationMemo(record, input),
 		})
 	}
 
@@ -580,7 +616,7 @@ func buildReceiveMoneyTransaction(
 		components = append([]cashflowComponent{{
 			AccountCode: baseAccountCode,
 			Amount:      baseAmount,
-			Allocation:  resolveCashflowAllocationMemo(record, input),
+			Allocation:  resolveCashflowPrimaryAllocation(record),
 		}}, components...)
 	}
 
@@ -602,9 +638,9 @@ func buildReceiveMoneyTransaction(
 	return appcashflow.ReceiveMoneyTransaction{
 		IDNumber:   idNumberPtr,
 		Date:       appcashflow.EnsureNonZeroTime(record.Date),
-		Memo:       record.Information,
+		Memo:       resolveCashflowPrimaryAllocation(record),
 		Amount:     record.Total,
-		Allocation: resolveCashflowAllocationMemo(record, input),
+		Allocation: resolveCashflowPrimaryAllocation(record),
 		Items:      items,
 	}, uniqueStrings(warnings), nil
 }
@@ -634,28 +670,32 @@ func resolveCashflowBaseAccountCode(
 	return "", nil, fmt.Errorf("chart of accounts %q tidak ditemukan, row dilewati", coa)
 }
 
+func resolveCashflowPrimaryAllocation(record cashflowRowRecord) string {
+	return uppercaseCashflowText(record.Information)
+}
+
 func resolveCashflowAllocationMemo(record cashflowRowRecord, input appcashflow.ExportMYOBInput) string {
 	remark := strings.TrimSpace(record.Remark)
 	if remark == "" {
-		return strings.TrimSpace(record.Information)
+		return resolveCashflowPrimaryAllocation(record)
 	}
 	delimiter := strings.TrimSpace(input.RemarkDelimiter)
 	if delimiter == "" || !strings.Contains(remark, delimiter) {
 		return remark
 	}
-	parts := strings.Split(remark, delimiter)
-	clean := make([]string, 0, len(parts))
-	for _, part := range parts {
-		value := strings.TrimSpace(part)
-		if value == "" {
-			continue
-		}
-		clean = append(clean, value)
+	parts := strings.SplitN(remark, delimiter, 2)
+	if len(parts) != 2 {
+		return resolveCashflowPrimaryAllocation(record)
 	}
-	if len(clean) == 0 {
-		return strings.TrimSpace(record.Information)
+	value := strings.TrimSpace(parts[1])
+	if value == "" {
+		return resolveCashflowPrimaryAllocation(record)
 	}
-	return strings.Join(clean, " / ")
+	return value
+}
+
+func uppercaseCashflowText(value string) string {
+	return strings.ToUpper(strings.TrimSpace(value))
 }
 
 func lookupCashflowAccountCode(accounts map[string]appcashflow.TaxAccount, key string) string {
@@ -744,7 +784,7 @@ func parseOptionalCashflowAmount(raw string) (float64, error) {
 }
 
 func parseOptionalCashflowTypedAmount(cell SpreadsheetCell) (float64, error) {
-	if value, ok := SpreadsheetCellFloat(cell); ok {
+	if value, ok := SpreadsheetCellMoney(cell); ok {
 		return value, nil
 	}
 	return parseOptionalCashflowAmount(SpreadsheetCellText(cell))
