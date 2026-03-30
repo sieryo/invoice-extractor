@@ -302,7 +302,6 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 						AllowCheckAll:  true,
 						AllowedStatus:  []string{"ready", "warning"},
 						MinDocumentCnt: 1,
-						MaxDocumentCnt: 1,
 					},
 					Form: &FormSpec{
 						Title: "Pengaturan Export",
@@ -382,10 +381,9 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 					},
 					Selection: ActionSelectionSpec{
 						Mode:           "manual",
-						AllowCheckAll:  false,
+						AllowCheckAll:  true,
 						AllowedStatus:  []string{"ready", "warning"},
 						MinDocumentCnt: 1,
-						MaxDocumentCnt: 1,
 					},
 					Form: &FormSpec{
 						Title: "Pengaturan Rename",
