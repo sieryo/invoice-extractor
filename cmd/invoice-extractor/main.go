@@ -30,7 +30,7 @@ func main() {
 	if err := config.LoadDotEnvIfExists(); err != nil {
 		log.Printf("failed to load .env: %v", err)
 	}
-	cfg := config.Load()
+	cfg := config.Load(appDir)
 
 	ilogger := logger.Setup(buildinfo.Environment, logPath)
 

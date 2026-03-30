@@ -11,6 +11,7 @@ type ModuleKind string
 const (
 	ModuleKindRegistry       ModuleKind = "registry"
 	ModuleKindDefaultProfile ModuleKind = "default_profile"
+	ModuleKindSettings       ModuleKind = "settings"
 )
 
 type ModuleSpec struct {
@@ -32,6 +33,16 @@ type ModuleDetailSpec struct {
 
 func ListModules(enableCashflowXLSX bool) []ModuleSpec {
 	items := []ModuleSpec{
+		{
+			Key:         "app_modules",
+			RouteKey:    "app_modules",
+			Label:       "Modul Aplikasi",
+			Description: "Aktifkan atau nonaktifkan modul fitur aplikasi yang tersedia saat ini.",
+			Kind:        string(ModuleKindSettings),
+			Group:       "application",
+			GroupLabel:  "Aplikasi",
+			IconKey:     "sliders-horizontal",
+		},
 		{
 			Key:             "buyer_registry",
 			RouteKey:        "buyer_registry",
@@ -57,28 +68,52 @@ func ListModules(enableCashflowXLSX bool) []ModuleSpec {
 		{
 			Key:             "bukpot_request_gst_deduction_mt",
 			RouteKey:        "bukpot_request_gst_deduction_mt",
-			Label:           "Default Profil GST Deduction MT",
-			Description:     "Mapping default untuk action request bukpot GST Deduction MT.",
+			Label:           "Default Profil Request Bukpot GST Deduction MT",
+			Description:     "Mapping default untuk action Request Bukpot GST Deduction MT.",
 			Kind:            string(ModuleKindDefaultProfile),
-			Group:           "bukpot",
-			GroupLabel:      "Bukpot",
+			Group:           "request_bukpot",
+			GroupLabel:      "Request Bukpot",
 			IconKey:         "receipt-text",
 			CollectionKinds: []string{string(document.CollectionKindBukpotRequestGSTDeductionMT)},
 		},
 	}
 
 	if enableCashflowXLSX {
-		items = append(items, ModuleSpec{
-			Key:             "cashflow_tax_accounts",
-			RouteKey:        "cashflow_tax_accounts",
-			Label:           "Tax Accounts",
-			Description:     "Lookup account untuk action export cashflow MYOB.",
-			Kind:            string(ModuleKindRegistry),
-			Group:           "cashflow",
-			GroupLabel:      "Cashflow",
-			IconKey:         "landmark",
-			CollectionKinds: []string{string(document.CollectionKindCashflowImport)},
-		})
+		items = append(items,
+			ModuleSpec{
+				Key:             "cashflow_spend_money",
+				RouteKey:        "cashflow_spend_money",
+				Label:           "Default Profil Cashflow Spend Money",
+				Description:     "Nilai default untuk action export cashflow ke MYOB Spend Money.",
+				Kind:            string(ModuleKindDefaultProfile),
+				Group:           "cashflow",
+				GroupLabel:      "Cashflow",
+				IconKey:         "landmark",
+				CollectionKinds: []string{string(document.CollectionKindCashflowImport)},
+			},
+			ModuleSpec{
+				Key:             "cashflow_receive_money",
+				RouteKey:        "cashflow_receive_money",
+				Label:           "Default Profil Cashflow Receive Money",
+				Description:     "Nilai default untuk action export cashflow ke MYOB Receive Money.",
+				Kind:            string(ModuleKindDefaultProfile),
+				Group:           "cashflow",
+				GroupLabel:      "Cashflow",
+				IconKey:         "landmark",
+				CollectionKinds: []string{string(document.CollectionKindCashflowImport)},
+			},
+			ModuleSpec{
+				Key:             "cashflow_tax_accounts",
+				RouteKey:        "cashflow_tax_accounts",
+				Label:           "Tax Accounts",
+				Description:     "Lookup account untuk action export cashflow MYOB.",
+				Kind:            string(ModuleKindRegistry),
+				Group:           "cashflow",
+				GroupLabel:      "Cashflow",
+				IconKey:         "landmark",
+				CollectionKinds: []string{string(document.CollectionKindCashflowImport)},
+			},
+		)
 	}
 
 	return items

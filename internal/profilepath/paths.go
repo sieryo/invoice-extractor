@@ -44,3 +44,15 @@ func TaxAccountsUploadTempXLSX(rootDir string, profileID string) string {
 func BukpotRequestConfigJSON(rootDir string, profileID string) string {
 	return filepath.Join(ProfileDir(rootDir, profileID), "request_bukpot.json")
 }
+
+func CashflowConfigDir(rootDir string, profileID string) string {
+	return filepath.Join(ProfileDir(rootDir, profileID), "cashflow")
+}
+
+func CashflowSpendMoneyConfigJSON(rootDir string, profileID string) string {
+	return filepath.Join(CashflowConfigDir(rootDir, profileID), "spend_money.json")
+}
+
+func CashflowReceiveMoneyConfigJSON(rootDir string, profileID string) string {
+	return filepath.Join(CashflowConfigDir(rootDir, profileID), "receive_money.json")
+}

@@ -149,6 +149,12 @@ type ActionRequirementSpec struct {
 	Message   string `json:"message,omitempty"`
 }
 
+type ActionDetailSpec struct {
+	Summary  string   `json:"summary,omitempty"`
+	Bullets  []string `json:"bullets,omitempty"`
+	Warnings []string `json:"warnings,omitempty"`
+}
+
 type ActionMasterDataSpec struct {
 	Relative     string   `json:"relative"`
 	LookupKey    string   `json:"lookupKey"`
@@ -184,6 +190,7 @@ type ActionSpec struct {
 	Presentation   ActionPresentationSpec          `json:"presentation"`
 	Selection      ActionSelectionSpec             `json:"selection"`
 	Form           *FormSpec                       `json:"form,omitempty"`
+	Detail         *ActionDetailSpec               `json:"detail,omitempty"`
 	Requirements   []ActionRequirementSpec         `json:"requirements,omitempty"`
 	MasterData     map[string]ActionMasterDataSpec `json:"masterData,omitempty"`
 	ArtifactInputs []ActionArtifactInputSpec       `json:"artifactInputs,omitempty"`
@@ -299,9 +306,10 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 					},
 					Selection: ActionSelectionSpec{
 						Mode:           "manual",
-						AllowCheckAll:  true,
+						AllowCheckAll:  false,
 						AllowedStatus:  []string{"ready", "warning"},
 						MinDocumentCnt: 1,
+						MaxDocumentCnt: 1,
 					},
 					Form: &FormSpec{
 						Title: "Pengaturan Export",
@@ -381,9 +389,10 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 					},
 					Selection: ActionSelectionSpec{
 						Mode:           "manual",
-						AllowCheckAll:  true,
+						AllowCheckAll:  false,
 						AllowedStatus:  []string{"ready", "warning"},
 						MinDocumentCnt: 1,
+						MaxDocumentCnt: 1,
 					},
 					Form: &FormSpec{
 						Title: "Pengaturan Rename",
@@ -495,9 +504,9 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 			Actions: []ActionSpec{
 				{
 					CollectionKind: string(collectionKind),
-					ActionType:     "export_cashflow_myob",
-					Label:          "Export MYOB",
-					Description:    "Konversi cashflow ke format CSV MYOB Spend Money.",
+					ActionType:     "export_cashflow_spend_money",
+					Label:          "Spend Money",
+					Description:    "Konversi cashflow ke format MYOB Spend Money.",
 					State: ActionStateSpec{
 						Enabled: true,
 					},
@@ -512,8 +521,8 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 						MinDocumentCnt: 1,
 					},
 					Form: &FormSpec{
-						Title:       "Pengaturan Export MYOB",
-						Description: "Pilih sheet sumber dan atur parameter export cashflow.",
+						Title:       "Pengaturan Spend Money",
+						Description: "Pilih sheet sumber dan atur parameter export MYOB Spend Money.",
 						Sections: []FormSectionSpec{
 							{
 								Key:     "source",
@@ -558,7 +567,7 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 										Label:        "Nama Output",
 										Required:     true,
 										DefaultValue: "spend_money",
-										Placeholder:  "cashflow-myob",
+										Placeholder:  "spend_money",
 										HelpText:     "Tanpa ekstensi file.",
 										State: FormFieldStateSpec{
 											Visible: true,
@@ -584,27 +593,6 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 											{Label: "Influencer", Value: "influencer"},
 										},
 										State: FormFieldStateSpec{Visible: true},
-									},
-									{
-										Key:          "cashflowType",
-										Kind:         FormFieldKindSelect,
-										Label:        "Tipe Cashflow",
-										Required:     true,
-										DefaultValue: "spend_money",
-										Options: []FormFieldOption{
-											{Label: "Spend Money", Value: "spend_money"},
-										},
-										HelpText: "Sementara hanya Spend Money yang didukung.",
-										State:    FormFieldStateSpec{Visible: true},
-									},
-									{
-										Key:          "skipPositiveTotal",
-										Kind:         FormFieldKindCheckbox,
-										Label:        "Lewati Total Positif",
-										Required:     false,
-										DefaultValue: true,
-										HelpText:     "Abaikan baris dengan total positif.",
-										State:        FormFieldStateSpec{Visible: true},
 									},
 								},
 							},
@@ -669,9 +657,261 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 									},
 								},
 							},
+							{
+								Key:     "mapping",
+								Title:   "Mapping Header",
+								Columns: 2,
+								Fields: []FormFieldSpec{
+									{Key: "date", Kind: FormFieldKindText, Label: "Tanggal", Required: true, DefaultValue: "Tanggal", State: FormFieldStateSpec{Visible: true}},
+									{Key: "information", Kind: FormFieldKindText, Label: "Keterangan", Required: true, DefaultValue: "note", State: FormFieldStateSpec{Visible: true}},
+									{Key: "coa", Kind: FormFieldKindText, Label: "Chart of Account", Required: true, DefaultValue: "coa", State: FormFieldStateSpec{Visible: true}},
+									{Key: "otherCost", Kind: FormFieldKindText, Label: "Biaya Lainnya", Required: false, DefaultValue: "By Lainnya", State: FormFieldStateSpec{Visible: true}},
+									{Key: "pp23", Kind: FormFieldKindText, Label: "PP 23", Required: false, DefaultValue: "PP 23", State: FormFieldStateSpec{Visible: true}},
+									{Key: "pph15", Kind: FormFieldKindText, Label: "PPh 15%", Required: false, DefaultValue: "PPh 15%", State: FormFieldStateSpec{Visible: true}},
+									{Key: "pph21", Kind: FormFieldKindText, Label: "PPH 21", Required: false, DefaultValue: "PPH 21", State: FormFieldStateSpec{Visible: true}},
+									{Key: "pph23", Kind: FormFieldKindText, Label: "PPH 23", Required: false, DefaultValue: "PPH 23", State: FormFieldStateSpec{Visible: true}},
+									{Key: "pph42", Kind: FormFieldKindText, Label: "PPH 4 (2)", Required: false, DefaultValue: "PPH 4(2)", State: FormFieldStateSpec{Visible: true}},
+									{Key: "ppn", Kind: FormFieldKindText, Label: "PPN", Required: false, DefaultValue: "PPN", State: FormFieldStateSpec{Visible: true}},
+									{Key: "remark", Kind: FormFieldKindText, Label: "Catatan", Required: false, DefaultValue: "catatan", State: FormFieldStateSpec{Visible: true}},
+									{Key: "total", Kind: FormFieldKindText, Label: "Total", Required: true, DefaultValue: "idr", State: FormFieldStateSpec{Visible: true}},
+								},
+							},
+						},
+					},
+					Detail: &ActionDetailSpec{
+						Summary: "Mengubah sheet cashflow menjadi file MYOB Spend Money (.txt).",
+						Bullets: []string{
+							"Hanya row dengan total negatif yang akan diproses.",
+							"Sheet dipilih dari dokumen yang Anda centang saat action dijalankan.",
+							"Komponen pajak akan di-resolve memakai daftar nama tax yang didukung melalui Tax Accounts.",
+							"Jika nomor cheque dikosongkan, MYOB bisa membuat nomor otomatis.",
+						},
+						Warnings: []string{
+							"Header mapping dan akun default perlu sesuai dengan format cashflow yang dipakai.",
 						},
 					},
 					Requirements: []ActionRequirementSpec{
+						{
+							Key:      "cashflowDefaultProfile",
+							Label:    "Default Profil Cashflow Spend Money",
+							Required: true,
+						},
+						{
+							Key:      "cashflowTaxAccounts",
+							Label:    "Tax Accounts",
+							Required: true,
+						},
+					},
+					MasterData: map[string]ActionMasterDataSpec{
+						"tax": {
+							Relative:     "tax_accounts.csv",
+							LookupKey:    "name",
+							RequiredCols: []string{"name", "account"},
+						},
+					},
+					Outputs: []ActionOutputSpec{
+						{
+							Kind:       "file",
+							MimeType:   "text/plain",
+							Ext:        "txt",
+							DownloadOK: true,
+						},
+					},
+				},
+				{
+					CollectionKind: string(collectionKind),
+					ActionType:     "export_cashflow_receive_money",
+					Label:          "Receive Money",
+					Description:    "Konversi cashflow ke format MYOB Receive Money.",
+					State: ActionStateSpec{
+						Enabled: true,
+					},
+					Presentation: ActionPresentationSpec{
+						Mode:  "inline",
+						Width: "xl",
+					},
+					Selection: ActionSelectionSpec{
+						Mode:           "manual",
+						AllowCheckAll:  true,
+						AllowedStatus:  []string{"ready", "warning"},
+						MinDocumentCnt: 1,
+					},
+					Form: &FormSpec{
+						Title:       "Pengaturan Receive Money",
+						Description: "Pilih sheet sumber dan atur parameter export MYOB Receive Money.",
+						Sections: []FormSectionSpec{
+							{
+								Key:     "source",
+								Title:   "Sumber Data",
+								Columns: 3,
+								Fields: []FormFieldSpec{
+									{
+										Key:          "sheetName",
+										Kind:         FormFieldKindSelect,
+										Label:        "Sheet",
+										Required:     true,
+										DefaultValue: "",
+										HelpText:     "Pilih dokumen cashflow terlebih dahulu untuk melihat sheet yang tersedia.",
+										Span:         2,
+										State: FormFieldStateSpec{
+											Visible:  true,
+											Disabled: true,
+										},
+									},
+									buildHeaderRowField("Baris Header", "Nomor baris header pada sheet yang dipilih."),
+									{
+										Key:         "startingChequeNumber",
+										Kind:        FormFieldKindNumber,
+										Label:       "Nomor Awal ID",
+										Required:    false,
+										HelpText:    "Opsional. Kosongkan jika nomor ID ingin diisi otomatis nanti.",
+										Placeholder: "17500",
+										State: FormFieldStateSpec{
+											Visible: true,
+										},
+									},
+								},
+							},
+							{
+								Key:     "output",
+								Title:   "Output",
+								Columns: 3,
+								Fields: []FormFieldSpec{
+									{
+										Key:          "outputFilename",
+										Kind:         FormFieldKindText,
+										Label:        "Nama Output",
+										Required:     true,
+										DefaultValue: "receive_money",
+										Placeholder:  "receive_money",
+										HelpText:     "Tanpa ekstensi file.",
+										State: FormFieldStateSpec{
+											Visible: true,
+										},
+									},
+									{
+										Key:          "chequeAccount",
+										Kind:         FormFieldKindText,
+										Label:        "Deposit Account",
+										Required:     true,
+										DefaultValue: "12021",
+										HelpText:     "Akun bank/deposit utama untuk file MYOB.",
+										State:        FormFieldStateSpec{Visible: true},
+									},
+									{
+										Key:          "cashflowFormat",
+										Kind:         FormFieldKindSelect,
+										Label:        "Format Cashflow",
+										Required:     true,
+										DefaultValue: "default",
+										Options: []FormFieldOption{
+											{Label: "Default", Value: "default"},
+											{Label: "Influencer", Value: "influencer"},
+										},
+										State: FormFieldStateSpec{Visible: true},
+									},
+								},
+							},
+							{
+								Key:     "default_format",
+								Title:   "Format Default",
+								Columns: 2,
+								Fields: []FormFieldSpec{
+									{
+										Key:          "remarkDelimiter",
+										Kind:         FormFieldKindText,
+										Label:        "Remark Delimiter",
+										Required:     false,
+										DefaultValue: "*",
+										Placeholder:  "*",
+										HelpText:     "Wajib untuk format default.",
+										Rules: []FormFieldRuleSpec{
+											{Type: FormFieldRuleRequiredIf, Field: "cashflowFormat", Equals: "default", Message: "Remark Delimiter wajib diisi"},
+										},
+										State: FormFieldStateSpec{Visible: true},
+									},
+									{
+										Key:          "otherCostsAccountCode",
+										Kind:         FormFieldKindText,
+										Label:        "Kode Akun Biaya Lain",
+										Required:     false,
+										DefaultValue: "62099",
+										HelpText:     "Wajib untuk format default.",
+										Rules: []FormFieldRuleSpec{
+											{Type: FormFieldRuleRequiredIf, Field: "cashflowFormat", Equals: "default", Message: "Kode akun biaya lain wajib diisi"},
+										},
+										State: FormFieldStateSpec{Visible: true},
+									},
+								},
+							},
+							{
+								Key:     "influencer_format",
+								Title:   "Format Influencer",
+								Columns: 2,
+								Fields: []FormFieldSpec{
+									{
+										Key:          "defaultIAccountCode",
+										Kind:         FormFieldKindText,
+										Label:        "Default Influencer Account Code",
+										Required:     false,
+										DefaultValue: "62004",
+										Rules: []FormFieldRuleSpec{
+											{Type: FormFieldRuleRequiredIf, Field: "cashflowFormat", Equals: "influencer", Message: "Default Influencer Account Code wajib diisi"},
+										},
+										State: FormFieldStateSpec{Visible: true},
+									},
+									{
+										Key:          "defaultBAccountCode",
+										Kind:         FormFieldKindText,
+										Label:        "Default Bank Account Code",
+										Required:     false,
+										DefaultValue: "90900",
+										Rules: []FormFieldRuleSpec{
+											{Type: FormFieldRuleRequiredIf, Field: "cashflowFormat", Equals: "influencer", Message: "Default Bank Account Code wajib diisi"},
+										},
+										State: FormFieldStateSpec{Visible: true},
+									},
+								},
+							},
+							{
+								Key:     "mapping",
+								Title:   "Mapping Header",
+								Columns: 2,
+								Fields: []FormFieldSpec{
+									{Key: "date", Kind: FormFieldKindText, Label: "Tanggal", Required: true, DefaultValue: "Tanggal", State: FormFieldStateSpec{Visible: true}},
+									{Key: "information", Kind: FormFieldKindText, Label: "Keterangan", Required: true, DefaultValue: "note", State: FormFieldStateSpec{Visible: true}},
+									{Key: "coa", Kind: FormFieldKindText, Label: "Chart of Account", Required: true, DefaultValue: "coa", State: FormFieldStateSpec{Visible: true}},
+									{Key: "otherCost", Kind: FormFieldKindText, Label: "Biaya Lainnya", Required: false, DefaultValue: "By Lainnya", State: FormFieldStateSpec{Visible: true}},
+									{Key: "pp23", Kind: FormFieldKindText, Label: "PP 23", Required: false, DefaultValue: "PP 23", State: FormFieldStateSpec{Visible: true}},
+									{Key: "pph15", Kind: FormFieldKindText, Label: "PPh 15%", Required: false, DefaultValue: "PPh 15%", State: FormFieldStateSpec{Visible: true}},
+									{Key: "pph21", Kind: FormFieldKindText, Label: "PPH 21", Required: false, DefaultValue: "PPH 21", State: FormFieldStateSpec{Visible: true}},
+									{Key: "pph23", Kind: FormFieldKindText, Label: "PPH 23", Required: false, DefaultValue: "PPH 23", State: FormFieldStateSpec{Visible: true}},
+									{Key: "pph42", Kind: FormFieldKindText, Label: "PPH 4 (2)", Required: false, DefaultValue: "PPH 4(2)", State: FormFieldStateSpec{Visible: true}},
+									{Key: "ppn", Kind: FormFieldKindText, Label: "PPN", Required: false, DefaultValue: "PPN", State: FormFieldStateSpec{Visible: true}},
+									{Key: "remark", Kind: FormFieldKindText, Label: "Catatan", Required: false, DefaultValue: "catatan", State: FormFieldStateSpec{Visible: true}},
+									{Key: "total", Kind: FormFieldKindText, Label: "Total", Required: true, DefaultValue: "idr", State: FormFieldStateSpec{Visible: true}},
+								},
+							},
+						},
+					},
+					Detail: &ActionDetailSpec{
+						Summary: "Mengubah sheet cashflow menjadi file MYOB Receive Money (.txt).",
+						Bullets: []string{
+							"Hanya row dengan total positif yang akan diproses.",
+							"Sheet dipilih dari dokumen yang Anda centang saat action dijalankan.",
+							"Komponen pajak akan di-resolve memakai daftar nama tax yang didukung melalui Tax Accounts.",
+							"Kolom akun utama memakai Deposit Account pada template MYOB.",
+						},
+						Warnings: []string{
+							"Header mapping dan akun default perlu sesuai dengan format cashflow yang dipakai.",
+						},
+					},
+					Requirements: []ActionRequirementSpec{
+						{
+							Key:      "cashflowDefaultProfile",
+							Label:    "Default Profil Cashflow Receive Money",
+							Required: true,
+						},
 						{
 							Key:      "cashflowTaxAccounts",
 							Label:    "Tax Accounts",
@@ -776,10 +1016,18 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 							},
 						},
 					},
+					Detail: &ActionDetailSpec{
+						Summary: "Membangun ZIP berisi template Excel dan XML Coretax dari workbook GST Deduction MT.",
+						Bullets: []string{
+							"Hanya row dengan nilai Entity yang sama dengan Alias profil aktif yang akan diproses.",
+							"Sheet dan baris header dipilih dari dokumen source yang Anda centang.",
+							"Header source akan memakai Default Profil terlebih dahulu, lalu bisa dioverride untuk eksekusi ini.",
+						},
+					},
 					Requirements: []ActionRequirementSpec{
 						{
 							Key:      "bukpotRequestConfig",
-							Label:    "Default Profil Request Bukpot",
+							Label:    "Default Profil Request Bukpot GST Deduction MT",
 							Required: true,
 						},
 					},

@@ -29,19 +29,25 @@ type CashflowTaxAccountStatusProvider interface {
 	Status(profileID string) appcashflow.TaxAccountStatus
 }
 
+type CashflowProfileConfigProvider interface {
+	Status(profileID string, key appcashflow.ProfileConfigKey) appcashflow.ProfileConfigStatus
+	Load(profileID string, key appcashflow.ProfileConfigKey) (appcashflow.ProfileConfig, error)
+}
+
 type BukpotRequestConfigProvider interface {
 	Status(profileID string) appbukpot.RequestConfigStatus
 	Load(profileID string) (appbukpot.RequestConfig, error)
 }
 
 type Service struct {
-	repo                Repository
-	collectionRepo      dcollection.Repository
-	processors          *document.Registry
-	buyerRegistry       BuyerRegistryStatusProvider
-	taxAccounts         CashflowTaxAccountStatusProvider
-	bukpotRequestConfig BukpotRequestConfigProvider
-	fileStore           file.FileStore
+	repo                  Repository
+	collectionRepo        dcollection.Repository
+	processors            *document.Registry
+	buyerRegistry         BuyerRegistryStatusProvider
+	taxAccounts           CashflowTaxAccountStatusProvider
+	cashflowProfileConfig CashflowProfileConfigProvider
+	bukpotRequestConfig   BukpotRequestConfigProvider
+	fileStore             file.FileStore
 
 	queue   chan string
 	workers int
@@ -62,6 +68,7 @@ func NewService(
 	processors *document.Registry,
 	buyerRegistry BuyerRegistryStatusProvider,
 	taxAccounts CashflowTaxAccountStatusProvider,
+	cashflowProfileConfig CashflowProfileConfigProvider,
 	bukpotRequestConfig BukpotRequestConfigProvider,
 	fileStore file.FileStore,
 	workers int,
@@ -71,15 +78,16 @@ func NewService(
 	}
 
 	return &Service{
-		repo:                repo,
-		collectionRepo:      collectionRepo,
-		processors:          processors,
-		buyerRegistry:       buyerRegistry,
-		taxAccounts:         taxAccounts,
-		bukpotRequestConfig: bukpotRequestConfig,
-		fileStore:           fileStore,
-		queue:               make(chan string, 64),
-		workers:             workers,
+		repo:                  repo,
+		collectionRepo:        collectionRepo,
+		processors:            processors,
+		buyerRegistry:         buyerRegistry,
+		taxAccounts:           taxAccounts,
+		cashflowProfileConfig: cashflowProfileConfig,
+		bukpotRequestConfig:   bukpotRequestConfig,
+		fileStore:             fileStore,
+		queue:                 make(chan string, 64),
+		workers:               workers,
 	}
 }
 
@@ -368,8 +376,8 @@ func (s *Service) ResolveActionSpec(
 	}
 
 	resolved := actionSpec
-	if collectionKind == document.CollectionKindCashflowImport && strings.EqualFold(strings.TrimSpace(actionSpec.ActionType), "export_cashflow_myob") {
-		resolved, err = s.resolveCashflowActionSpec(ctx, req.CollectionID, collectionKind, sourceFormat, actionSpec, req.DocumentIDs)
+	if collectionKind == document.CollectionKindCashflowImport && isCashflowExportAction(actionSpec.ActionType) {
+		resolved, err = s.resolveCashflowActionSpec(ctx, coll.UserID, req.CollectionID, collectionKind, sourceFormat, actionSpec, req.DocumentIDs)
 		if err != nil {
 			return nil, err
 		}
@@ -1070,12 +1078,47 @@ func normalizeDocumentIDs(input []string) ([]string, error) {
 
 func (s *Service) resolveCashflowActionSpec(
 	ctx context.Context,
+	profileID string,
 	collectionID string,
 	collectionKind document.CollectionKind,
 	sourceFormat document.SourceFormat,
 	actionSpec document.ActionSpec,
 	documentIDs []string,
 ) (document.ActionSpec, error) {
+	if s.cashflowProfileConfig != nil {
+		var configKey appcashflow.ProfileConfigKey
+		switch strings.TrimSpace(actionSpec.ActionType) {
+		case "export_cashflow_receive_money":
+			configKey = appcashflow.ProfileConfigReceiveMoney
+		default:
+			configKey = appcashflow.ProfileConfigSpendMoney
+		}
+
+		cfg, err := s.cashflowProfileConfig.Load(profileID, configKey)
+		if err == nil {
+			for _, item := range cfg.Fields {
+				field, ok := findFormField(actionSpec.Form, item.Key)
+				if !ok {
+					continue
+				}
+				field.DefaultValue = strings.TrimSpace(item.Value)
+				updateFormField(actionSpec.Form, field)
+			}
+			if field, ok := findFormField(actionSpec.Form, "headerRowNumber"); ok && cfg.Defaults.HeaderRowNumber > 0 {
+				field.DefaultValue = strconv.Itoa(cfg.Defaults.HeaderRowNumber)
+				updateFormField(actionSpec.Form, field)
+			}
+			if field, ok := findFormField(actionSpec.Form, "sheetName"); ok && strings.TrimSpace(cfg.Defaults.SheetName) != "" {
+				field.DefaultValue = strings.TrimSpace(cfg.Defaults.SheetName)
+				updateFormField(actionSpec.Form, field)
+			}
+			if field, ok := findFormField(actionSpec.Form, "startingChequeNumber"); ok && cfg.Defaults.StartingChequeNumber != nil && *cfg.Defaults.StartingChequeNumber > 0 {
+				field.DefaultValue = *cfg.Defaults.StartingChequeNumber
+				updateFormField(actionSpec.Form, field)
+			}
+		}
+	}
+
 	field, ok := findFormField(actionSpec.Form, "sheetName")
 	if !ok {
 		return actionSpec, nil
@@ -1151,6 +1194,15 @@ func (s *Service) resolveCashflowActionSpec(
 	}
 
 	return actionSpec, nil
+}
+
+func isCashflowExportAction(actionType string) bool {
+	switch strings.TrimSpace(actionType) {
+	case "export_cashflow_myob", "export_cashflow_spend_money", "export_cashflow_receive_money":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *Service) resolveBukpotRequestActionSpec(
@@ -1376,8 +1428,9 @@ func (s *Service) applyRuntimeRequirements(spec document.CollectionSpec, profile
 			actionSpec = s.applyBuyerRegistryRequirement(actionSpec, profileID)
 		}
 		if spec.CollectionKind == document.CollectionKindCashflowImport &&
-			strings.EqualFold(strings.TrimSpace(actionSpec.ActionType), "export_cashflow_myob") {
+			isCashflowExportAction(actionSpec.ActionType) {
 			actionSpec = s.applyCashflowTaxAccountRequirement(actionSpec, profileID)
+			actionSpec = s.applyCashflowProfileRequirement(actionSpec, profileID)
 		}
 		if spec.CollectionKind == document.CollectionKindBukpotRequestGSTDeductionMT &&
 			strings.EqualFold(strings.TrimSpace(actionSpec.ActionType), "request_bukpot_gst_deduction_mt") {
@@ -1462,7 +1515,7 @@ func (s *Service) applyBukpotRequestConfigRequirement(actionSpec document.Action
 	if !updated {
 		actionSpec.Requirements = append(actionSpec.Requirements, document.ActionRequirementSpec{
 			Key:       "bukpotRequestConfig",
-			Label:     "Default Profil Request Bukpot",
+			Label:     "Default Profil Request Bukpot GST Deduction MT",
 			Required:  true,
 			Satisfied: status.Configured,
 			Code:      strings.TrimSpace(status.Code),
@@ -1518,6 +1571,64 @@ func (s *Service) applyCashflowTaxAccountRequirement(actionSpec document.ActionS
 		actionSpec.State.Message = strings.TrimSpace(status.Message)
 		if actionSpec.State.Message == "" {
 			actionSpec.State.Message = "Master data tax accounts belum siap."
+		}
+	}
+
+	return actionSpec
+}
+
+func (s *Service) applyCashflowProfileRequirement(actionSpec document.ActionSpec, profileID string) document.ActionSpec {
+	configKey := appcashflow.ProfileConfigSpendMoney
+	label := "Default Profil Cashflow Spend Money"
+	defaultCode := "CASHFLOW_SPEND_PROFILE_UNAVAILABLE"
+	defaultMessage := "Default profil cashflow spend money belum tersedia."
+
+	if strings.EqualFold(strings.TrimSpace(actionSpec.ActionType), "export_cashflow_receive_money") {
+		configKey = appcashflow.ProfileConfigReceiveMoney
+		label = "Default Profil Cashflow Receive Money"
+		defaultCode = "CASHFLOW_RECEIVE_PROFILE_UNAVAILABLE"
+		defaultMessage = "Default profil cashflow receive money belum tersedia."
+	}
+
+	status := appcashflow.ProfileConfigStatus{
+		Configured:    false,
+		Code:          defaultCode,
+		Message:       defaultMessage,
+		SchemaVersion: "1",
+	}
+	if s.cashflowProfileConfig != nil {
+		status = s.cashflowProfileConfig.Status(profileID, configKey)
+	}
+
+	updated := false
+	for idx, requirement := range actionSpec.Requirements {
+		if !strings.EqualFold(strings.TrimSpace(requirement.Key), "cashflowDefaultProfile") {
+			continue
+		}
+		requirement.Label = label
+		requirement.Satisfied = status.Configured
+		requirement.Code = strings.TrimSpace(status.Code)
+		requirement.Message = strings.TrimSpace(status.Message)
+		actionSpec.Requirements[idx] = requirement
+		updated = true
+	}
+
+	if !updated {
+		actionSpec.Requirements = append(actionSpec.Requirements, document.ActionRequirementSpec{
+			Key:       "cashflowDefaultProfile",
+			Label:     label,
+			Required:  true,
+			Satisfied: status.Configured,
+			Code:      strings.TrimSpace(status.Code),
+			Message:   strings.TrimSpace(status.Message),
+		})
+	}
+
+	if !status.Configured {
+		actionSpec.State.Enabled = false
+		actionSpec.State.Code = strings.TrimSpace(status.Code)
+		if strings.TrimSpace(actionSpec.State.Message) == "" {
+			actionSpec.State.Message = strings.TrimSpace(status.Message)
 		}
 	}
 

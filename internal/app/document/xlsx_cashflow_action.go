@@ -14,10 +14,13 @@ import (
 	"time"
 
 	appcashflow "github.com/sieryo/invoice-extractor/internal/app/cashflow"
+	"github.com/sieryo/invoice-extractor/internal/taxcatalog"
 )
 
 const (
 	cashflowMYOBActionType  = "export_cashflow_myob"
+	cashflowSpendActionType = "export_cashflow_spend_money"
+	cashflowRecvActionType  = "export_cashflow_receive_money"
 	cashflowDefaultTextName = "cashflow-myob"
 )
 
@@ -60,7 +63,7 @@ func (p *XLSXCashflowProcessor) RunAction(ctx context.Context, req ActionRequest
 		Outputs:     make([]ActionOutput, 0, 1),
 	}
 
-	if strings.TrimSpace(req.ActionType) != cashflowMYOBActionType {
+	if !isCashflowMYOBAction(req.ActionType) {
 		result.Status = "failed"
 		result.Message = "unsupported action for cashflow_import"
 		result.FinishedAt = time.Now()
@@ -80,12 +83,7 @@ func (p *XLSXCashflowProcessor) RunAction(ctx context.Context, req ActionRequest
 		result.FinishedAt = time.Now()
 		return result, err
 	}
-	if input.CashflowType != appcashflow.SpendMoneyType {
-		result.Status = "failed"
-		result.Message = "hanya spend money yang didukung saat ini"
-		result.FinishedAt = time.Now()
-		return result, fmt.Errorf("cashflow type %q belum diimplementasikan", input.CashflowType)
-	}
+	input.CashflowType = cashflowTypeFromAction(req.ActionType)
 
 	if p.taxAccounts == nil {
 		result.Status = "failed"
@@ -103,7 +101,11 @@ func (p *XLSXCashflowProcessor) RunAction(ctx context.Context, req ActionRequest
 	}
 
 	rows := make([][]string, 0, len(req.SnapshotDocs)*4)
-	rows = append(rows, appcashflow.SpendMoneyHeader())
+	if input.CashflowType == appcashflow.ReceiveMoneyType {
+		rows = append(rows, appcashflow.ReceiveMoneyHeader())
+	} else {
+		rows = append(rows, appcashflow.SpendMoneyHeader())
+	}
 
 	nextChequeNumber := 0
 	if input.StartingChequeNumber != nil && *input.StartingChequeNumber > 0 {
@@ -132,7 +134,7 @@ func (p *XLSXCashflowProcessor) RunAction(ctx context.Context, req ActionRequest
 			continue
 		}
 
-		entryRows, warnings, processedCount, buildErr := p.buildSpendMoneyDocumentRows(doc.SourceName, sheet, input, taxAccounts, nextChequeNumber)
+		entryRows, warnings, processedCount, buildErr := p.buildCashflowDocumentRows(doc.SourceName, sheet, input, taxAccounts, nextChequeNumber)
 		if buildErr != nil {
 			result.ItemResults = append(result.ItemResults, ActionItemResult{
 				DocumentID: doc.DocumentID,
@@ -222,20 +224,24 @@ func (p *XLSXCashflowProcessor) RunAction(ctx context.Context, req ActionRequest
 		result.Message = "export selesai dengan peringatan"
 	default:
 		result.Status = "success"
-		result.Message = "export spend money berhasil"
+		if input.CashflowType == appcashflow.ReceiveMoneyType {
+			result.Message = "export receive money berhasil"
+		} else {
+			result.Message = "export spend money berhasil"
+		}
 	}
 	result.FinishedAt = time.Now()
 	return result, nil
 }
 
-func (p *XLSXCashflowProcessor) buildSpendMoneyDocumentRows(
+func (p *XLSXCashflowProcessor) buildCashflowDocumentRows(
 	sourceName string,
 	sheet SpreadsheetSheet,
 	input appcashflow.ExportMYOBInput,
 	taxAccounts map[string]appcashflow.TaxAccount,
 	startChequeNumber int,
 ) ([][]string, []string, int, error) {
-	headers, headerIndex, err := resolveCashflowHeaders(sheet, input.HeaderRowNumber)
+	headers, headerIndex, err := resolveCashflowHeaders(sheet, input.HeaderRowNumber, input)
 	if err != nil {
 		return nil, nil, 0, err
 	}
@@ -259,8 +265,8 @@ func (p *XLSXCashflowProcessor) buildSpendMoneyDocumentRows(
 		}
 		warnings = append(warnings, rowWarnings...)
 
-		if input.SkipPositiveTotal && record.Total > 0 {
-			warnings = append(warnings, fmt.Sprintf("row %d: total positif dilewati", rowNumber))
+		if shouldSkipCashflowRow(record.Total, input.CashflowType) {
+			warnings = append(warnings, fmt.Sprintf("row %d: %s", rowNumber, cashflowSkipReason(input.CashflowType)))
 			continue
 		}
 
@@ -268,13 +274,13 @@ func (p *XLSXCashflowProcessor) buildSpendMoneyDocumentRows(
 		if startChequeNumber > 0 {
 			currentChequeNumber = startChequeNumber + processed
 		}
-		tx, txWarnings, txErr := buildSpendMoneyTransaction(record, input, taxAccounts, currentChequeNumber)
+		entryRows, txWarnings, txErr := buildCashflowRows(record, input, taxAccounts, currentChequeNumber)
 		if txErr != nil {
 			warnings = append(warnings, fmt.Sprintf("row %d: %s", rowNumber, txErr.Error()))
 			continue
 		}
 		warnings = append(warnings, prefixWarnings(rowNumber, txWarnings)...)
-		rows = append(rows, appcashflow.BuildSpendMoneyRows(tx, input.ChequeAccount)...)
+		rows = append(rows, entryRows...)
 		processed++
 	}
 
@@ -284,7 +290,60 @@ func (p *XLSXCashflowProcessor) buildSpendMoneyDocumentRows(
 	return rows, uniqueStrings(warnings), processed, nil
 }
 
-func resolveCashflowHeaders(sheet SpreadsheetSheet, headerRowNumber int) ([]string, map[string]int, error) {
+func isCashflowMYOBAction(actionType string) bool {
+	switch strings.TrimSpace(actionType) {
+	case cashflowMYOBActionType, cashflowSpendActionType, cashflowRecvActionType:
+		return true
+	default:
+		return false
+	}
+}
+
+func cashflowTypeFromAction(actionType string) appcashflow.Type {
+	switch strings.TrimSpace(actionType) {
+	case cashflowRecvActionType:
+		return appcashflow.ReceiveMoneyType
+	default:
+		return appcashflow.SpendMoneyType
+	}
+}
+
+func shouldSkipCashflowRow(total float64, cashflowType appcashflow.Type) bool {
+	if cashflowType == appcashflow.ReceiveMoneyType {
+		return total < 0
+	}
+	return total > 0
+}
+
+func cashflowSkipReason(cashflowType appcashflow.Type) string {
+	if cashflowType == appcashflow.ReceiveMoneyType {
+		return "total negatif dilewati untuk mode Receive Money"
+	}
+	return "total positif dilewati untuk mode Spend Money"
+}
+
+func buildCashflowRows(
+	record cashflowRowRecord,
+	input appcashflow.ExportMYOBInput,
+	taxAccounts map[string]appcashflow.TaxAccount,
+	entryNumber int,
+) ([][]string, []string, error) {
+	if input.CashflowType == appcashflow.ReceiveMoneyType {
+		tx, warnings, err := buildReceiveMoneyTransaction(record, input, taxAccounts, entryNumber)
+		if err != nil {
+			return nil, warnings, err
+		}
+		return appcashflow.BuildReceiveMoneyRows(tx, input.ChequeAccount), warnings, nil
+	}
+
+	tx, warnings, err := buildSpendMoneyTransaction(record, input, taxAccounts, entryNumber)
+	if err != nil {
+		return nil, warnings, err
+	}
+	return appcashflow.BuildSpendMoneyRows(tx, input.ChequeAccount), warnings, nil
+}
+
+func resolveCashflowHeaders(sheet SpreadsheetSheet, headerRowNumber int, input appcashflow.ExportMYOBInput) ([]string, map[string]int, error) {
 	headerIdx := -1
 	for idx := range sheet.RawRows {
 		if SpreadsheetRowNumberAt(sheet, idx) == headerRowNumber {
@@ -311,7 +370,7 @@ func resolveCashflowHeaders(sheet SpreadsheetSheet, headerRowNumber int) ([]stri
 
 	fieldIndex := make(map[string]int)
 	missing := make([]string, 0)
-	for _, def := range cashflowFieldDefinitions() {
+	for _, def := range cashflowFieldDefinitions(input) {
 		idx, ok := resolveCashflowFieldIndex(def, byNormalized)
 		if !ok {
 			if def.Required {
@@ -378,10 +437,7 @@ func buildSpendMoneyTransaction(
 	if amount := normalizeNearZero(record.OtherCost); amount != 0 {
 		accountCode := strings.TrimSpace(input.OtherCostsAccountCode)
 		if accountCode == "" {
-			accountCode = lookupCashflowAccountCode(taxAccounts, "Admin Bank")
-		}
-		if accountCode == "" {
-			return appcashflow.SpendMoneyTransaction{}, warnings, errors.New("account code untuk biaya lain tidak ditemukan")
+			return appcashflow.SpendMoneyTransaction{}, warnings, errors.New("account code untuk biaya lain belum diatur")
 		}
 		components = append(components, cashflowComponent{
 			AccountCode: accountCode,
@@ -391,21 +447,22 @@ func buildSpendMoneyTransaction(
 	}
 
 	for _, taxComponent := range []struct {
+		Key    string
 		Label  string
 		Amount float64
 	}{
-		{Label: "PP 23", Amount: record.PP23},
-		{Label: "PPh 15%", Amount: record.PPH15},
-		{Label: "PPH 21", Amount: record.PPH21},
-		{Label: "PPH 23", Amount: record.PPH23},
-		{Label: "PPH 4 (2)", Amount: record.PPH42},
-		{Label: "PPN", Amount: record.PPN},
+		{Key: "pp23", Label: "PP 23", Amount: record.PP23},
+		{Key: "pph15", Label: "PPH 15%", Amount: record.PPH15},
+		{Key: "pph21", Label: "PPH 21", Amount: record.PPH21},
+		{Key: "pph23", Label: "PPH 23", Amount: record.PPH23},
+		{Key: "pph42", Label: "PPH 4 (2)", Amount: record.PPH42},
+		{Key: "ppn", Label: "PPN", Amount: record.PPN},
 	} {
 		amount := normalizeNearZero(taxComponent.Amount)
 		if amount == 0 {
 			continue
 		}
-		accountCode := lookupCashflowAccountCode(taxAccounts, taxComponent.Label)
+		accountCode := lookupCashflowTaxAccountCode(taxAccounts, taxComponent.Key)
 		if accountCode == "" {
 			return appcashflow.SpendMoneyTransaction{}, warnings, fmt.Errorf("lookup account untuk %s tidak ditemukan", taxComponent.Label)
 		}
@@ -421,7 +478,7 @@ func buildSpendMoneyTransaction(
 		return appcashflow.SpendMoneyTransaction{}, warnings, errors.New("row tidak memiliki komponen transaksi")
 	}
 
-	baseAccountCode, baseWarnings, err := resolveCashflowBaseAccountCode(record, input, taxAccounts)
+	baseAccountCode, baseWarnings, err := resolveCashflowBaseAccountCode(record, input)
 	if err != nil {
 		return appcashflow.SpendMoneyTransaction{}, warnings, err
 	}
@@ -460,17 +517,108 @@ func buildSpendMoneyTransaction(
 	}, uniqueStrings(warnings), nil
 }
 
-func resolveCashflowBaseAccountCode(
+func buildReceiveMoneyTransaction(
 	record cashflowRowRecord,
 	input appcashflow.ExportMYOBInput,
 	taxAccounts map[string]appcashflow.TaxAccount,
+	entryNumber int,
+) (appcashflow.ReceiveMoneyTransaction, []string, error) {
+	components := make([]cashflowComponent, 0, 8)
+	warnings := make([]string, 0)
+
+	if amount := normalizeNearZero(record.OtherCost); amount != 0 {
+		accountCode := strings.TrimSpace(input.OtherCostsAccountCode)
+		if accountCode == "" {
+			return appcashflow.ReceiveMoneyTransaction{}, warnings, errors.New("account code untuk biaya lain belum diatur")
+		}
+		components = append(components, cashflowComponent{
+			AccountCode: accountCode,
+			Amount:      amount,
+			Allocation:  "Biaya Lainnya",
+		})
+	}
+
+	for _, taxComponent := range []struct {
+		Key    string
+		Label  string
+		Amount float64
+	}{
+		{Key: "pp23", Label: "PP 23", Amount: record.PP23},
+		{Key: "pph15", Label: "PPH 15%", Amount: record.PPH15},
+		{Key: "pph21", Label: "PPH 21", Amount: record.PPH21},
+		{Key: "pph23", Label: "PPH 23", Amount: record.PPH23},
+		{Key: "pph42", Label: "PPH 4 (2)", Amount: record.PPH42},
+		{Key: "ppn", Label: "PPN", Amount: record.PPN},
+	} {
+		amount := normalizeNearZero(taxComponent.Amount)
+		if amount == 0 {
+			continue
+		}
+		accountCode := lookupCashflowTaxAccountCode(taxAccounts, taxComponent.Key)
+		if accountCode == "" {
+			return appcashflow.ReceiveMoneyTransaction{}, warnings, fmt.Errorf("lookup account untuk %s tidak ditemukan", taxComponent.Label)
+		}
+		components = append(components, cashflowComponent{
+			AccountCode: accountCode,
+			Amount:      amount,
+			Allocation:  taxComponent.Label,
+		})
+	}
+
+	baseAmount := normalizeNearZero(record.Total - sumCashflowComponents(components))
+	if baseAmount == 0 && len(components) == 0 {
+		return appcashflow.ReceiveMoneyTransaction{}, warnings, errors.New("row tidak memiliki komponen transaksi")
+	}
+
+	baseAccountCode, baseWarnings, err := resolveCashflowBaseAccountCode(record, input)
+	if err != nil {
+		return appcashflow.ReceiveMoneyTransaction{}, warnings, err
+	}
+	warnings = append(warnings, baseWarnings...)
+
+	if baseAmount != 0 {
+		components = append([]cashflowComponent{{
+			AccountCode: baseAccountCode,
+			Amount:      baseAmount,
+			Allocation:  resolveCashflowAllocationMemo(record, input),
+		}}, components...)
+	}
+
+	items := make([]appcashflow.ReceiveMoneyTransactionItem, 0, len(components))
+	for _, component := range components {
+		items = append(items, appcashflow.ReceiveMoneyTransactionItem{
+			AccountCode: component.AccountCode,
+			Amount:      component.Amount,
+			Allocation:  component.Allocation,
+		})
+	}
+
+	var idNumberPtr *int
+	if entryNumber > 0 {
+		entryNumberCopy := entryNumber
+		idNumberPtr = &entryNumberCopy
+	}
+
+	return appcashflow.ReceiveMoneyTransaction{
+		IDNumber:   idNumberPtr,
+		Date:       appcashflow.EnsureNonZeroTime(record.Date),
+		Memo:       record.Information,
+		Amount:     record.Total,
+		Allocation: resolveCashflowAllocationMemo(record, input),
+		Items:      items,
+	}, uniqueStrings(warnings), nil
+}
+
+func resolveCashflowBaseAccountCode(
+	record cashflowRowRecord,
+	input appcashflow.ExportMYOBInput,
 ) (string, []string, error) {
 	coa := strings.TrimSpace(record.COA)
+	if coa == "" {
+		return "", nil, errors.New("chart of accounts kosong, row dilewati")
+	}
 	if looksLikeAccountCode(coa) {
 		return coa, nil, nil
-	}
-	if accountCode := lookupCashflowAccountCode(taxAccounts, coa); accountCode != "" {
-		return accountCode, nil, nil
 	}
 
 	if input.CashflowFormat == appcashflow.InfluencerFormat {
@@ -483,7 +631,7 @@ func resolveCashflowBaseAccountCode(
 		}
 	}
 
-	return "", nil, fmt.Errorf("account code untuk COA %q tidak ditemukan", coa)
+	return "", nil, fmt.Errorf("chart of accounts %q tidak ditemukan, row dilewati", coa)
 }
 
 func resolveCashflowAllocationMemo(record cashflowRowRecord, input appcashflow.ExportMYOBInput) string {
@@ -519,6 +667,14 @@ func lookupCashflowAccountCode(accounts map[string]appcashflow.TaxAccount, key s
 		return ""
 	}
 	return strings.TrimSpace(record.Account)
+}
+
+func lookupCashflowTaxAccountCode(accounts map[string]appcashflow.TaxAccount, internalKey string) string {
+	canonicalName := taxcatalog.ResolveCanonicalTaxName(internalKey)
+	if canonicalName == "" {
+		return ""
+	}
+	return lookupCashflowAccountCode(accounts, canonicalName)
 }
 
 func parseCashflowDate(raw string) (time.Time, error) {
@@ -594,21 +750,48 @@ func parseOptionalCashflowTypedAmount(cell SpreadsheetCell) (float64, error) {
 	return parseOptionalCashflowAmount(SpreadsheetCellText(cell))
 }
 
-func cashflowFieldDefinitions() []cashflowFieldDefinition {
+func cashflowFieldDefinitions(input appcashflow.ExportMYOBInput) []cashflowFieldDefinition {
 	return []cashflowFieldDefinition{
-		{Key: "date", Required: true, Aliases: []string{"tanggal", "date"}},
-		{Key: "information", Required: true, Aliases: []string{"note", "keterangan", "deskripsi", "information"}},
-		{Key: "coa", Required: true, Aliases: []string{"coa", "chartofaccount", "chartofaccounts"}},
-		{Key: "otherCost", Required: false, Aliases: []string{"bylainnya", "biayalainnya", "othercost"}},
-		{Key: "pp23", Required: false, Aliases: []string{"pp23", "pp 23"}},
-		{Key: "pph15", Required: false, Aliases: []string{"pph15%", "pph15"}},
-		{Key: "pph21", Required: false, Aliases: []string{"pph21", "pph 21"}},
-		{Key: "pph23", Required: false, Aliases: []string{"pph23", "pph 23"}},
-		{Key: "pph42", Required: false, Aliases: []string{"pph4(2)", "pph4 2", "pph 4 (2)", "pph 4(2)"}},
-		{Key: "ppn", Required: false, Aliases: []string{"ppn"}},
-		{Key: "remark", Required: false, Aliases: []string{"catatan", "remark", "memo"}},
-		{Key: "total", Required: true, Aliases: []string{"idr", "total", "nominal"}},
+		{Key: "date", Required: true, Aliases: cashflowAliases(input.MappedField("date"), "tanggal", "date")},
+		{Key: "information", Required: true, Aliases: cashflowAliases(input.MappedField("information"), "note", "keterangan", "deskripsi", "information")},
+		{Key: "coa", Required: true, Aliases: cashflowAliases(input.MappedField("coa"), "coa", "chartofaccount", "chartofaccounts")},
+		{Key: "otherCost", Required: false, Aliases: cashflowAliases(input.MappedField("otherCost"), "bylainnya", "biayalainnya", "othercost")},
+		{Key: "pp23", Required: false, Aliases: cashflowAliases(input.MappedField("pp23"), "pp23", "pp 23")},
+		{Key: "pph15", Required: false, Aliases: cashflowAliases(input.MappedField("pph15"), "pph15%", "pph15")},
+		{Key: "pph21", Required: false, Aliases: cashflowAliases(input.MappedField("pph21"), "pph21", "pph 21")},
+		{Key: "pph23", Required: false, Aliases: cashflowAliases(input.MappedField("pph23"), "pph23", "pph 23")},
+		{Key: "pph42", Required: false, Aliases: cashflowAliases(input.MappedField("pph42"), "pph4(2)", "pph4 2", "pph 4 (2)", "pph 4(2)")},
+		{Key: "ppn", Required: false, Aliases: cashflowAliases(input.MappedField("ppn"), "ppn")},
+		{Key: "remark", Required: false, Aliases: cashflowAliases(input.MappedField("remark"), "catatan", "remark", "memo")},
+		{Key: "total", Required: true, Aliases: cashflowAliases(input.MappedField("total"), "idr", "total", "nominal")},
 	}
+}
+
+func cashflowAliases(primary string, aliases ...string) []string {
+	seen := make(map[string]struct{}, len(aliases)+1)
+	out := make([]string, 0, len(aliases)+1)
+
+	appendAlias := func(value string) {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			return
+		}
+		key := normalizeCashflowHeader(trimmed)
+		if key == "" {
+			return
+		}
+		if _, exists := seen[key]; exists {
+			return
+		}
+		seen[key] = struct{}{}
+		out = append(out, trimmed)
+	}
+
+	appendAlias(primary)
+	for _, alias := range aliases {
+		appendAlias(alias)
+	}
+	return out
 }
 
 func resolveCashflowFieldIndex(def cashflowFieldDefinition, byNormalized map[string]int) (int, bool) {

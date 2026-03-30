@@ -7,15 +7,15 @@ import (
 )
 
 type ConfigModuleHandler struct {
-	features appconfig.FeatureFlags
+	settings *appconfig.SettingsService
 }
 
-func NewConfigModuleHandler(features appconfig.FeatureFlags) *ConfigModuleHandler {
-	return &ConfigModuleHandler{features: features}
+func NewConfigModuleHandler(settings *appconfig.SettingsService) *ConfigModuleHandler {
+	return &ConfigModuleHandler{settings: settings}
 }
 
 func (h *ConfigModuleHandler) List(c *fiber.Ctx) error {
-	items := configmodule.ListModules(h.features.EnableCashflowXLSX)
+	items := configmodule.ListModules(h.settings.CurrentFeatures().EnableCashflowXLSX)
 	return SendSuccess(c, fiber.StatusOK, fiber.Map{
 		"items": items,
 		"count": len(items),
@@ -24,7 +24,7 @@ func (h *ConfigModuleHandler) List(c *fiber.Ctx) error {
 
 func (h *ConfigModuleHandler) Get(c *fiber.Ctx) error {
 	moduleKey := c.Params("moduleKey")
-	item, ok := configmodule.FindModule(moduleKey, h.features.EnableCashflowXLSX)
+	item, ok := configmodule.FindModule(moduleKey, h.settings.CurrentFeatures().EnableCashflowXLSX)
 	if !ok {
 		return SendError(c, fiber.StatusNotFound, "config module not found")
 	}

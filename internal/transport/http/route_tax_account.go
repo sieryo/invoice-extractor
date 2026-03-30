@@ -6,7 +6,7 @@ import (
 )
 
 func (s *Server) registerTaxAccountRoutes(protected fiber.Router) {
-	if !s.appCtx.Features.EnableCashflowXLSX || s.appCtx.TaxAccountService == nil {
+	if s.appCtx.TaxAccountService == nil {
 		return
 	}
 

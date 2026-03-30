@@ -7,11 +7,11 @@ import (
 )
 
 type MetaHandler struct {
-	features config.FeatureFlags
+	settings *config.SettingsService
 }
 
-func NewMetaHandler(features config.FeatureFlags) *MetaHandler {
-	return &MetaHandler{features: features}
+func NewMetaHandler(settings *config.SettingsService) *MetaHandler {
+	return &MetaHandler{settings: settings}
 }
 
 type AppMetaResponse struct {
@@ -29,7 +29,7 @@ func (h *MetaHandler) GetMeta(c *fiber.Ctx) error {
 		Environment: buildinfo.Environment,
 		BaseAPIPath: buildinfo.BaseAPIPath,
 	}
-	resp.Features.CashflowXLSXEnabled = h.features.EnableCashflowXLSX
+	resp.Features.CashflowXLSXEnabled = h.settings.CurrentFeatures().EnableCashflowXLSX
 
 	return SendSuccess(c, fiber.StatusOK, AppMetaResponse{
 		Version:     resp.Version,

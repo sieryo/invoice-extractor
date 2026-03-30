@@ -7,7 +7,7 @@ import (
 
 func (s *Server) registerConfigModuleRoutes(protected fiber.Router) {
 	config := protected.Group("/config")
-	h := handler.NewConfigModuleHandler(s.appCtx.Features)
+	h := handler.NewConfigModuleHandler(s.appCtx.SettingsService)
 	config.Get("/modules", h.List)
 	config.Get("/modules/:moduleKey", h.Get)
 }

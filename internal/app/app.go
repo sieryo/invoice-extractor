@@ -49,9 +49,11 @@ type App struct {
 	Logger    *slog.Logger
 	FileStore file.FileStore
 
-	BuyerRegistryService       *buyer.BuyerRegistryService
-	TaxAccountService          *appcashflow.TaxAccountService
-	BukpotRequestConfigService *appbukpot.RequestConfigService
+	BuyerRegistryService         *buyer.BuyerRegistryService
+	TaxAccountService            *appcashflow.TaxAccountService
+	CashflowProfileConfigService *appcashflow.ProfileConfigService
+	BukpotRequestConfigService   *appbukpot.RequestConfigService
+	SettingsService              *config.SettingsService
 
 	TemplateRegistryService *template.TemplateRegistryService
 	DocumentProcessors      *document.Registry
@@ -85,6 +87,7 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string, cfg config.Config) *Ap
 	collectionActionRepo := repository.NewCollectionActionRepository(db)
 
 	authService := auth.NewService(profileRepo, sessionRepo, logger, rootDir)
+	settingsService := config.NewSettingsService(rootDir, cfg.Features)
 	buyerRegistryService := buyer.NewBuyerRegistryService(rootDir)
 	bukpotRequestConfigService := appbukpot.NewRequestConfigService(rootDir)
 	invoiceExtractService := invoiceextract.NewInvoiceExtractService(templateRegistry, buyerRegistryService)
@@ -104,10 +107,8 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string, cfg config.Config) *Ap
 	collectionService := collection.NewCollectionService(collectionRepo, documentRepoV2, fs)
 	fileService := appfile.NewFileService(fs, fileRepo, collectionRepo)
 
-	var taxAccountService *appcashflow.TaxAccountService
-	if cfg.Features.EnableCashflowXLSX {
-		taxAccountService = appcashflow.NewTaxAccountService(rootDir)
-	}
+	taxAccountService := appcashflow.NewTaxAccountService(rootDir)
+	cashflowProfileConfigService := appcashflow.NewProfileConfigService(rootDir)
 	templateRegistryService := template.NewTemplateRegistryService(templateRegistry)
 	documentRegistry := document.NewRegistry()
 	documentRegistry.MustRegister(document.NewPDFInvoiceProcessor(invoiceExtractService, invoiceService, fs))
@@ -116,9 +117,7 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string, cfg config.Config) *Ap
 	documentRegistry.MustRegister(document.NewPDFBukpotProcessor(document.CollectionKindBukpotBP21, bukpotService, fs))
 	documentRegistry.MustRegister(document.NewPDFBukpotProcessor(document.CollectionKindBukpotBPA1, bukpotService, fs))
 	documentRegistry.MustRegister(document.NewXLSXBukpotRequestProcessor(fs, rootDir, bukpotRequestConfigService))
-	if cfg.Features.EnableCashflowXLSX && taxAccountService != nil {
-		documentRegistry.MustRegister(document.NewXLSXCashflowProcessor(fs, taxAccountService))
-	}
+	documentRegistry.MustRegister(document.NewXLSXCashflowProcessor(fs, taxAccountService))
 	ingestService := ingest.NewIngestService(
 		uploadSessionRepo,
 		uploadChunkRepo,
@@ -136,6 +135,7 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string, cfg config.Config) *Ap
 		documentRegistry,
 		buyerRegistryService,
 		taxAccountService,
+		cashflowProfileConfigService,
 		bukpotRequestConfigService,
 		fs,
 		1,
@@ -156,22 +156,24 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string, cfg config.Config) *Ap
 	jobService := jobapp.NewJobService(jobRepo, jobRunner, fs)
 
 	return &App{
-		RootDir:                    rootDir,
-		AuthService:                authService,
-		CollectionService:          collectionService,
-		FileService:                fileService,
-		IngestService:              ingestService,
-		ActionService:              actionService,
-		JobService:                 jobService,
-		InvoiceService:             invoiceService,
-		Logger:                     logger,
-		FileStore:                  fs,
-		JobRunner:                  jobRunner,
-		BuyerRegistryService:       buyerRegistryService,
-		TaxAccountService:          taxAccountService,
-		BukpotRequestConfigService: bukpotRequestConfigService,
-		TemplateRegistryService:    templateRegistryService,
-		DocumentProcessors:         documentRegistry,
-		Features:                   cfg.Features,
+		RootDir:                      rootDir,
+		AuthService:                  authService,
+		CollectionService:            collectionService,
+		FileService:                  fileService,
+		IngestService:                ingestService,
+		ActionService:                actionService,
+		JobService:                   jobService,
+		InvoiceService:               invoiceService,
+		Logger:                       logger,
+		FileStore:                    fs,
+		JobRunner:                    jobRunner,
+		BuyerRegistryService:         buyerRegistryService,
+		TaxAccountService:            taxAccountService,
+		CashflowProfileConfigService: cashflowProfileConfigService,
+		BukpotRequestConfigService:   bukpotRequestConfigService,
+		SettingsService:              settingsService,
+		TemplateRegistryService:      templateRegistryService,
+		DocumentProcessors:           documentRegistry,
+		Features:                     cfg.Features,
 	}
 }

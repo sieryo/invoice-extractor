@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/sieryo/invoice-extractor/internal/taxcatalog"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -26,6 +27,7 @@ type TaxAccountUploadSpec struct {
 type TaxAccountSchemaSpec struct {
 	SchemaVersion string                 `json:"schemaVersion"`
 	Columns       []TaxAccountColumnSpec `json:"columns"`
+	AllowedNames  []string               `json:"allowedNames,omitempty"`
 	Upload        TaxAccountUploadSpec   `json:"upload"`
 	Relative      string                 `json:"relative"`
 	LookupKey     string                 `json:"lookupKey"`
@@ -58,6 +60,7 @@ func (p *TaxAccountExcelParser) SchemaSpec() TaxAccountSchemaSpec {
 			{Key: "name", Header: "name", Required: true, Description: "Nama akun lookup"},
 			{Key: "account", Header: "account", Required: true, Description: "Kode akun MYOB"},
 		},
+		AllowedNames: taxcatalog.CanonicalTaxNames(),
 		Upload: TaxAccountUploadSpec{
 			AcceptedExtensions: []string{".xlsx", ".xls"},
 			AcceptedMIMETypes: []string{
@@ -113,6 +116,15 @@ func (p *TaxAccountExcelParser) Parse(path string) ([]TaxAccountRecord, []Valida
 		if account == "" {
 			issues = append(issues, ValidationIssue{
 				Row: rowNum, Field: "account", Message: "account kosong",
+			})
+			continue
+		}
+		if !taxcatalog.IsCanonicalTaxName(name) {
+			issues = append(issues, ValidationIssue{
+				Row:     rowNum,
+				Field:   "name",
+				Value:   name,
+				Message: "name tidak termasuk daftar nama tax yang didukung dan akan dilewati",
 			})
 			continue
 		}

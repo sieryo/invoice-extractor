@@ -6,6 +6,6 @@ import (
 )
 
 func (s *Server) registerMetaRoutes(api fiber.Router) {
-	metaHandler := handler.NewMetaHandler(s.appCtx.Features)
+	metaHandler := handler.NewMetaHandler(s.appCtx.SettingsService)
 	api.Get("/meta", metaHandler.GetMeta)
 }

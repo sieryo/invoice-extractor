@@ -34,12 +34,11 @@ type ExportMYOBInput struct {
 	CashflowFormat Format `json:"cashflowFormat"`
 	CashflowType   Type   `json:"cashflowType"`
 
-	RemarkDelimiter       string `json:"remarkDelimiter,omitempty"`
-	OtherCostsAccountCode string `json:"otherCostsAccountCode,omitempty"`
-	DefaultIAccountCode   string `json:"defaultIAccountCode,omitempty"`
-	DefaultBAccountCode   string `json:"defaultBAccountCode,omitempty"`
-
-	SkipPositiveTotal bool `json:"skipPositiveTotal"`
+	RemarkDelimiter       string            `json:"remarkDelimiter,omitempty"`
+	OtherCostsAccountCode string            `json:"otherCostsAccountCode,omitempty"`
+	DefaultIAccountCode   string            `json:"defaultIAccountCode,omitempty"`
+	DefaultBAccountCode   string            `json:"defaultBAccountCode,omitempty"`
+	FieldMap              map[string]string `json:"-"`
 }
 
 type TaxAccount struct {
@@ -57,6 +56,21 @@ type SpendMoneyTransaction struct {
 }
 
 type SpendMoneyTransactionItem struct {
+	AccountCode string
+	Amount      float64
+	Allocation  string
+}
+
+type ReceiveMoneyTransaction struct {
+	IDNumber   *int
+	Date       time.Time
+	Memo       string
+	Amount     float64
+	Allocation string
+	Items      []ReceiveMoneyTransactionItem
+}
+
+type ReceiveMoneyTransactionItem struct {
 	AccountCode string
 	Amount      float64
 	Allocation  string
@@ -110,9 +124,7 @@ func ParseExportMYOBInput(raw json.RawMessage) (ExportMYOBInput, error) {
 	if v, ok := payload["defaultBAccountCode"].(string); ok {
 		input.DefaultBAccountCode = strings.TrimSpace(v)
 	}
-	if v, ok := payload["skipPositiveTotal"].(bool); ok {
-		input.SkipPositiveTotal = v
-	}
+	input.FieldMap = parseFieldMap(payload)
 	if v, exists := payload["headerRowNumber"]; exists {
 		n, err := parseInt(v)
 		if err != nil {
@@ -143,6 +155,9 @@ func (i *ExportMYOBInput) Normalize() {
 	i.OtherCostsAccountCode = strings.TrimSpace(i.OtherCostsAccountCode)
 	i.DefaultIAccountCode = strings.TrimSpace(i.DefaultIAccountCode)
 	i.DefaultBAccountCode = strings.TrimSpace(i.DefaultBAccountCode)
+	for key, value := range i.FieldMap {
+		i.FieldMap[key] = strings.TrimSpace(value)
+	}
 	if i.HeaderRowNumber <= 0 {
 		i.HeaderRowNumber = 1
 	}
@@ -155,6 +170,38 @@ func (i *ExportMYOBInput) Normalize() {
 	if i.CashflowType == "" {
 		i.CashflowType = SpendMoneyType
 	}
+}
+
+func (i ExportMYOBInput) MappedField(key string) string {
+	if len(i.FieldMap) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(i.FieldMap[key])
+}
+
+func parseFieldMap(payload map[string]any) map[string]string {
+	keys := []string{
+		"date",
+		"information",
+		"coa",
+		"otherCost",
+		"pp23",
+		"pph15",
+		"pph21",
+		"pph23",
+		"pph42",
+		"ppn",
+		"remark",
+		"total",
+	}
+
+	fieldMap := make(map[string]string, len(keys))
+	for _, key := range keys {
+		if value, ok := payload[key].(string); ok {
+			fieldMap[key] = strings.TrimSpace(value)
+		}
+	}
+	return fieldMap
 }
 
 func parseInt(value any) (int, error) {
