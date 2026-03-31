@@ -54,6 +54,12 @@ type cashflowComponent struct {
 	Allocation  string
 }
 
+type cashflowBaseAccountResolution struct {
+	AccountCode string
+	AccountKind string
+	Warnings    []string
+}
+
 func (p *XLSXCashflowProcessor) RunAction(ctx context.Context, req ActionRequest) (ActionResult, error) {
 	result := ActionResult{
 		ActionID:    req.ActionID,
@@ -265,8 +271,8 @@ func (p *XLSXCashflowProcessor) buildCashflowDocumentRows(
 		}
 		warnings = append(warnings, rowWarnings...)
 
-		if shouldSkipCashflowRow(record.Total, input.CashflowType) {
-			warnings = append(warnings, fmt.Sprintf("row %d: %s", rowNumber, cashflowSkipReason(input.CashflowType)))
+		if skipReason, shouldSkip := resolveCashflowSkipReason(record, input); shouldSkip {
+			warnings = append(warnings, fmt.Sprintf("row %d: %s", rowNumber, skipReason))
 			continue
 		}
 		record = normalizeCashflowRecord(record)
@@ -309,18 +315,48 @@ func cashflowTypeFromAction(actionType string) appcashflow.Type {
 	}
 }
 
-func shouldSkipCashflowRow(total float64, cashflowType appcashflow.Type) bool {
-	if cashflowType == appcashflow.ReceiveMoneyType {
-		return total < 0
-	}
-	return total > 0
-}
-
 func cashflowSkipReason(cashflowType appcashflow.Type) string {
 	if cashflowType == appcashflow.ReceiveMoneyType {
 		return "total negatif dilewati untuk mode Receive Money"
 	}
 	return "total positif dilewati untuk mode Spend Money"
+}
+
+func resolveCashflowSkipReason(record cashflowRowRecord, input appcashflow.ExportMYOBInput) (string, bool) {
+	if keyword, ok := matchCashflowInformationFilterKeyword(record.Information, input.InformationFilterKeywords); ok {
+		return fmt.Sprintf("row dilewati karena keyword filter information %q", keyword), true
+	}
+
+	if input.CashflowType == appcashflow.ReceiveMoneyType {
+		if record.Total < 0 {
+			return cashflowSkipReason(input.CashflowType), true
+		}
+		return "", false
+	}
+
+	if record.Total > 0 {
+		return cashflowSkipReason(input.CashflowType), true
+	}
+	return "", false
+}
+
+func matchCashflowInformationFilterKeyword(information string, keywords []string) (string, bool) {
+	text := strings.ToLower(strings.TrimSpace(information))
+	if text == "" || len(keywords) == 0 {
+		return "", false
+	}
+
+	for _, keyword := range keywords {
+		trimmed := strings.TrimSpace(keyword)
+		if trimmed == "" {
+			continue
+		}
+		if strings.Contains(text, strings.ToLower(trimmed)) {
+			return trimmed, true
+		}
+	}
+
+	return "", false
 }
 
 func normalizeCashflowRecord(record cashflowRowRecord) cashflowRowRecord {
@@ -502,17 +538,17 @@ func buildSpendMoneyTransaction(
 		return appcashflow.SpendMoneyTransaction{}, warnings, errors.New("row tidak memiliki komponen transaksi")
 	}
 
-	baseAccountCode, baseWarnings, err := resolveCashflowBaseAccountCode(record, input)
+	baseAccount, err := resolveCashflowBaseAccountCode(record, input)
 	if err != nil {
 		return appcashflow.SpendMoneyTransaction{}, warnings, err
 	}
-	warnings = append(warnings, baseWarnings...)
+	warnings = append(warnings, baseAccount.Warnings...)
 
 	if baseAmount != 0 {
 		components = append([]cashflowComponent{{
-			AccountCode: baseAccountCode,
+			AccountCode: baseAccount.AccountCode,
 			Amount:      baseAmount,
-			Allocation:  resolveCashflowPrimaryAllocation(record),
+			Allocation:  resolveCashflowPrimaryAllocation(record, input, baseAccount.AccountKind),
 		}}, components...)
 	}
 
@@ -534,9 +570,9 @@ func buildSpendMoneyTransaction(
 	return appcashflow.SpendMoneyTransaction{
 		ChequeNumber: chequeNumberPtr,
 		Date:         appcashflow.EnsureNonZeroTime(record.Date),
-		Memo:         resolveCashflowPrimaryAllocation(record),
+		Memo:         resolveCashflowPrimaryAllocation(record, input, baseAccount.AccountKind),
 		Amount:       totalAmount,
-		Allocation:   resolveCashflowPrimaryAllocation(record),
+		Allocation:   resolveCashflowPrimaryAllocation(record, input, baseAccount.AccountKind),
 		Items:        items,
 	}, uniqueStrings(warnings), nil
 }
@@ -606,17 +642,17 @@ func buildReceiveMoneyTransaction(
 		return appcashflow.ReceiveMoneyTransaction{}, warnings, errors.New("row tidak memiliki komponen transaksi")
 	}
 
-	baseAccountCode, baseWarnings, err := resolveCashflowBaseAccountCode(record, input)
+	baseAccount, err := resolveCashflowBaseAccountCode(record, input)
 	if err != nil {
 		return appcashflow.ReceiveMoneyTransaction{}, warnings, err
 	}
-	warnings = append(warnings, baseWarnings...)
+	warnings = append(warnings, baseAccount.Warnings...)
 
 	if baseAmount != 0 {
 		components = append([]cashflowComponent{{
-			AccountCode: baseAccountCode,
+			AccountCode: baseAccount.AccountCode,
 			Amount:      baseAmount,
-			Allocation:  resolveCashflowPrimaryAllocation(record),
+			Allocation:  resolveCashflowPrimaryAllocation(record, input, baseAccount.AccountKind),
 		}}, components...)
 	}
 
@@ -638,9 +674,9 @@ func buildReceiveMoneyTransaction(
 	return appcashflow.ReceiveMoneyTransaction{
 		IDNumber:   idNumberPtr,
 		Date:       appcashflow.EnsureNonZeroTime(record.Date),
-		Memo:       resolveCashflowPrimaryAllocation(record),
+		Memo:       resolveCashflowPrimaryAllocation(record, input, baseAccount.AccountKind),
 		Amount:     record.Total,
-		Allocation: resolveCashflowPrimaryAllocation(record),
+		Allocation: resolveCashflowPrimaryAllocation(record, input, baseAccount.AccountKind),
 		Items:      items,
 	}, uniqueStrings(warnings), nil
 }
@@ -648,36 +684,54 @@ func buildReceiveMoneyTransaction(
 func resolveCashflowBaseAccountCode(
 	record cashflowRowRecord,
 	input appcashflow.ExportMYOBInput,
-) (string, []string, error) {
-	coa := strings.TrimSpace(record.COA)
-	if coa == "" {
-		return "", nil, errors.New("chart of accounts kosong, row dilewati")
-	}
-	if looksLikeAccountCode(coa) {
-		return coa, nil, nil
-	}
-
+) (cashflowBaseAccountResolution, error) {
 	if input.CashflowFormat == appcashflow.InfluencerFormat {
-		joined := strings.ToLower(strings.Join([]string{record.COA, record.Information, record.Remark}, " "))
-		if strings.Contains(joined, "bank") && strings.TrimSpace(input.DefaultBAccountCode) != "" {
-			return input.DefaultBAccountCode, []string{"coa tidak berupa account code, fallback ke Default Bank Account Code"}, nil
+		lowerInfo := strings.ToLower(strings.TrimSpace(record.Information))
+		if strings.Contains(lowerInfo, "admin bank") && strings.TrimSpace(input.DefaultBAccountCode) != "" {
+			return cashflowBaseAccountResolution{
+				AccountCode: input.DefaultBAccountCode,
+				AccountKind: "admin_bank",
+			}, nil
 		}
 		if strings.TrimSpace(input.DefaultIAccountCode) != "" {
-			return input.DefaultIAccountCode, []string{"coa tidak berupa account code, fallback ke Default Influencer Account Code"}, nil
+			return cashflowBaseAccountResolution{
+				AccountCode: input.DefaultIAccountCode,
+				AccountKind: "influencer",
+			}, nil
 		}
+		return cashflowBaseAccountResolution{}, errors.New("default influencer/admin bank account code belum diatur")
 	}
 
-	return "", nil, fmt.Errorf("chart of accounts %q tidak ditemukan, row dilewati", coa)
+	coa := strings.TrimSpace(record.COA)
+	if coa == "" {
+		return cashflowBaseAccountResolution{}, errors.New("chart of accounts kosong, row dilewati")
+	}
+	if looksLikeAccountCode(coa) {
+		return cashflowBaseAccountResolution{
+			AccountCode: coa,
+			AccountKind: "coa",
+		}, nil
+	}
+
+	return cashflowBaseAccountResolution{}, fmt.Errorf("chart of accounts %q tidak ditemukan, row dilewati", coa)
 }
 
-func resolveCashflowPrimaryAllocation(record cashflowRowRecord) string {
-	return uppercaseCashflowText(record.Information)
+func resolveCashflowPrimaryAllocation(
+	record cashflowRowRecord,
+	input appcashflow.ExportMYOBInput,
+	accountKind string,
+) string {
+	base := uppercaseCashflowText(record.Information)
+	if input.CashflowFormat == appcashflow.InfluencerFormat && accountKind == "influencer" && base != "" {
+		return "INFLUENCER " + base
+	}
+	return base
 }
 
 func resolveCashflowAllocationMemo(record cashflowRowRecord, input appcashflow.ExportMYOBInput) string {
 	remark := strings.TrimSpace(record.Remark)
 	if remark == "" {
-		return resolveCashflowPrimaryAllocation(record)
+		return resolveCashflowPrimaryAllocation(record, input, "")
 	}
 	delimiter := strings.TrimSpace(input.RemarkDelimiter)
 	if delimiter == "" || !strings.Contains(remark, delimiter) {
@@ -685,11 +739,11 @@ func resolveCashflowAllocationMemo(record cashflowRowRecord, input appcashflow.E
 	}
 	parts := strings.SplitN(remark, delimiter, 2)
 	if len(parts) != 2 {
-		return resolveCashflowPrimaryAllocation(record)
+		return resolveCashflowPrimaryAllocation(record, input, "")
 	}
 	value := strings.TrimSpace(parts[1])
 	if value == "" {
-		return resolveCashflowPrimaryAllocation(record)
+		return resolveCashflowPrimaryAllocation(record, input, "")
 	}
 	return value
 }
@@ -794,7 +848,7 @@ func cashflowFieldDefinitions(input appcashflow.ExportMYOBInput) []cashflowField
 	return []cashflowFieldDefinition{
 		{Key: "date", Required: true, Aliases: cashflowAliases(input.MappedField("date"), "tanggal", "date")},
 		{Key: "information", Required: true, Aliases: cashflowAliases(input.MappedField("information"), "note", "keterangan", "deskripsi", "information")},
-		{Key: "coa", Required: true, Aliases: cashflowAliases(input.MappedField("coa"), "coa", "chartofaccount", "chartofaccounts")},
+		{Key: "coa", Required: input.CashflowFormat != appcashflow.InfluencerFormat, Aliases: cashflowAliases(input.MappedField("coa"), "coa", "chartofaccount", "chartofaccounts")},
 		{Key: "otherCost", Required: false, Aliases: cashflowAliases(input.MappedField("otherCost"), "bylainnya", "biayalainnya", "othercost")},
 		{Key: "pp23", Required: false, Aliases: cashflowAliases(input.MappedField("pp23"), "pp23", "pp 23")},
 		{Key: "pph15", Required: false, Aliases: cashflowAliases(input.MappedField("pph15"), "pph15%", "pph15")},

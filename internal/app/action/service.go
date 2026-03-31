@@ -518,6 +518,11 @@ func (s *Service) process(ctx context.Context, actionID string) error {
 		})
 	}
 
+	runInput := action.InputJSON
+	if action.CollectionKind == document.CollectionKindCashflowImport {
+		runInput = s.resolveCashflowRuntimeInput(action.UserID, action.ActionType, runInput)
+	}
+
 	runReq := document.ActionRequest{
 		ActionID:       action.ID,
 		UserID:         action.UserID,
@@ -527,7 +532,7 @@ func (s *Service) process(ctx context.Context, actionID string) error {
 		ActionType:     action.ActionType,
 		SnapshotDocID:  docIDs,
 		SnapshotDocs:   snapshotPayload,
-		Input:          action.InputJSON,
+		Input:          runInput,
 		RequestedAt:    startedAt,
 	}
 
@@ -1154,7 +1159,7 @@ func (s *Service) resolveCashflowActionSpec(
 					actionSpec.Form,
 					"cashflowFormat",
 					variantKey,
-					stringMapToAnyMap(appcashflow.ResolveProfileConfigValues(cfg, variantKey)),
+					stringMapToAnyMap(appcashflow.ResolveProfileConfigFormValues(cfg, configKey, variantKey)),
 				)
 			}
 		}
@@ -1264,6 +1269,62 @@ func (s *Service) resolveCashflowActionSpec(
 	}
 
 	return actionSpec, nil
+}
+
+func (s *Service) resolveCashflowRuntimeInput(
+	profileID string,
+	actionType string,
+	input json.RawMessage,
+) json.RawMessage {
+	if s.cashflowProfileConfig == nil {
+		return input
+	}
+
+	var configKey appcashflow.ProfileConfigKey
+	switch strings.TrimSpace(actionType) {
+	case "export_cashflow_receive_money":
+		configKey = appcashflow.ProfileConfigReceiveMoney
+	default:
+		configKey = appcashflow.ProfileConfigSpendMoney
+	}
+
+	cfg, err := s.cashflowProfileConfig.Load(profileID, configKey)
+	if err != nil {
+		return input
+	}
+
+	selectedFormatRaw := strings.TrimSpace(extractStringInput(input, "cashflowFormat"))
+	if selectedFormatRaw == "" {
+		selectedFormatRaw = string(appcashflow.StandardFormat)
+	}
+	runtimeValues := appcashflow.ResolveProfileConfigRuntimeValues(cfg, selectedFormatRaw)
+	if len(runtimeValues) == 0 {
+		return input
+	}
+
+	payload := map[string]any{}
+	trimmed := bytes.TrimSpace(input)
+	if len(trimmed) > 0 && !bytes.Equal(trimmed, []byte("null")) {
+		if err := json.Unmarshal(trimmed, &payload); err != nil {
+			return input
+		}
+	}
+
+	for key, value := range runtimeValues {
+		if strings.TrimSpace(value) == "" {
+			continue
+		}
+		payload[key] = value
+	}
+	if len(payload) == 0 {
+		return input
+	}
+
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return input
+	}
+	return b
 }
 
 func isCashflowExportAction(actionType string) bool {

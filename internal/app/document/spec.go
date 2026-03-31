@@ -452,7 +452,23 @@ func buildCashflowMappingFields() []FormFieldSpec {
 	return []FormFieldSpec{
 		{Key: "date", Kind: FormFieldKindText, Label: "Tanggal", Required: true, DefaultValue: "Tanggal", State: FormFieldStateSpec{Visible: true}},
 		{Key: "information", Kind: FormFieldKindText, Label: "Keterangan", Required: true, DefaultValue: "note", State: FormFieldStateSpec{Visible: true}},
-		{Key: "coa", Kind: FormFieldKindText, Label: "Chart of Account", Required: true, DefaultValue: "coa", State: FormFieldStateSpec{Visible: true}},
+		{
+			Key:          "coa",
+			Kind:         FormFieldKindText,
+			Label:        "Chart of Account",
+			Required:     false,
+			DefaultValue: "coa",
+			HelpText:     "Wajib untuk format standard. Pada format influencer, akun utama tidak diambil dari COA/WHT CoA tetapi dari Default Influencer/Admin Bank Account Code.",
+			Rules: []FormFieldRuleSpec{
+				{
+					Type:    FormFieldRuleRequiredIf,
+					Field:   "cashflowFormat",
+					Equals:  "standard",
+					Message: "Chart of Account wajib diisi untuk format standard",
+				},
+			},
+			State: FormFieldStateSpec{Visible: true},
+		},
 		{Key: "otherCost", Kind: FormFieldKindText, Label: "Biaya Lainnya", Required: false, DefaultValue: "By Lainnya", State: FormFieldStateSpec{Visible: true}},
 		{Key: "pp23", Kind: FormFieldKindText, Label: "PP 23", Required: false, DefaultValue: "PP 23", State: FormFieldStateSpec{Visible: true}},
 		{Key: "pph15", Kind: FormFieldKindText, Label: "PPh 15%", Required: false, DefaultValue: "PPh 15%", State: FormFieldStateSpec{Visible: true}},
@@ -790,6 +806,7 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 						},
 						Warnings: []string{
 							"Header mapping dan akun default perlu sesuai dengan format cashflow yang dipakai.",
+							"Pada format influencer, akun utama memakai Default Influencer/Admin Bank Account Code. Header COA/WHT CoA tidak dipakai untuk menentukan akun utama.",
 						},
 					},
 					Requirements: []ActionRequirementSpec{
@@ -856,6 +873,7 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 						},
 						Warnings: []string{
 							"Header mapping dan akun default perlu sesuai dengan format cashflow yang dipakai.",
+							"Pada format influencer, akun utama memakai Default Influencer/Admin Bank Account Code. Header COA/WHT CoA tidak dipakai untuk menentukan akun utama.",
 						},
 					},
 					Requirements: []ActionRequirementSpec{

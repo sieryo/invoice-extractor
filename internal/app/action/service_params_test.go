@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	appcashflow "github.com/sieryo/invoice-extractor/internal/app/cashflow"
 	"github.com/sieryo/invoice-extractor/internal/app/document"
 )
 
@@ -204,4 +205,53 @@ func TestPickPreferredSheetName(t *testing.T) {
 	if got := pickPreferredSheetName(options, "", ""); got != "January 2026" {
 		t.Fatalf("expected first option fallback, got %q", got)
 	}
+}
+
+func TestResolveCashflowRuntimeInput_MergesProfileRuntimeValues(t *testing.T) {
+	service := &Service{
+		cashflowProfileConfig: stubCashflowProfileConfigProvider{
+			cfg: appcashflow.ProfileConfig{
+				Variants: []appcashflow.ProfileConfigVariant{
+					{
+						Key: "standard",
+						Values: map[string]string{
+							"informationFilterKeywords": "",
+						},
+					},
+					{
+						Key: "influencer",
+						Values: map[string]string{
+							"informationFilterKeywords": "opening balance\ntransfer",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	input := json.RawMessage(`{"cashflowFormat":"influencer","sheetName":"Cashflow"}`)
+	merged := service.resolveCashflowRuntimeInput("user-1", "export_cashflow_spend_money", input)
+
+	var payload map[string]any
+	if err := json.Unmarshal(merged, &payload); err != nil {
+		t.Fatalf("unexpected unmarshal error: %v", err)
+	}
+	if payload["sheetName"] != "Cashflow" {
+		t.Fatalf("expected original input to stay intact, got %#v", payload["sheetName"])
+	}
+	if payload["informationFilterKeywords"] != "opening balance\ntransfer" {
+		t.Fatalf("expected runtime keyword config to merge, got %#v", payload["informationFilterKeywords"])
+	}
+}
+
+type stubCashflowProfileConfigProvider struct {
+	cfg appcashflow.ProfileConfig
+}
+
+func (s stubCashflowProfileConfigProvider) Status(_ string, _ appcashflow.ProfileConfigKey) appcashflow.ProfileConfigStatus {
+	return appcashflow.ProfileConfigStatus{}
+}
+
+func (s stubCashflowProfileConfigProvider) Load(_ string, _ appcashflow.ProfileConfigKey) (appcashflow.ProfileConfig, error) {
+	return s.cfg, nil
 }

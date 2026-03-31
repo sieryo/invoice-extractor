@@ -34,11 +34,12 @@ type ExportMYOBInput struct {
 	CashflowFormat Format `json:"cashflowFormat"`
 	CashflowType   Type   `json:"cashflowType"`
 
-	RemarkDelimiter       string            `json:"remarkDelimiter,omitempty"`
-	OtherCostsAccountCode string            `json:"otherCostsAccountCode,omitempty"`
-	DefaultIAccountCode   string            `json:"defaultIAccountCode,omitempty"`
-	DefaultBAccountCode   string            `json:"defaultBAccountCode,omitempty"`
-	FieldMap              map[string]string `json:"-"`
+	RemarkDelimiter           string            `json:"remarkDelimiter,omitempty"`
+	OtherCostsAccountCode     string            `json:"otherCostsAccountCode,omitempty"`
+	DefaultIAccountCode       string            `json:"defaultIAccountCode,omitempty"`
+	DefaultBAccountCode       string            `json:"defaultBAccountCode,omitempty"`
+	InformationFilterKeywords []string          `json:"informationFilterKeywords,omitempty"`
+	FieldMap                  map[string]string `json:"-"`
 }
 
 type TaxAccount struct {
@@ -124,6 +125,7 @@ func ParseExportMYOBInput(raw json.RawMessage) (ExportMYOBInput, error) {
 	if v, ok := payload["defaultBAccountCode"].(string); ok {
 		input.DefaultBAccountCode = strings.TrimSpace(v)
 	}
+	input.InformationFilterKeywords = parseKeywordList(payload["informationFilterKeywords"])
 	input.FieldMap = parseFieldMap(payload)
 	if v, exists := payload["headerRowNumber"]; exists {
 		n, err := parseInt(v)
@@ -155,6 +157,7 @@ func (i *ExportMYOBInput) Normalize() {
 	i.OtherCostsAccountCode = strings.TrimSpace(i.OtherCostsAccountCode)
 	i.DefaultIAccountCode = strings.TrimSpace(i.DefaultIAccountCode)
 	i.DefaultBAccountCode = strings.TrimSpace(i.DefaultBAccountCode)
+	i.InformationFilterKeywords = normalizeKeywordList(i.InformationFilterKeywords)
 	for key, value := range i.FieldMap {
 		i.FieldMap[key] = strings.TrimSpace(value)
 	}
@@ -240,4 +243,58 @@ func NormalizeFormat(raw string) Format {
 	default:
 		return StandardFormat
 	}
+}
+
+func parseKeywordList(raw any) []string {
+	switch value := raw.(type) {
+	case string:
+		return splitKeywordList(value)
+	case []string:
+		return normalizeKeywordList(value)
+	case []any:
+		items := make([]string, 0, len(value))
+		for _, entry := range value {
+			text, ok := entry.(string)
+			if !ok {
+				continue
+			}
+			items = append(items, text)
+		}
+		return normalizeKeywordList(items)
+	default:
+		return nil
+	}
+}
+
+func splitKeywordList(raw string) []string {
+	value := strings.ReplaceAll(raw, "\r\n", "\n")
+	value = strings.ReplaceAll(value, "\r", "\n")
+	value = strings.ReplaceAll(value, ",", "\n")
+	parts := strings.Split(value, "\n")
+	return normalizeKeywordList(parts)
+}
+
+func normalizeKeywordList(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		key := strings.ToLower(trimmed)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, trimmed)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }

@@ -316,6 +316,192 @@ func TestXLSXCashflowProcessor_RunActionSpendMoney_SkipsMissingChartOfAccounts(t
 	require.NotContains(t, content, "ADMIN BANK SALARY BA")
 }
 
+func TestXLSXCashflowProcessor_RunActionSpendMoney_InfluencerSkipsFilteredRows(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	tempDir := t.TempDir()
+	fileStore := filestore.NewLocalFileStore(filepath.Join(tempDir, "storage"))
+	profileID := "user-1"
+	taxAccountsPath := filepath.Join(tempDir, "profiles", profileID, "tax_accounts.csv")
+	require.NoError(t, os.MkdirAll(filepath.Dir(taxAccountsPath), 0o755))
+	require.NoError(t, os.WriteFile(taxAccountsPath, []byte(strings.Join([]string{
+		"name,account",
+		"PPH 4 (2),22006",
+	}, "\n")), 0o644))
+
+	taxService := appcashflow.NewTaxAccountService(tempDir)
+	processor := NewXLSXCashflowProcessor(fileStore, taxService)
+
+	workbookPath := filepath.Join(tempDir, "cashflow-influencer-spend.xlsx")
+	createInfluencerSpendMoneyWorkbook(t, workbookPath)
+
+	ingestResult, err := processor.Ingest(ctx, IngestRequest{
+		RequestID:      "req-1",
+		UserID:         profileID,
+		CollectionID:   "collection-1",
+		CollectionKind: CollectionKindCashflowImport,
+		SourceFormat:   SourceFormatXLSX,
+		Sources: []IngestSource{{
+			SourceID:     "source-1",
+			OriginalName: "cashflow-influencer-spend.xlsx",
+			TempPath:     workbookPath,
+			UploadedAt:   time.Now(),
+		}},
+		Policy:      IngestPolicy{KeepRaw: true},
+		RequestedAt: time.Now(),
+	})
+	require.NoError(t, err)
+
+	var normalizedRef string
+	for _, artifact := range ingestResult.Items[0].Artifacts {
+		if artifact.Kind == "normalized" {
+			normalizedRef = artifact.ObjectID
+		}
+	}
+	require.NotEmpty(t, normalizedRef)
+
+	inputJSON, err := json.Marshal(map[string]any{
+		"sheetName":                 "Cashflow",
+		"outputFilename":            "cashflow-influencer-spend",
+		"headerRowNumber":           1,
+		"chequeAccount":             "11102",
+		"cashflowFormat":            "influencer",
+		"defaultIAccountCode":       "62004",
+		"defaultBAccountCode":       "90900",
+		"informationFilterKeywords": "opening balance\ntransfer",
+		"date":                      "*Posting Date: # date",
+		"information":               "Notes",
+		"coa":                       "WHT CoA",
+		"remark":                    "WHT",
+		"total":                     "idr",
+	})
+	require.NoError(t, err)
+
+	result, err := processor.RunAction(ctx, ActionRequest{
+		ActionID:       "action-1",
+		UserID:         profileID,
+		CollectionID:   "collection-1",
+		CollectionKind: CollectionKindCashflowImport,
+		SourceFormat:   SourceFormatXLSX,
+		ActionType:     cashflowSpendActionType,
+		SnapshotDocs: []ActionSnapshotDocument{{
+			DocumentID:    "doc-1",
+			SourceName:    "cashflow-influencer-spend.xlsx",
+			Status:        "ready",
+			NormalizedRef: normalizedRef,
+		}},
+		Input:       inputJSON,
+		RequestedAt: time.Now(),
+	})
+	require.NoError(t, err)
+	require.Equal(t, "warning", result.ItemResults[0].Status)
+	require.Contains(t, strings.Join(result.ItemResults[0].Warnings, " | "), `row dilewati karena keyword filter information "opening balance"`)
+	require.Contains(t, strings.Join(result.ItemResults[0].Warnings, " | "), `row dilewati karena keyword filter information "transfer"`)
+
+	body, readErr := os.ReadFile(result.Outputs[0].ObjectRef)
+	require.NoError(t, readErr)
+	content := string(body)
+	require.Contains(t, content, "11102\t\t05/01/2026")
+	require.Contains(t, content, "62004\t500.000,00")
+	require.Contains(t, content, "INFLUENCER MARKETPLACE PAYOUT")
+	require.NotContains(t, content, "Opening Balance January")
+	require.NotContains(t, content, "Transfer to operating bank")
+}
+
+func TestXLSXCashflowProcessor_RunActionReceiveMoney_InfluencerSkipsFilteredRows(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	tempDir := t.TempDir()
+	fileStore := filestore.NewLocalFileStore(filepath.Join(tempDir, "storage"))
+	profileID := "user-1"
+	taxAccountsPath := filepath.Join(tempDir, "profiles", profileID, "tax_accounts.csv")
+	require.NoError(t, os.MkdirAll(filepath.Dir(taxAccountsPath), 0o755))
+	require.NoError(t, os.WriteFile(taxAccountsPath, []byte(strings.Join([]string{
+		"name,account",
+		"PPH 4 (2),22006",
+	}, "\n")), 0o644))
+
+	taxService := appcashflow.NewTaxAccountService(tempDir)
+	processor := NewXLSXCashflowProcessor(fileStore, taxService)
+
+	workbookPath := filepath.Join(tempDir, "cashflow-influencer-receive.xlsx")
+	createInfluencerReceiveMoneyWorkbook(t, workbookPath)
+
+	ingestResult, err := processor.Ingest(ctx, IngestRequest{
+		RequestID:      "req-1",
+		UserID:         profileID,
+		CollectionID:   "collection-1",
+		CollectionKind: CollectionKindCashflowImport,
+		SourceFormat:   SourceFormatXLSX,
+		Sources: []IngestSource{{
+			SourceID:     "source-1",
+			OriginalName: "cashflow-influencer-receive.xlsx",
+			TempPath:     workbookPath,
+			UploadedAt:   time.Now(),
+		}},
+		Policy:      IngestPolicy{KeepRaw: true},
+		RequestedAt: time.Now(),
+	})
+	require.NoError(t, err)
+
+	var normalizedRef string
+	for _, artifact := range ingestResult.Items[0].Artifacts {
+		if artifact.Kind == "normalized" {
+			normalizedRef = artifact.ObjectID
+		}
+	}
+	require.NotEmpty(t, normalizedRef)
+
+	inputJSON, err := json.Marshal(map[string]any{
+		"sheetName":                 "Cashflow",
+		"outputFilename":            "cashflow-influencer-receive",
+		"headerRowNumber":           1,
+		"chequeAccount":             "11102",
+		"cashflowFormat":            "influencer",
+		"defaultIAccountCode":       "62004",
+		"defaultBAccountCode":       "90900",
+		"informationFilterKeywords": "opening balance\ntransfer",
+		"date":                      "*Posting Date: # date",
+		"information":               "Notes",
+		"coa":                       "WHT CoA",
+		"remark":                    "WHT",
+		"total":                     "idr",
+	})
+	require.NoError(t, err)
+
+	result, err := processor.RunAction(ctx, ActionRequest{
+		ActionID:       "action-1",
+		UserID:         profileID,
+		CollectionID:   "collection-1",
+		CollectionKind: CollectionKindCashflowImport,
+		SourceFormat:   SourceFormatXLSX,
+		ActionType:     cashflowRecvActionType,
+		SnapshotDocs: []ActionSnapshotDocument{{
+			DocumentID:    "doc-1",
+			SourceName:    "cashflow-influencer-receive.xlsx",
+			Status:        "ready",
+			NormalizedRef: normalizedRef,
+		}},
+		Input:       inputJSON,
+		RequestedAt: time.Now(),
+	})
+	require.NoError(t, err)
+	require.Equal(t, "warning", result.ItemResults[0].Status)
+	require.Contains(t, strings.Join(result.ItemResults[0].Warnings, " | "), `row dilewati karena keyword filter information "opening balance"`)
+	require.Contains(t, strings.Join(result.ItemResults[0].Warnings, " | "), `row dilewati karena keyword filter information "transfer"`)
+
+	body, readErr := os.ReadFile(result.Outputs[0].ObjectRef)
+	require.NoError(t, readErr)
+	content := string(body)
+	require.Contains(t, content, "11102\t\t05/01/2026")
+	require.Contains(t, content, "62004\t500.000,00")
+	require.Contains(t, content, "INFLUENCER MARKETPLACE PAYOUT")
+	require.NotContains(t, content, "Opening Balance January")
+	require.NotContains(t, content, "Transfer from reserve bank")
+}
+
 func createSpendMoneyWorkbook(t *testing.T, path string) {
 	t.Helper()
 
@@ -412,6 +598,76 @@ func createSpendMoneyWorkbookWithMissingCOA(t *testing.T, path string) {
 	require.NoError(t, file.Close())
 }
 
+func createInfluencerSpendMoneyWorkbook(t *testing.T, path string) {
+	t.Helper()
+
+	file := excelize.NewFile()
+	file.SetSheetName("Sheet1", "Cashflow")
+
+	require.NoError(t, file.SetSheetRow("Cashflow", "A1", &[]string{
+		"*Posting Date: # date", "Notes", "WHT CoA", "WHT", "idr",
+	}))
+	require.NoError(t, file.SetSheetRow("Cashflow", "A2", &[]any{
+		"03/01/2026",
+		"Opening Balance January",
+		"66023",
+		"",
+		-1500000,
+	}))
+	require.NoError(t, file.SetSheetRow("Cashflow", "A3", &[]any{
+		"04/01/2026",
+		"Transfer to operating bank",
+		"66023",
+		"",
+		-250000,
+	}))
+	require.NoError(t, file.SetSheetRow("Cashflow", "A4", &[]any{
+		"05/01/2026",
+		"Marketplace payout",
+		"66023",
+		"",
+		-500000,
+	}))
+
+	require.NoError(t, file.SaveAs(path))
+	require.NoError(t, file.Close())
+}
+
+func createInfluencerReceiveMoneyWorkbook(t *testing.T, path string) {
+	t.Helper()
+
+	file := excelize.NewFile()
+	file.SetSheetName("Sheet1", "Cashflow")
+
+	require.NoError(t, file.SetSheetRow("Cashflow", "A1", &[]string{
+		"*Posting Date: # date", "Notes", "WHT CoA", "WHT", "idr",
+	}))
+	require.NoError(t, file.SetSheetRow("Cashflow", "A2", &[]any{
+		"03/01/2026",
+		"Opening Balance January",
+		"66023",
+		"",
+		1500000,
+	}))
+	require.NoError(t, file.SetSheetRow("Cashflow", "A3", &[]any{
+		"04/01/2026",
+		"Transfer from reserve bank",
+		"66023",
+		"",
+		250000,
+	}))
+	require.NoError(t, file.SetSheetRow("Cashflow", "A4", &[]any{
+		"05/01/2026",
+		"Marketplace payout",
+		"66023",
+		"",
+		500000,
+	}))
+
+	require.NoError(t, file.SaveAs(path))
+	require.NoError(t, file.Close())
+}
+
 func TestNormalizeCashflowRecord(t *testing.T) {
 	t.Parallel()
 
@@ -443,4 +699,68 @@ func TestResolveCashflowAllocationMemo_UsesTextAfterFirstDelimiter(t *testing.T)
 	})
 
 	require.Equal(t, "hanya jasa", got)
+}
+
+func TestResolveCashflowPrimaryAllocation_InfluencerAddsPrefixForInfluencerAccount(t *testing.T) {
+	t.Parallel()
+
+	got := resolveCashflowPrimaryAllocation(
+		cashflowRowRecord{Information: "Marketplace payout"},
+		appcashflow.ExportMYOBInput{CashflowFormat: appcashflow.InfluencerFormat},
+		"influencer",
+	)
+
+	require.Equal(t, "INFLUENCER MARKETPLACE PAYOUT", got)
+}
+
+func TestResolveCashflowPrimaryAllocation_InfluencerBankDoesNotAddPrefix(t *testing.T) {
+	t.Parallel()
+
+	got := resolveCashflowPrimaryAllocation(
+		cashflowRowRecord{Information: "Admin bank fee"},
+		appcashflow.ExportMYOBInput{CashflowFormat: appcashflow.InfluencerFormat},
+		"admin_bank",
+	)
+
+	require.Equal(t, "ADMIN BANK FEE", got)
+}
+
+func TestResolveCashflowBaseAccountCode_InfluencerIgnoresCOA(t *testing.T) {
+	t.Parallel()
+
+	got, err := resolveCashflowBaseAccountCode(
+		cashflowRowRecord{
+			Information: "Marketplace payout",
+			COA:         "",
+		},
+		appcashflow.ExportMYOBInput{
+			CashflowFormat:      appcashflow.InfluencerFormat,
+			DefaultIAccountCode: "62004",
+			DefaultBAccountCode: "90900",
+		},
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, "62004", got.AccountCode)
+	require.Equal(t, "influencer", got.AccountKind)
+}
+
+func TestResolveCashflowBaseAccountCode_InfluencerAdminBankUsesDefaultBankAccount(t *testing.T) {
+	t.Parallel()
+
+	got, err := resolveCashflowBaseAccountCode(
+		cashflowRowRecord{
+			Information: "Admin bank fee",
+			COA:         "",
+		},
+		appcashflow.ExportMYOBInput{
+			CashflowFormat:      appcashflow.InfluencerFormat,
+			DefaultIAccountCode: "62004",
+			DefaultBAccountCode: "90900",
+		},
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, "90900", got.AccountCode)
+	require.Equal(t, "admin_bank", got.AccountKind)
 }

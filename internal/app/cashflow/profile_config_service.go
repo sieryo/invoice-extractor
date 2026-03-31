@@ -12,7 +12,7 @@ import (
 	"github.com/sieryo/invoice-extractor/internal/profilepath"
 )
 
-const cashflowProfileConfigSchemaVersion = "4"
+const cashflowProfileConfigSchemaVersion = "5"
 
 type ProfileConfigKey string
 
@@ -190,6 +190,18 @@ func ResolveProfileConfigValues(cfg ProfileConfig, format string) map[string]str
 	return variantFieldMap(cfg.Variants, selectedFormat)
 }
 
+func ResolveProfileConfigFormValues(cfg ProfileConfig, key ProfileConfigKey, format string) map[string]string {
+	return resolveProfileConfigValuesByGroups(cfg, key, format, func(group string) bool {
+		return group != "runtime"
+	})
+}
+
+func ResolveProfileConfigRuntimeValues(cfg ProfileConfig, format string) map[string]string {
+	return resolveProfileConfigValuesByGroups(cfg, ProfileConfigSpendMoney, format, func(group string) bool {
+		return group == "runtime"
+	})
+}
+
 func ResolveProfileConfigNumber(cfg ProfileConfig, format string, key string) (int, bool) {
 	value := strings.TrimSpace(ResolveProfileConfigValues(cfg, format)[strings.TrimSpace(key)])
 	if value == "" {
@@ -200,6 +212,35 @@ func ResolveProfileConfigNumber(cfg ProfileConfig, format string, key string) (i
 		return 0, false
 	}
 	return n, true
+}
+
+func resolveProfileConfigValuesByGroups(
+	cfg ProfileConfig,
+	key ProfileConfigKey,
+	format string,
+	includeGroup func(group string) bool,
+) map[string]string {
+	selectedFormat := normalizeProfileConfigFormat(format)
+	values := variantFieldMap(cfg.Variants, selectedFormat)
+	if len(values) == 0 {
+		return nil
+	}
+
+	out := make(map[string]string)
+	for _, blueprint := range profileFieldBlueprints(key) {
+		if !includeGroup(strings.TrimSpace(blueprint.Group)) {
+			continue
+		}
+		value := strings.TrimSpace(values[blueprint.Key])
+		if value == "" {
+			continue
+		}
+		out[blueprint.Key] = value
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func buildProfileConfigSpec(key ProfileConfigKey) ProfileConfigSpec {
@@ -279,9 +320,10 @@ func profileFieldBlueprints(key ProfileConfigKey) []ProfileConfigFieldSpec {
 		{Key: "otherCostsAccountCode", Label: "Kode Akun Biaya Lain", Required: false, DefaultValue: "62099", Description: "Dipakai saat format default memiliki komponen biaya lain.", Kind: "text", Group: "parameter"},
 		{Key: "defaultIAccountCode", Label: "Default Influencer Account Code", Required: false, DefaultValue: "", Description: "Dipakai saat format influencer memilih account influencer.", Kind: "text", Group: "parameter"},
 		{Key: "defaultBAccountCode", Label: "Default Bank Account Code", Required: false, DefaultValue: "", Description: "Dipakai saat format influencer mendeteksi transaksi bank.", Kind: "text", Group: "parameter"},
+		{Key: "informationFilterKeywords", Label: "Keyword Filter Information", Required: false, DefaultValue: "", Description: "Satu baris satu keyword. Row akan di-skip bila kolom Information mengandung keyword ini.", Kind: "textarea", Group: "runtime"},
 		{Key: "date", Label: "Tanggal", Required: true, DefaultValue: "Tanggal", Description: "Header source untuk tanggal transaksi.", Kind: "text", Group: "mapping"},
 		{Key: "information", Label: "Keterangan", Required: true, DefaultValue: "note", Description: "Header source untuk memo utama.", Kind: "text", Group: "mapping"},
-		{Key: "coa", Label: "Chart of Account", Required: true, DefaultValue: "coa", Description: "Header source untuk COA atau nama account.", Kind: "text", Group: "mapping"},
+		{Key: "coa", Label: "Chart of Account", Required: false, DefaultValue: "coa", Description: "Wajib untuk format standard. Pada format influencer, header ini tidak dipakai untuk menentukan akun utama.", Kind: "text", Group: "mapping"},
 		{Key: "otherCost", Label: "Biaya Lainnya", Required: false, DefaultValue: "By Lainnya", Description: "Header source untuk biaya tambahan.", Kind: "text", Group: "mapping"},
 		{Key: "pp23", Label: "PP 23", Required: false, DefaultValue: "PP 23", Description: "Header source komponen pajak PP 23.", Kind: "text", Group: "mapping"},
 		{Key: "pph15", Label: "PPh 15%", Required: false, DefaultValue: "PPh 15%", Description: "Header source komponen pajak PPh 15%.", Kind: "text", Group: "mapping"},
@@ -304,6 +346,7 @@ func defaultVariantFieldValues(key ProfileConfigKey, format Format) map[string]s
 	if format == InfluencerFormat {
 		values["defaultIAccountCode"] = "62004"
 		values["defaultBAccountCode"] = "90900"
+		values["informationFilterKeywords"] = "opening balance\ntransfer"
 		values["date"] = "*Posting Date: # date"
 		values["information"] = "Notes"
 		values["remark"] = "WHT"
@@ -367,13 +410,13 @@ func profileVariantMissingFields(cfg ProfileConfig, format Format) []string {
 	require("chequeAccount", "Akun Utama")
 	require("date", "Tanggal")
 	require("information", "Keterangan")
-	require("coa", "Chart of Account")
 	require("total", "Total")
 
 	if format == InfluencerFormat {
 		require("defaultIAccountCode", "Default Influencer Account Code")
 		require("defaultBAccountCode", "Default Bank Account Code")
 	} else {
+		require("coa", "Chart of Account")
 		require("remarkDelimiter", "Remark Delimiter")
 		require("otherCostsAccountCode", "Kode Akun Biaya Lain")
 	}
