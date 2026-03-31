@@ -220,6 +220,7 @@ func TestXLSXCashflowProcessor_RunActionReceiveMoney(t *testing.T) {
 
 	require.Contains(t, content, "Deposit Account\tID #\tDate")
 	require.Contains(t, content, "11102\t\t03/01/2026")
+	require.Contains(t, content, "\n\t\t03/01/2026\t\t\tPEMASUKAN MARKETPLACE\tX\t66023")
 	require.Contains(t, content, "66023\t6.540.000,00")
 	require.Contains(t, content, "66108\t26.100,00")
 }

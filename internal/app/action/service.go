@@ -1108,12 +1108,21 @@ func (s *Service) resolveCashflowActionSpec(
 
 		cfg, err := s.cashflowProfileConfig.Load(profileID, configKey)
 		if err == nil {
-			for _, item := range cfg.Fields {
-				field, ok := findFormField(actionSpec.Form, item.Key)
+			selectedFormat := appcashflow.DefaultFormat
+			if strings.EqualFold(strings.TrimSpace(cfg.Defaults.CashflowFormat), string(appcashflow.InfluencerFormat)) {
+				selectedFormat = appcashflow.InfluencerFormat
+			}
+
+			for key, value := range appcashflow.ResolveProfileConfigValues(cfg, string(selectedFormat)) {
+				field, ok := findFormField(actionSpec.Form, key)
 				if !ok {
 					continue
 				}
-				field.DefaultValue = strings.TrimSpace(item.Value)
+				field.DefaultValue = strings.TrimSpace(value)
+				updateFormField(actionSpec.Form, field)
+			}
+			if field, ok := findFormField(actionSpec.Form, "cashflowFormat"); ok {
+				field.DefaultValue = string(selectedFormat)
 				updateFormField(actionSpec.Form, field)
 			}
 			if field, ok := findFormField(actionSpec.Form, "headerRowNumber"); ok && cfg.Defaults.HeaderRowNumber > 0 {

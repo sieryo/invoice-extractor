@@ -1,7 +1,5 @@
 package cashflow
 
-import "fmt"
-
 var receiveMoneyHeaderRow = []string{
 	"Deposit Account",
 	"ID #",
@@ -42,17 +40,13 @@ func ReceiveMoneyHeader() []string {
 
 func BuildReceiveMoneyRows(tx ReceiveMoneyTransaction, depositAccount string) [][]string {
 	rows := make([][]string, 0, len(tx.Items)+2)
-	idNumber := ""
-	if tx.IDNumber != nil && *tx.IDNumber > 0 {
-		idNumber = fmt.Sprintf("%d", *tx.IDNumber)
-	}
 	date := tx.Date.Format("02/01/2006")
 	extraMemo := tx.Allocation
 	headerAmount := formatMYOBMoney(tx.Amount)
 
 	rows = append(rows, []string{
 		normalizeAccountCode(depositAccount),
-		idNumber,
+		"",
 		date,
 		"",
 		"",
@@ -85,8 +79,8 @@ func BuildReceiveMoneyRows(tx ReceiveMoneyTransaction, depositAccount string) []
 	for _, item := range tx.Items {
 		amount := formatMYOBMoney(item.Amount)
 		rows = append(rows, []string{
-			normalizeAccountCode(depositAccount),
-			idNumber,
+			"",
+			"",
 			date,
 			"",
 			"",

@@ -11,7 +11,7 @@ import (
 	"github.com/sieryo/invoice-extractor/internal/profilepath"
 )
 
-const cashflowProfileConfigSchemaVersion = "1"
+const cashflowProfileConfigSchemaVersion = "2"
 
 type ProfileConfigKey string
 
@@ -28,13 +28,14 @@ type ProfileConfigSpec struct {
 	Defaults         ProfileConfigDefaults     `json:"defaults"`
 	HeaderRowOptions []int                     `json:"headerRowOptions,omitempty"`
 	FormatOptions    []ProfileConfigFormatSpec `json:"formatOptions,omitempty"`
-	Fields           []ProfileConfigFieldSpec  `json:"fields"`
+	Variants         []ProfileConfigVariantSpec `json:"variants"`
 }
 
 type ProfileConfigDefaults struct {
 	SheetName            string `json:"sheetName"`
 	HeaderRowNumber      int    `json:"headerRowNumber"`
 	StartingChequeNumber *int   `json:"startingChequeNumber,omitempty"`
+	CashflowFormat       string `json:"cashflowFormat"`
 }
 
 type ProfileConfigFormatSpec struct {
@@ -52,11 +53,28 @@ type ProfileConfigFieldSpec struct {
 	Group        string `json:"group,omitempty"`
 }
 
+type ProfileConfigVariantSpec struct {
+	Key         string                   `json:"key"`
+	Label       string                   `json:"label"`
+	Description string                   `json:"description,omitempty"`
+	Fields      []ProfileConfigFieldSpec `json:"fields"`
+}
+
 type ProfileConfig struct {
-	SchemaVersion string                `json:"schemaVersion"`
-	ConfigKey     string                `json:"configKey"`
-	Defaults      ProfileConfigDefaults `json:"defaults"`
-	Fields        []ProfileConfigField  `json:"fields"`
+	SchemaVersion string                 `json:"schemaVersion"`
+	ConfigKey     string                 `json:"configKey"`
+	Defaults      ProfileConfigDefaults  `json:"defaults"`
+	Variants      []ProfileConfigVariant `json:"variants"`
+
+	// Legacy flat fields are still read for migration compatibility.
+	Fields []ProfileConfigField `json:"fields,omitempty"`
+}
+
+type ProfileConfigVariant struct {
+	Key         string               `json:"key"`
+	Label       string               `json:"label"`
+	Description string               `json:"description,omitempty"`
+	Fields      []ProfileConfigField `json:"fields"`
 }
 
 type ProfileConfigField struct {
@@ -86,82 +104,7 @@ func NewProfileConfigService(rootDir string) *ProfileConfigService {
 }
 
 func (s *ProfileConfigService) Spec(key ProfileConfigKey) ProfileConfigSpec {
-	switch key {
-	case ProfileConfigReceiveMoney:
-		return ProfileConfigSpec{
-			SchemaVersion: cashflowProfileConfigSchemaVersion,
-			ConfigKey:     string(key),
-			Label:         "Default Profil Cashflow Receive Money",
-			Description:   "Nilai default untuk action export cashflow ke MYOB Receive Money.",
-			Defaults: ProfileConfigDefaults{
-				SheetName:       "",
-				HeaderRowNumber: 1,
-			},
-			HeaderRowOptions: specutil.HeaderRowNumbers(10),
-			FormatOptions: []ProfileConfigFormatSpec{
-				{Value: string(DefaultFormat), Label: "Default"},
-				{Value: string(InfluencerFormat), Label: "Influencer"},
-			},
-			Fields: []ProfileConfigFieldSpec{
-				{Key: "outputFilename", Label: "Nama Output", Required: true, DefaultValue: "receive_money", Description: "Tanpa ekstensi file.", Group: "parameter"},
-				{Key: "chequeAccount", Label: "Deposit Account", Required: true, DefaultValue: "12021", Description: "Akun deposit utama untuk output MYOB.", Group: "parameter"},
-				{Key: "cashflowFormat", Label: "Format Cashflow", Required: true, DefaultValue: string(DefaultFormat), Description: "Pilih format source cashflow.", Kind: "select", Group: "parameter"},
-				{Key: "remarkDelimiter", Label: "Remark Delimiter", Required: false, DefaultValue: "*", Description: "Wajib jika format cashflow menggunakan mode default.", Group: "parameter"},
-				{Key: "otherCostsAccountCode", Label: "Kode Akun Biaya Lain", Required: false, DefaultValue: "62099", Description: "Wajib untuk mode default.", Group: "parameter"},
-				{Key: "defaultIAccountCode", Label: "Default Influencer Account Code", Required: false, DefaultValue: "62004", Description: "Wajib untuk mode influencer.", Group: "parameter"},
-				{Key: "defaultBAccountCode", Label: "Default Bank Account Code", Required: false, DefaultValue: "90900", Description: "Wajib untuk mode influencer.", Group: "parameter"},
-				{Key: "date", Label: "Tanggal", Required: true, DefaultValue: "Tanggal", Description: "Header source untuk tanggal transaksi.", Group: "mapping"},
-				{Key: "information", Label: "Keterangan", Required: true, DefaultValue: "note", Description: "Header source untuk memo utama.", Group: "mapping"},
-				{Key: "coa", Label: "Chart of Account", Required: true, DefaultValue: "coa", Description: "Header source untuk COA atau nama account.", Group: "mapping"},
-				{Key: "otherCost", Label: "Biaya Lainnya", Required: false, DefaultValue: "By Lainnya", Description: "Header source untuk biaya tambahan.", Group: "mapping"},
-				{Key: "pp23", Label: "PP 23", Required: false, DefaultValue: "PP 23", Description: "Header source komponen pajak PP 23.", Group: "mapping"},
-				{Key: "pph15", Label: "PPh 15%", Required: false, DefaultValue: "PPh 15%", Description: "Header source komponen pajak PPh 15%.", Group: "mapping"},
-				{Key: "pph21", Label: "PPH 21", Required: false, DefaultValue: "PPH 21", Description: "Header source komponen pajak PPH 21.", Group: "mapping"},
-				{Key: "pph23", Label: "PPH 23", Required: false, DefaultValue: "PPH 23", Description: "Header source komponen pajak PPH 23.", Group: "mapping"},
-				{Key: "pph42", Label: "PPH 4 (2)", Required: false, DefaultValue: "PPH 4(2)", Description: "Header source komponen pajak PPH 4 (2).", Group: "mapping"},
-				{Key: "ppn", Label: "PPN", Required: false, DefaultValue: "PPN", Description: "Header source komponen pajak PPN.", Group: "mapping"},
-				{Key: "remark", Label: "Catatan", Required: false, DefaultValue: "catatan", Description: "Header source catatan atau allocation memo.", Group: "mapping"},
-				{Key: "total", Label: "Total", Required: true, DefaultValue: "idr", Description: "Header source total transaksi.", Group: "mapping"},
-			},
-		}
-	default:
-		return ProfileConfigSpec{
-			SchemaVersion: cashflowProfileConfigSchemaVersion,
-			ConfigKey:     string(ProfileConfigSpendMoney),
-			Label:         "Default Profil Cashflow Spend Money",
-			Description:   "Nilai default untuk action export cashflow ke MYOB Spend Money.",
-			Defaults: ProfileConfigDefaults{
-				SheetName:       "",
-				HeaderRowNumber: 1,
-			},
-			HeaderRowOptions: specutil.HeaderRowNumbers(10),
-			FormatOptions: []ProfileConfigFormatSpec{
-				{Value: string(DefaultFormat), Label: "Default"},
-				{Value: string(InfluencerFormat), Label: "Influencer"},
-			},
-			Fields: []ProfileConfigFieldSpec{
-				{Key: "outputFilename", Label: "Nama Output", Required: true, DefaultValue: "spend_money", Description: "Tanpa ekstensi file.", Group: "parameter"},
-				{Key: "chequeAccount", Label: "Cheque Account", Required: true, DefaultValue: "12021", Description: "Akun cheque utama untuk output MYOB.", Group: "parameter"},
-				{Key: "cashflowFormat", Label: "Format Cashflow", Required: true, DefaultValue: string(DefaultFormat), Description: "Pilih format source cashflow.", Kind: "select", Group: "parameter"},
-				{Key: "remarkDelimiter", Label: "Remark Delimiter", Required: false, DefaultValue: "*", Description: "Wajib jika format cashflow menggunakan mode default.", Group: "parameter"},
-				{Key: "otherCostsAccountCode", Label: "Kode Akun Biaya Lain", Required: false, DefaultValue: "62099", Description: "Wajib untuk mode default.", Group: "parameter"},
-				{Key: "defaultIAccountCode", Label: "Default Influencer Account Code", Required: false, DefaultValue: "62004", Description: "Wajib untuk mode influencer.", Group: "parameter"},
-				{Key: "defaultBAccountCode", Label: "Default Bank Account Code", Required: false, DefaultValue: "90900", Description: "Wajib untuk mode influencer.", Group: "parameter"},
-				{Key: "date", Label: "Tanggal", Required: true, DefaultValue: "Tanggal", Description: "Header source untuk tanggal transaksi.", Group: "mapping"},
-				{Key: "information", Label: "Keterangan", Required: true, DefaultValue: "note", Description: "Header source untuk memo utama.", Group: "mapping"},
-				{Key: "coa", Label: "Chart of Account", Required: true, DefaultValue: "coa", Description: "Header source untuk COA atau nama account.", Group: "mapping"},
-				{Key: "otherCost", Label: "Biaya Lainnya", Required: false, DefaultValue: "By Lainnya", Description: "Header source untuk biaya tambahan.", Group: "mapping"},
-				{Key: "pp23", Label: "PP 23", Required: false, DefaultValue: "PP 23", Description: "Header source komponen pajak PP 23.", Group: "mapping"},
-				{Key: "pph15", Label: "PPh 15%", Required: false, DefaultValue: "PPh 15%", Description: "Header source komponen pajak PPh 15%.", Group: "mapping"},
-				{Key: "pph21", Label: "PPH 21", Required: false, DefaultValue: "PPH 21", Description: "Header source komponen pajak PPH 21.", Group: "mapping"},
-				{Key: "pph23", Label: "PPH 23", Required: false, DefaultValue: "PPH 23", Description: "Header source komponen pajak PPH 23.", Group: "mapping"},
-				{Key: "pph42", Label: "PPH 4 (2)", Required: false, DefaultValue: "PPH 4(2)", Description: "Header source komponen pajak PPH 4 (2).", Group: "mapping"},
-				{Key: "ppn", Label: "PPN", Required: false, DefaultValue: "PPN", Description: "Header source komponen pajak PPN.", Group: "mapping"},
-				{Key: "remark", Label: "Catatan", Required: false, DefaultValue: "catatan", Description: "Header source catatan atau allocation memo.", Group: "mapping"},
-				{Key: "total", Label: "Total", Required: true, DefaultValue: "idr", Description: "Header source total transaksi.", Group: "mapping"},
-			},
-		}
-	}
+	return buildProfileConfigSpec(key)
 }
 
 func (s *ProfileConfigService) Load(profileID string, key ProfileConfigKey) (ProfileConfig, error) {
@@ -211,14 +154,11 @@ func (s *ProfileConfigService) Status(profileID string, key ProfileConfigKey) Pr
 		}
 	}
 
-	byKey := make(map[string]string, len(cfg.Fields))
-	for _, field := range cfg.Fields {
-		byKey[field.Key] = strings.TrimSpace(field.Value)
-	}
-
+	format := normalizeProfileConfigFormat(cfg.Defaults.CashflowFormat)
+	resolved := ResolveProfileConfigValues(cfg, format)
 	missing := make([]string, 0)
 	require := func(fieldKey string, label string) {
-		if strings.TrimSpace(byKey[fieldKey]) == "" {
+		if strings.TrimSpace(resolved[fieldKey]) == "" {
 			missing = append(missing, label)
 		}
 	}
@@ -229,10 +169,8 @@ func (s *ProfileConfigService) Status(profileID string, key ProfileConfigKey) Pr
 	require("information", "Keterangan")
 	require("coa", "Chart of Account")
 	require("total", "Total")
-	format := strings.TrimSpace(byKey["cashflowFormat"])
-	if format == "" {
-		missing = append(missing, "Format Cashflow")
-	} else if strings.EqualFold(format, string(InfluencerFormat)) {
+
+	if format == string(InfluencerFormat) {
 		require("defaultIAccountCode", "Default Influencer Account Code")
 		require("defaultBAccountCode", "Default Bank Account Code")
 	} else {
@@ -258,18 +196,197 @@ func (s *ProfileConfigService) Status(profileID string, key ProfileConfigKey) Pr
 	}
 }
 
+func ResolveProfileConfigValues(cfg ProfileConfig, format string) map[string]string {
+	defaultFields := variantFieldMap(cfg.Variants, string(DefaultFormat))
+	selectedFormat := normalizeProfileConfigFormat(format)
+	if selectedFormat == string(DefaultFormat) {
+		return defaultFields
+	}
+
+	merged := make(map[string]string, len(defaultFields))
+	for key, value := range defaultFields {
+		merged[key] = value
+	}
+	for key, value := range variantFieldMap(cfg.Variants, selectedFormat) {
+		if strings.TrimSpace(value) == "" {
+			continue
+		}
+		merged[key] = strings.TrimSpace(value)
+	}
+	return merged
+}
+
+func buildProfileConfigSpec(key ProfileConfigKey) ProfileConfigSpec {
+	label := "Default Profil Cashflow Spend Money"
+	description := "Nilai default untuk action export cashflow ke MYOB Spend Money."
+	if key == ProfileConfigReceiveMoney {
+		label = "Default Profil Cashflow Receive Money"
+		description = "Nilai default untuk action export cashflow ke MYOB Receive Money."
+	}
+
+	return ProfileConfigSpec{
+		SchemaVersion: cashflowProfileConfigSchemaVersion,
+		ConfigKey:     string(key),
+		Label:         label,
+		Description:   description,
+		Defaults: ProfileConfigDefaults{
+			SheetName:       "",
+			HeaderRowNumber: 1,
+			CashflowFormat:  string(DefaultFormat),
+		},
+		HeaderRowOptions: specutil.HeaderRowNumbers(10),
+		FormatOptions: []ProfileConfigFormatSpec{
+			{Value: string(DefaultFormat), Label: "Default"},
+			{Value: string(InfluencerFormat), Label: "Influencer"},
+		},
+		Variants: []ProfileConfigVariantSpec{
+			{
+				Key:         string(DefaultFormat),
+				Label:       "Format Default",
+				Description: "Nilai dasar utama untuk file cashflow reguler.",
+				Fields:      buildProfileVariantFieldSpecs(key, DefaultFormat),
+			},
+			{
+				Key:         string(InfluencerFormat),
+				Label:       "Format Influencer",
+				Description: "Hanya isi field yang memang berbeda. Field kosong akan mengikuti Format Default.",
+				Fields:      buildProfileVariantFieldSpecs(key, InfluencerFormat),
+			},
+		},
+	}
+}
+
+func buildProfileVariantFieldSpecs(key ProfileConfigKey, format Format) []ProfileConfigFieldSpec {
+	defaults := defaultVariantFieldValues(key)
+	if format == InfluencerFormat {
+		for overrideKey, overrideValue := range influencerVariantOverrides() {
+			defaults[overrideKey] = overrideValue
+		}
+	}
+
+	blueprints := profileFieldBlueprints(key)
+	fields := make([]ProfileConfigFieldSpec, 0, len(blueprints))
+	for _, blueprint := range blueprints {
+		defaultValue := defaults[blueprint.Key]
+		if format == InfluencerFormat && !isInfluencerOverrideKey(blueprint.Key) {
+			defaultValue = ""
+		}
+		fields = append(fields, ProfileConfigFieldSpec{
+			Key:          blueprint.Key,
+			Label:        blueprint.Label,
+			Required:     blueprint.Required,
+			DefaultValue: defaultValue,
+			Description:  blueprint.Description,
+			Kind:         blueprint.Kind,
+			Group:        blueprint.Group,
+		})
+	}
+	return fields
+}
+
+func profileFieldBlueprints(key ProfileConfigKey) []ProfileConfigFieldSpec {
+	outputDefault := "spend_money"
+	accountLabel := "Cheque Account"
+	accountDescription := "Akun cheque utama untuk output MYOB."
+	if key == ProfileConfigReceiveMoney {
+		outputDefault = "receive_money"
+		accountLabel = "Deposit Account"
+		accountDescription = "Akun deposit utama untuk output MYOB."
+	}
+
+	return []ProfileConfigFieldSpec{
+		{Key: "outputFilename", Label: "Nama Output", Required: true, DefaultValue: outputDefault, Description: "Tanpa ekstensi file.", Group: "parameter"},
+		{Key: "chequeAccount", Label: accountLabel, Required: true, DefaultValue: "12021", Description: accountDescription, Group: "parameter"},
+		{Key: "remarkDelimiter", Label: "Remark Delimiter", Required: false, DefaultValue: "*", Description: "Dipakai untuk memecah catatan biaya lainnya.", Group: "parameter"},
+		{Key: "otherCostsAccountCode", Label: "Kode Akun Biaya Lain", Required: false, DefaultValue: "62099", Description: "Dipakai saat format default memiliki komponen biaya lain.", Group: "parameter"},
+		{Key: "defaultIAccountCode", Label: "Default Influencer Account Code", Required: false, DefaultValue: "62004", Description: "Dipakai saat format influencer memilih account influencer.", Group: "parameter"},
+		{Key: "defaultBAccountCode", Label: "Default Bank Account Code", Required: false, DefaultValue: "90900", Description: "Dipakai saat format influencer mendeteksi transaksi bank.", Group: "parameter"},
+		{Key: "date", Label: "Tanggal", Required: true, DefaultValue: "Date", Description: "Header source untuk tanggal transaksi.", Group: "mapping"},
+		{Key: "information", Label: "Keterangan", Required: true, DefaultValue: "Note", Description: "Header source untuk memo utama.", Group: "mapping"},
+		{Key: "coa", Label: "Chart of Account", Required: true, DefaultValue: "MYOB", Description: "Header source untuk COA atau nama account.", Group: "mapping"},
+		{Key: "otherCost", Label: "Biaya Lainnya", Required: false, DefaultValue: "By Lainnya", Description: "Header source untuk biaya tambahan.", Group: "mapping"},
+		{Key: "pp23", Label: "PP 23", Required: false, DefaultValue: "PP 23", Description: "Header source komponen pajak PP 23.", Group: "mapping"},
+		{Key: "pph15", Label: "PPh 15%", Required: false, DefaultValue: "PPh 15%", Description: "Header source komponen pajak PPh 15%.", Group: "mapping"},
+		{Key: "pph21", Label: "PPH 21", Required: false, DefaultValue: "PPH 21", Description: "Header source komponen pajak PPH 21.", Group: "mapping"},
+		{Key: "pph23", Label: "PPH 23", Required: false, DefaultValue: "PPH 23", Description: "Header source komponen pajak PPH 23.", Group: "mapping"},
+		{Key: "pph42", Label: "PPH 4 (2)", Required: false, DefaultValue: "pph 4(2)", Description: "Header source komponen pajak PPH 4 (2).", Group: "mapping"},
+		{Key: "ppn", Label: "PPN", Required: false, DefaultValue: "PPN", Description: "Header source komponen pajak PPN.", Group: "mapping"},
+		{Key: "remark", Label: "Catatan", Required: false, DefaultValue: "Remark", Description: "Header source catatan atau allocation memo.", Group: "mapping"},
+		{Key: "total", Label: "Total", Required: true, DefaultValue: "IDR", Description: "Header source total transaksi.", Group: "mapping"},
+	}
+}
+
+func defaultVariantFieldValues(key ProfileConfigKey) map[string]string {
+	values := make(map[string]string)
+	for _, field := range profileFieldBlueprints(key) {
+		values[field.Key] = field.DefaultValue
+	}
+	return values
+}
+
+func influencerVariantOverrides() map[string]string {
+	return map[string]string{
+		"defaultIAccountCode": "62004",
+		"defaultBAccountCode": "90900",
+		"date":                "*Posting Date: # date",
+		"information":         "Notes",
+		"remark":              "WHT",
+		"coa":                 "WHT CoA",
+		"pph42":               "PPh 4 (2)",
+		"otherCost":           "Biaya Lainnya",
+		"pph15":               "Biaya Lainnya",
+	}
+}
+
+func isInfluencerOverrideKey(key string) bool {
+	_, ok := influencerVariantOverrides()[key]
+	return ok
+}
+
+func variantFieldMap(variants []ProfileConfigVariant, variantKey string) map[string]string {
+	out := make(map[string]string)
+	for _, variant := range variants {
+		if !strings.EqualFold(strings.TrimSpace(variant.Key), strings.TrimSpace(variantKey)) {
+			continue
+		}
+		for _, field := range variant.Fields {
+			out[strings.TrimSpace(field.Key)] = strings.TrimSpace(field.Value)
+		}
+		break
+	}
+	return out
+}
+
+func normalizeProfileConfigFormat(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case string(InfluencerFormat):
+		return string(InfluencerFormat)
+	default:
+		return string(DefaultFormat)
+	}
+}
+
 func (s *ProfileConfigService) defaultConfig(key ProfileConfigKey) ProfileConfig {
 	spec := s.Spec(key)
-	fields := make([]ProfileConfigField, 0, len(spec.Fields))
-	for _, item := range spec.Fields {
-		fields = append(fields, ProfileConfigField{
-			Key:         item.Key,
-			Label:       item.Label,
-			Required:    item.Required,
-			Value:       item.DefaultValue,
-			Description: item.Description,
-			Kind:        item.Kind,
-			Group:       item.Group,
+	variants := make([]ProfileConfigVariant, 0, len(spec.Variants))
+	for _, variantSpec := range spec.Variants {
+		fields := make([]ProfileConfigField, 0, len(variantSpec.Fields))
+		for _, item := range variantSpec.Fields {
+			fields = append(fields, ProfileConfigField{
+				Key:         item.Key,
+				Label:       item.Label,
+				Required:    item.Required,
+				Value:       item.DefaultValue,
+				Description: item.Description,
+				Kind:        item.Kind,
+				Group:       item.Group,
+			})
+		}
+		variants = append(variants, ProfileConfigVariant{
+			Key:         variantSpec.Key,
+			Label:       variantSpec.Label,
+			Description: variantSpec.Description,
+			Fields:      fields,
 		})
 	}
 
@@ -277,41 +394,28 @@ func (s *ProfileConfigService) defaultConfig(key ProfileConfigKey) ProfileConfig
 		SchemaVersion: spec.SchemaVersion,
 		ConfigKey:     spec.ConfigKey,
 		Defaults:      spec.Defaults,
-		Fields:        fields,
+		Variants:      variants,
 	}
 }
 
 func (s *ProfileConfigService) normalizeConfig(cfg ProfileConfig, key ProfileConfigKey) ProfileConfig {
 	spec := s.Spec(key)
-	byKey := make(map[string]ProfileConfigField, len(cfg.Fields))
+	legacyByKey := make(map[string]ProfileConfigField, len(cfg.Fields))
 	for _, field := range cfg.Fields {
 		normalized := strings.TrimSpace(field.Key)
 		if normalized == "" {
 			continue
 		}
-		byKey[normalized] = field
+		legacyByKey[normalized] = field
 	}
 
-	fields := make([]ProfileConfigField, 0, len(spec.Fields))
-	for _, item := range spec.Fields {
-		field := ProfileConfigField{
-			Key:         item.Key,
-			Label:       item.Label,
-			Required:    item.Required,
-			Value:       item.DefaultValue,
-			Description: item.Description,
-			Kind:        item.Kind,
-			Group:       item.Group,
+	variantByKey := make(map[string]ProfileConfigVariant, len(cfg.Variants))
+	for _, variant := range cfg.Variants {
+		normalized := strings.TrimSpace(variant.Key)
+		if normalized == "" {
+			continue
 		}
-		if current, ok := byKey[item.Key]; ok {
-			trimmed := strings.TrimSpace(current.Value)
-			if trimmed != "" {
-				field.Value = trimmed
-			} else if !item.Required {
-				field.Value = ""
-			}
-		}
-		fields = append(fields, field)
+		variantByKey[normalized] = variant
 	}
 
 	defaults := spec.Defaults
@@ -325,12 +429,58 @@ func (s *ProfileConfigService) normalizeConfig(cfg ProfileConfig, key ProfileCon
 		value := *cfg.Defaults.StartingChequeNumber
 		defaults.StartingChequeNumber = &value
 	}
+	if strings.TrimSpace(cfg.Defaults.CashflowFormat) != "" {
+		defaults.CashflowFormat = normalizeProfileConfigFormat(cfg.Defaults.CashflowFormat)
+	} else if legacyFormat, ok := legacyByKey["cashflowFormat"]; ok && strings.TrimSpace(legacyFormat.Value) != "" {
+		defaults.CashflowFormat = normalizeProfileConfigFormat(legacyFormat.Value)
+	}
+
+	variants := make([]ProfileConfigVariant, 0, len(spec.Variants))
+	for _, variantSpec := range spec.Variants {
+		currentVariant, hasCurrentVariant := variantByKey[variantSpec.Key]
+		currentFieldByKey := make(map[string]ProfileConfigField, len(currentVariant.Fields))
+		if hasCurrentVariant {
+			for _, field := range currentVariant.Fields {
+				currentFieldByKey[strings.TrimSpace(field.Key)] = field
+			}
+		}
+
+		fields := make([]ProfileConfigField, 0, len(variantSpec.Fields))
+		for _, item := range variantSpec.Fields {
+			field := ProfileConfigField{
+				Key:         item.Key,
+				Label:       item.Label,
+				Required:    item.Required,
+				Value:       item.DefaultValue,
+				Description: item.Description,
+				Kind:        item.Kind,
+				Group:       item.Group,
+			}
+
+			if current, ok := currentFieldByKey[item.Key]; ok {
+				field.Value = strings.TrimSpace(current.Value)
+			} else if variantSpec.Key == string(DefaultFormat) {
+				if legacy, ok := legacyByKey[item.Key]; ok {
+					field.Value = strings.TrimSpace(legacy.Value)
+				}
+			}
+
+			fields = append(fields, field)
+		}
+
+		variants = append(variants, ProfileConfigVariant{
+			Key:         variantSpec.Key,
+			Label:       variantSpec.Label,
+			Description: variantSpec.Description,
+			Fields:      fields,
+		})
+	}
 
 	return ProfileConfig{
 		SchemaVersion: spec.SchemaVersion,
 		ConfigKey:     spec.ConfigKey,
 		Defaults:      defaults,
-		Fields:        fields,
+		Variants:      variants,
 	}
 }
 
