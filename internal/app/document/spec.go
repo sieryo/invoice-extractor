@@ -512,7 +512,6 @@ func buildCashflowVariantValues(isReceive bool, variant string) map[string]any {
 		values["date"] = "*Posting Date: # date"
 		values["information"] = "Notes"
 		values["coa"] = "WHT CoA"
-		values["pph15"] = "Biaya Lainnya"
 		values["pph42"] = "PPh 4 (2)"
 		values["remark"] = "WHT"
 	}

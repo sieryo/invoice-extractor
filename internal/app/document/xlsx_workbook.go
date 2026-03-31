@@ -1,6 +1,7 @@
 package document
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -67,6 +68,21 @@ func ExtractSpreadsheetWorkbook(path string, sourceName string) (SpreadsheetWork
 	}
 	defer file.Close()
 
+	return extractSpreadsheetWorkbook(file, sourceName)
+}
+
+func ExtractSpreadsheetWorkbookBytes(data []byte, sourceName string) (SpreadsheetWorkbook, []string, error) {
+	file, err := excelize.OpenReader(bytes.NewReader(data))
+	if err != nil {
+		return SpreadsheetWorkbook{}, nil, err
+	}
+	defer file.Close()
+
+	return extractSpreadsheetWorkbook(file, sourceName)
+}
+
+func extractSpreadsheetWorkbook(file *excelize.File, sourceName string) (SpreadsheetWorkbook, []string, error) {
+
 	sheetNames := file.GetSheetList()
 	if len(sheetNames) == 0 {
 		return SpreadsheetWorkbook{}, nil, errors.New("workbook has no sheets")
@@ -104,6 +120,28 @@ func ExtractSpreadsheetWorkbook(path string, sourceName string) (SpreadsheetWork
 	}
 
 	return workbook, uniqueStrings(warnings), nil
+}
+
+func CompactSpreadsheetWorkbook(workbook SpreadsheetWorkbook) SpreadsheetWorkbook {
+	compact := SpreadsheetWorkbook{
+		SourceFile:    workbook.SourceFile,
+		PrimarySheet:  workbook.PrimarySheet,
+		SheetCount:    workbook.SheetCount,
+		TotalRowCount: workbook.TotalRowCount,
+		Sheets:        make([]SpreadsheetSheet, 0, len(workbook.Sheets)),
+		ExtractedAt:   workbook.ExtractedAt,
+	}
+
+	for _, sheet := range workbook.Sheets {
+		compact.Sheets = append(compact.Sheets, SpreadsheetSheet{
+			Name:           sheet.Name,
+			HeaderRowIndex: sheet.HeaderRowIndex,
+			Headers:        append([]string(nil), sheet.Headers...),
+			RowCount:       sheet.RowCount,
+		})
+	}
+
+	return compact
 }
 
 func buildSpreadsheetSheet(file *excelize.File, sheetName string, displayRows [][]string, rawRows [][]string) (SpreadsheetSheet, []string) {
@@ -464,6 +502,26 @@ func LoadSpreadsheetWorkbook(
 	}
 
 	return nil, errors.New(spreadsheetNormalizedReadFallback)
+}
+
+func LoadSpreadsheetWorkbookForExecution(
+	ctx context.Context,
+	fileStore dfile.FileStore,
+	collectionID string,
+	normalizedRef string,
+	rawRef string,
+) (*SpreadsheetWorkbook, error) {
+	if strings.TrimSpace(rawRef) != "" {
+		rawBytes, err := fileStore.Read(ctx, collectionID, rawRef)
+		if err == nil {
+			workbook, _, extractErr := ExtractSpreadsheetWorkbookBytes(rawBytes, rawRef)
+			if extractErr == nil {
+				return &workbook, nil
+			}
+		}
+	}
+
+	return LoadSpreadsheetWorkbook(ctx, fileStore, collectionID, normalizedRef)
 }
 
 func FindSpreadsheetSheet(workbook SpreadsheetWorkbook, sheetName string) (SpreadsheetSheet, error) {

@@ -118,7 +118,7 @@ func (p *XLSXCashflowProcessor) RunAction(ctx context.Context, req ActionRequest
 		nextChequeNumber = *input.StartingChequeNumber
 	}
 	for _, doc := range req.SnapshotDocs {
-		workbook, loadErr := LoadSpreadsheetWorkbook(ctx, p.fileStore, req.CollectionID, doc.NormalizedRef)
+		workbook, loadErr := LoadSpreadsheetWorkbookForExecution(ctx, p.fileStore, req.CollectionID, doc.NormalizedRef, doc.RawRef)
 		if loadErr != nil {
 			result.ItemResults = append(result.ItemResults, ActionItemResult{
 				DocumentID: doc.DocumentID,
@@ -570,7 +570,7 @@ func buildSpendMoneyTransaction(
 	return appcashflow.SpendMoneyTransaction{
 		ChequeNumber: chequeNumberPtr,
 		Date:         appcashflow.EnsureNonZeroTime(record.Date),
-		Memo:         resolveCashflowPrimaryAllocation(record, input, baseAccount.AccountKind),
+		Memo:         resolveCashflowPrimaryMemo(record),
 		Amount:       totalAmount,
 		Allocation:   resolveCashflowPrimaryAllocation(record, input, baseAccount.AccountKind),
 		Items:        items,
@@ -674,7 +674,7 @@ func buildReceiveMoneyTransaction(
 	return appcashflow.ReceiveMoneyTransaction{
 		IDNumber:   idNumberPtr,
 		Date:       appcashflow.EnsureNonZeroTime(record.Date),
-		Memo:       resolveCashflowPrimaryAllocation(record, input, baseAccount.AccountKind),
+		Memo:       resolveCashflowPrimaryMemo(record),
 		Amount:     record.Total,
 		Allocation: resolveCashflowPrimaryAllocation(record, input, baseAccount.AccountKind),
 		Items:      items,
@@ -721,11 +721,15 @@ func resolveCashflowPrimaryAllocation(
 	input appcashflow.ExportMYOBInput,
 	accountKind string,
 ) string {
-	base := uppercaseCashflowText(record.Information)
+	base := resolveCashflowPrimaryMemo(record)
 	if input.CashflowFormat == appcashflow.InfluencerFormat && accountKind == "influencer" && base != "" {
 		return "INFLUENCER " + base
 	}
 	return base
+}
+
+func resolveCashflowPrimaryMemo(record cashflowRowRecord) string {
+	return uppercaseCashflowText(record.Information)
 }
 
 func resolveCashflowAllocationMemo(record cashflowRowRecord, input appcashflow.ExportMYOBInput) string {

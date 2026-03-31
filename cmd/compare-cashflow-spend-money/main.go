@@ -2,18 +2,41 @@ package main
 
 import (
 	"errors"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 )
 
 const (
-	legacyTXT       = "spend_money_legacy.txt"
-	currentTXT      = "spend_money_new.txt"
 	maxDiffsToPrint = 200
 )
+
+var compareTargets = []compareTarget{
+	{
+		Label:       "Standard",
+		LegacyFile:  "spend_money_legacy.txt",
+		CurrentFile: "spend_money_new.txt",
+	},
+	{
+		Label:       "Influencer",
+		LegacyFile:  "influencer_legacy.txt",
+		CurrentFile: "influencer_new.txt",
+	},
+}
+
+type compareTarget struct {
+	Label       string
+	LegacyFile  string
+	CurrentFile string
+}
+
+type compareOptions struct {
+	ignoreTaxOrder bool
+}
 
 type cashflowFile struct {
 	Header              []string
@@ -44,31 +67,57 @@ type cashflowRow struct {
 }
 
 func main() {
+	options := compareOptions{}
+	flag.BoolVar(&options.ignoreTaxOrder, "ignore-tax-order", false, "abaikan perbedaan urutan item pajak saat compare")
+	flag.Parse()
+
 	assetsDir, err := resolveAssetsDir()
 	if err != nil {
 		fail(err)
 	}
 
-	legacy, err := loadCashflowFile(filepath.Join(assetsDir, legacyTXT))
-	if err != nil {
-		fail(err)
-	}
-	current, err := loadCashflowFile(filepath.Join(assetsDir, currentTXT))
-	if err != nil {
-		fail(err)
-	}
-
-	diffs := diffCashflowFiles(legacy, current)
-
 	fmt.Println("Compare Cashflow Spend Money")
 	fmt.Println("============================")
-	fmt.Printf("Assets dir            : %s\n", assetsDir)
+	fmt.Printf("Assets dir : %s\n", assetsDir)
+	fmt.Printf("Options    : ignore-tax-order=%t\n", options.ignoreTaxOrder)
+	fmt.Println()
+
+	hasDiff := false
+	for index, target := range compareTargets {
+		if index > 0 {
+			fmt.Println()
+		}
+
+		legacy, err := loadCashflowFile(filepath.Join(assetsDir, target.LegacyFile))
+		if err != nil {
+			fail(err)
+		}
+		current, err := loadCashflowFile(filepath.Join(assetsDir, target.CurrentFile))
+		if err != nil {
+			fail(err)
+		}
+
+		diffs := diffCashflowFiles(legacy, current, options)
+		printCompareResult(target, legacy, current, diffs)
+		if len(diffs) > 0 {
+			hasDiff = true
+		}
+	}
+
+	if hasDiff {
+		os.Exit(1)
+	}
+}
+
+func printCompareResult(target compareTarget, legacy, current cashflowFile, diffs []string) {
+	fmt.Printf("[%s]\n", target.Label)
+	fmt.Printf("Legacy file           : %s\n", target.LegacyFile)
+	fmt.Printf("Current file          : %s\n", target.CurrentFile)
 	fmt.Printf("Header columns        : %d\n", len(current.Header))
 	fmt.Printf("Transactions          : legacy=%d current=%d\n", legacy.TransactionCount, current.TransactionCount)
 	fmt.Printf("Item rows             : legacy=%d current=%d\n", legacy.ItemRowCount, current.ItemRowCount)
 	fmt.Printf("Non-empty rows        : legacy=%d current=%d\n", legacy.NonEmptyRowCount, current.NonEmptyRowCount)
 	fmt.Printf("Blank separators      : legacy=%d current=%d\n", legacy.BlankSeparatorCount, current.BlankSeparatorCount)
-	fmt.Println()
 
 	if len(diffs) == 0 {
 		fmt.Println("RESULT: SAME")
@@ -86,7 +135,6 @@ func main() {
 	if len(diffs) > limit {
 		fmt.Printf("- ... +%d diff lainnya\n", len(diffs)-limit)
 	}
-	os.Exit(1)
 }
 
 func resolveAssetsDir() (string, error) {
@@ -176,7 +224,7 @@ func parseCashflowRow(values []string) cashflowRow {
 	}
 }
 
-func diffCashflowFiles(legacy, current cashflowFile) []string {
+func diffCashflowFiles(legacy, current cashflowFile, options compareOptions) []string {
 	diffs := make([]string, 0)
 
 	if !equalSlices(legacy.Header, current.Header) {
@@ -206,8 +254,8 @@ func diffCashflowFiles(legacy, current cashflowFile) []string {
 			continue
 		}
 
-		legacyTx := legacy.Transactions[i]
-		currentTx := current.Transactions[i]
+		legacyTx := normalizeTransactionForDiff(legacy.Transactions[i], options)
+		currentTx := normalizeTransactionForDiff(current.Transactions[i], options)
 		memoHint := transactionMemoHint(legacyTx, currentTx)
 
 		diffs = append(diffs, diffRows(fmt.Sprintf("transaksi %d [%s] / header", i+1, memoHint), legacyTx.Header, currentTx.Header)...)
@@ -231,6 +279,62 @@ func diffCashflowFiles(legacy, current cashflowFile) []string {
 	}
 
 	return diffs
+}
+
+func normalizeTransactionForDiff(tx cashflowTransaction, options compareOptions) cashflowTransaction {
+	if !options.ignoreTaxOrder || len(tx.Items) < 2 {
+		return tx
+	}
+
+	normalized := cashflowTransaction{
+		Header: tx.Header,
+		Items:  append([]cashflowRow(nil), tx.Items...),
+	}
+
+	taxItems := make([]cashflowRow, 0, len(normalized.Items))
+	nonTaxItems := make([]cashflowRow, 0, len(normalized.Items))
+	for _, item := range normalized.Items {
+		if isTaxItem(item) {
+			taxItems = append(taxItems, item)
+			continue
+		}
+		nonTaxItems = append(nonTaxItems, item)
+	}
+
+	if len(taxItems) < 2 {
+		return normalized
+	}
+
+	sort.SliceStable(taxItems, func(i, j int) bool {
+		return taxItemSortKey(taxItems[i]) < taxItemSortKey(taxItems[j])
+	})
+
+	normalized.Items = append(nonTaxItems, taxItems...)
+	return normalized
+}
+
+func isTaxItem(row cashflowRow) bool {
+	return normalizedTaxLabel(row) != ""
+}
+
+func normalizedTaxLabel(row cashflowRow) string {
+	label := strings.ToUpper(strings.TrimSpace(row.AllocationMemo))
+	label = strings.ReplaceAll(label, " ", "")
+	switch label {
+	case "PPN", "PP23", "PPH15%", "PPH15", "PPH21", "PPH23", "PPH4(2)", "PPH42":
+		return label
+	default:
+		return ""
+	}
+}
+
+func taxItemSortKey(row cashflowRow) string {
+	return strings.Join([]string{
+		normalizedTaxLabel(row),
+		strings.TrimSpace(row.AllocationAccount),
+		strings.TrimSpace(row.ExTaxAmount),
+		strings.TrimSpace(row.IncTaxAmount),
+	}, "|")
 }
 
 func diffRows(prefix string, legacy, current cashflowRow) []string {

@@ -142,7 +142,7 @@ func (p *XLSXCashflowProcessor) ingestSource(
 		SourceFormat:   string(req.SourceFormat),
 		DocumentTag:    documentTag,
 		Warnings:       warnings,
-		Workbook:       workbook,
+		Workbook:       CompactSpreadsheetWorkbook(workbook),
 		ProcessedAt:    time.Now().UTC(),
 	}
 

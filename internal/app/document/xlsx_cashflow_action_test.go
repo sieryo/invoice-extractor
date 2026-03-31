@@ -68,12 +68,17 @@ func TestXLSXCashflowProcessor_RunActionSpendMoney(t *testing.T) {
 	require.Equal(t, IngestStatusReady, ingestResult.Items[0].Status)
 
 	var normalizedRef string
+	var rawRef string
 	for _, artifact := range ingestResult.Items[0].Artifacts {
 		if artifact.Kind == "normalized" {
 			normalizedRef = artifact.ObjectID
 		}
+		if artifact.Kind == "raw" {
+			rawRef = artifact.ObjectID
+		}
 	}
 	require.NotEmpty(t, normalizedRef)
+	require.NotEmpty(t, rawRef)
 
 	input := map[string]any{
 		"sheetName":             "Cashflow",
@@ -101,6 +106,7 @@ func TestXLSXCashflowProcessor_RunActionSpendMoney(t *testing.T) {
 				SourceName:    "cashflow.xlsx",
 				Status:        "ready",
 				NormalizedRef: normalizedRef,
+				RawRef:        rawRef,
 			},
 		},
 		Input:       inputJSON,
@@ -178,12 +184,17 @@ func TestXLSXCashflowProcessor_RunActionReceiveMoney(t *testing.T) {
 	require.Equal(t, IngestStatusReady, ingestResult.Items[0].Status)
 
 	var normalizedRef string
+	var rawRef string
 	for _, artifact := range ingestResult.Items[0].Artifacts {
 		if artifact.Kind == "normalized" {
 			normalizedRef = artifact.ObjectID
 		}
+		if artifact.Kind == "raw" {
+			rawRef = artifact.ObjectID
+		}
 	}
 	require.NotEmpty(t, normalizedRef)
+	require.NotEmpty(t, rawRef)
 
 	inputJSON, err := json.Marshal(map[string]any{
 		"sheetName":       "Cashflow",
@@ -206,6 +217,7 @@ func TestXLSXCashflowProcessor_RunActionReceiveMoney(t *testing.T) {
 			SourceName:    "cashflow-receive.xlsx",
 			Status:        "ready",
 			NormalizedRef: normalizedRef,
+			RawRef:        rawRef,
 		}},
 		Input:       inputJSON,
 		RequestedAt: time.Now(),
@@ -269,12 +281,17 @@ func TestXLSXCashflowProcessor_RunActionSpendMoney_SkipsMissingChartOfAccounts(t
 	require.NoError(t, err)
 
 	var normalizedRef string
+	var rawRef string
 	for _, artifact := range ingestResult.Items[0].Artifacts {
 		if artifact.Kind == "normalized" {
 			normalizedRef = artifact.ObjectID
 		}
+		if artifact.Kind == "raw" {
+			rawRef = artifact.ObjectID
+		}
 	}
 	require.NotEmpty(t, normalizedRef)
+	require.NotEmpty(t, rawRef)
 
 	inputJSON, err := json.Marshal(map[string]any{
 		"sheetName":             "Cashflow",
@@ -300,6 +317,7 @@ func TestXLSXCashflowProcessor_RunActionSpendMoney_SkipsMissingChartOfAccounts(t
 			SourceName:    "cashflow-missing-coa.xlsx",
 			Status:        "ready",
 			NormalizedRef: normalizedRef,
+			RawRef:        rawRef,
 		}},
 		Input:       inputJSON,
 		RequestedAt: time.Now(),
@@ -354,12 +372,17 @@ func TestXLSXCashflowProcessor_RunActionSpendMoney_InfluencerSkipsFilteredRows(t
 	require.NoError(t, err)
 
 	var normalizedRef string
+	var rawRef string
 	for _, artifact := range ingestResult.Items[0].Artifacts {
 		if artifact.Kind == "normalized" {
 			normalizedRef = artifact.ObjectID
 		}
+		if artifact.Kind == "raw" {
+			rawRef = artifact.ObjectID
+		}
 	}
 	require.NotEmpty(t, normalizedRef)
+	require.NotEmpty(t, rawRef)
 
 	inputJSON, err := json.Marshal(map[string]any{
 		"sheetName":                 "Cashflow",
@@ -390,6 +413,7 @@ func TestXLSXCashflowProcessor_RunActionSpendMoney_InfluencerSkipsFilteredRows(t
 			SourceName:    "cashflow-influencer-spend.xlsx",
 			Status:        "ready",
 			NormalizedRef: normalizedRef,
+			RawRef:        rawRef,
 		}},
 		Input:       inputJSON,
 		RequestedAt: time.Now(),
@@ -447,12 +471,17 @@ func TestXLSXCashflowProcessor_RunActionReceiveMoney_InfluencerSkipsFilteredRows
 	require.NoError(t, err)
 
 	var normalizedRef string
+	var rawRef string
 	for _, artifact := range ingestResult.Items[0].Artifacts {
 		if artifact.Kind == "normalized" {
 			normalizedRef = artifact.ObjectID
 		}
+		if artifact.Kind == "raw" {
+			rawRef = artifact.ObjectID
+		}
 	}
 	require.NotEmpty(t, normalizedRef)
+	require.NotEmpty(t, rawRef)
 
 	inputJSON, err := json.Marshal(map[string]any{
 		"sheetName":                 "Cashflow",
@@ -483,6 +512,7 @@ func TestXLSXCashflowProcessor_RunActionReceiveMoney_InfluencerSkipsFilteredRows
 			SourceName:    "cashflow-influencer-receive.xlsx",
 			Status:        "ready",
 			NormalizedRef: normalizedRef,
+			RawRef:        rawRef,
 		}},
 		Input:       inputJSON,
 		RequestedAt: time.Now(),
@@ -723,6 +753,58 @@ func TestResolveCashflowPrimaryAllocation_InfluencerBankDoesNotAddPrefix(t *test
 	)
 
 	require.Equal(t, "ADMIN BANK FEE", got)
+}
+
+func TestBuildSpendMoneyTransaction_InfluencerUsesPlainMemoAndPrefixedAllocation(t *testing.T) {
+	t.Parallel()
+
+	tx, warnings, err := buildSpendMoneyTransaction(
+		cashflowRowRecord{
+			Date:        time.Date(2026, 1, 5, 0, 0, 0, 0, time.UTC),
+			Information: "Marketplace payout",
+			Total:       500000,
+		},
+		appcashflow.ExportMYOBInput{
+			CashflowFormat:      appcashflow.InfluencerFormat,
+			DefaultIAccountCode: "62004",
+			DefaultBAccountCode: "90900",
+		},
+		nil,
+		0,
+	)
+
+	require.NoError(t, err)
+	require.Empty(t, warnings)
+	require.Equal(t, "MARKETPLACE PAYOUT", tx.Memo)
+	require.Equal(t, "INFLUENCER MARKETPLACE PAYOUT", tx.Allocation)
+	require.Len(t, tx.Items, 1)
+	require.Equal(t, "INFLUENCER MARKETPLACE PAYOUT", tx.Items[0].Allocation)
+}
+
+func TestBuildReceiveMoneyTransaction_InfluencerUsesPlainMemoAndPrefixedAllocation(t *testing.T) {
+	t.Parallel()
+
+	tx, warnings, err := buildReceiveMoneyTransaction(
+		cashflowRowRecord{
+			Date:        time.Date(2026, 1, 5, 0, 0, 0, 0, time.UTC),
+			Information: "Marketplace payout",
+			Total:       500000,
+		},
+		appcashflow.ExportMYOBInput{
+			CashflowFormat:      appcashflow.InfluencerFormat,
+			DefaultIAccountCode: "62004",
+			DefaultBAccountCode: "90900",
+		},
+		nil,
+		0,
+	)
+
+	require.NoError(t, err)
+	require.Empty(t, warnings)
+	require.Equal(t, "MARKETPLACE PAYOUT", tx.Memo)
+	require.Equal(t, "INFLUENCER MARKETPLACE PAYOUT", tx.Allocation)
+	require.Len(t, tx.Items, 1)
+	require.Equal(t, "INFLUENCER MARKETPLACE PAYOUT", tx.Items[0].Allocation)
 }
 
 func TestResolveCashflowBaseAccountCode_InfluencerIgnoresCOA(t *testing.T) {

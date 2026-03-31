@@ -193,7 +193,7 @@ func (p *XLSXBukpotRequestProcessor) ingestSource(ctx context.Context, req Inges
 		SourceFormat:   string(req.SourceFormat),
 		DocumentTag:    documentTag,
 		Warnings:       warnings,
-		Workbook:       workbook,
+		Workbook:       CompactSpreadsheetWorkbook(workbook),
 		ProcessedAt:    time.Now().UTC(),
 	}
 
@@ -251,7 +251,7 @@ func (p *XLSXBukpotRequestProcessor) ValidateAction(ctx context.Context, req Act
 		return err
 	}
 	for _, doc := range req.SnapshotDocs {
-		workbook, err := LoadSpreadsheetWorkbook(ctx, p.fileStore, req.CollectionID, doc.NormalizedRef)
+		workbook, err := LoadSpreadsheetWorkbookForExecution(ctx, p.fileStore, req.CollectionID, doc.NormalizedRef, doc.RawRef)
 		if err != nil {
 			return fmt.Errorf("%s: gagal membaca workbook: %w", doc.SourceName, err)
 		}
@@ -300,7 +300,7 @@ func (p *XLSXBukpotRequestProcessor) RunAction(ctx context.Context, req ActionRe
 
 	records := make([]bukpotRequestRecord, 0)
 	for _, doc := range req.SnapshotDocs {
-		workbook, loadErr := LoadSpreadsheetWorkbook(ctx, p.fileStore, req.CollectionID, doc.NormalizedRef)
+		workbook, loadErr := LoadSpreadsheetWorkbookForExecution(ctx, p.fileStore, req.CollectionID, doc.NormalizedRef, doc.RawRef)
 		if loadErr != nil {
 			result.ItemResults = append(result.ItemResults, ActionItemResult{
 				DocumentID: doc.DocumentID,

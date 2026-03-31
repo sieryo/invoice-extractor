@@ -77,6 +77,10 @@ func TestXLSXCashflowProcessorIngest(t *testing.T) {
 	require.Len(t, payload.Workbook.Sheets, 2)
 	require.Equal(t, []string{"Tanggal", "Deskripsi", "Nominal"}, payload.Workbook.Sheets[0].Headers)
 	require.Equal(t, 2, payload.Workbook.Sheets[0].RowCount)
+	require.Empty(t, payload.Workbook.Sheets[0].RawRows)
+	require.Empty(t, payload.Workbook.Sheets[0].RawCellRows)
+	require.Empty(t, payload.Workbook.Sheets[0].Rows)
+	require.Empty(t, payload.Workbook.Sheets[0].CellRows)
 }
 
 func createCashflowWorkbook(t *testing.T, path string) {

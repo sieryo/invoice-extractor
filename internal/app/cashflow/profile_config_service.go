@@ -353,7 +353,6 @@ func defaultVariantFieldValues(key ProfileConfigKey, format Format) map[string]s
 		values["coa"] = "WHT CoA"
 		values["pph42"] = "PPh 4 (2)"
 		values["otherCost"] = "Biaya Lainnya"
-		values["pph15"] = "Biaya Lainnya"
 	}
 	return values
 }
