@@ -81,7 +81,7 @@ func TestXLSXCashflowProcessor_RunActionSpendMoney(t *testing.T) {
 		"headerRowNumber":       1,
 		"startingChequeNumber":  17500,
 		"chequeAccount":         "11102",
-		"cashflowFormat":        "default",
+		"cashflowFormat":        "standard",
 		"remarkDelimiter":       "*",
 		"otherCostsAccountCode": "62099",
 	}
@@ -190,7 +190,7 @@ func TestXLSXCashflowProcessor_RunActionReceiveMoney(t *testing.T) {
 		"outputFilename":  "cashflow-receive-money",
 		"headerRowNumber": 1,
 		"chequeAccount":   "11102",
-		"cashflowFormat":  "default",
+		"cashflowFormat":  "standard",
 	})
 	require.NoError(t, err)
 
@@ -282,7 +282,7 @@ func TestXLSXCashflowProcessor_RunActionSpendMoney_SkipsMissingChartOfAccounts(t
 		"headerRowNumber":       1,
 		"startingChequeNumber":  17500,
 		"chequeAccount":         "11102",
-		"cashflowFormat":        "default",
+		"cashflowFormat":        "standard",
 		"remarkDelimiter":       "*",
 		"otherCostsAccountCode": "62099",
 	})

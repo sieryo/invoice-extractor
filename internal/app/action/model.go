@@ -128,5 +128,6 @@ type ResolveSpecRequest struct {
 	UserID       string   `json:"userId"`
 	CollectionID string   `json:"collectionId"`
 	ActionType   string   `json:"actionType"`
+	Input        json.RawMessage `json:"input,omitempty"`
 	DocumentIDs  []string `json:"documentIds,omitempty"`
 }

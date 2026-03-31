@@ -133,7 +133,7 @@ func TestNormalizeAndValidateActionInput_OptionsRejectInvalid(t *testing.T) {
 						Required: true,
 						State:    document.FormFieldStateSpec{Visible: true},
 						Options: []document.FormFieldOption{
-							{Label: "Default", Value: "default"},
+							{Label: "Standard", Value: "standard"},
 							{Label: "Influencer", Value: "influencer"},
 						},
 					},
@@ -187,5 +187,21 @@ func TestNormalizeAndValidateActionInput_RequiredIfRule(t *testing.T) {
 	)
 	if okErr != nil {
 		t.Fatalf("unexpected error: %v", okErr)
+	}
+}
+
+func TestPickPreferredSheetName(t *testing.T) {
+	options := []string{"January 2026", "Summary"}
+
+	if got := pickPreferredSheetName(options, "January 2026", "Summary"); got != "January 2026" {
+		t.Fatalf("expected preferred sheet to win, got %q", got)
+	}
+
+	if got := pickPreferredSheetName(options, "Missing", "Summary"); got != "Summary" {
+		t.Fatalf("expected fallback sheet to win, got %q", got)
+	}
+
+	if got := pickPreferredSheetName(options, "", ""); got != "January 2026" {
+		t.Fatalf("expected first option fallback, got %q", got)
 	}
 }

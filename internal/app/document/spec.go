@@ -72,9 +72,10 @@ type ActionPresentationSpec struct {
 }
 
 type FormSpec struct {
-	Title       string            `json:"title,omitempty"`
-	Description string            `json:"description,omitempty"`
-	Sections    []FormSectionSpec `json:"sections"`
+	Title         string                 `json:"title,omitempty"`
+	Description   string                 `json:"description,omitempty"`
+	Sections      []FormSectionSpec      `json:"sections"`
+	VariantGroups []FormVariantGroupSpec `json:"variantGroups,omitempty"`
 }
 
 type FormSectionSpec struct {
@@ -85,19 +86,38 @@ type FormSectionSpec struct {
 	Fields      []FormFieldSpec `json:"fields"`
 }
 
+type FormVariantGroupSpec struct {
+	Key               string            `json:"key"`
+	FieldKey          string            `json:"fieldKey"`
+	Label             string            `json:"label"`
+	Description       string            `json:"description,omitempty"`
+	Component         string            `json:"component,omitempty"`
+	DefaultVariantKey string            `json:"defaultVariantKey,omitempty"`
+	Variants          []FormVariantSpec `json:"variants"`
+}
+
+type FormVariantSpec struct {
+	Key         string            `json:"key"`
+	Label       string            `json:"label"`
+	Description string            `json:"description,omitempty"`
+	Sections    []FormSectionSpec `json:"sections"`
+	Values      map[string]any    `json:"values,omitempty"`
+}
+
 type FormFieldSpec struct {
-	Key          string               `json:"key"`
-	Kind         string               `json:"kind"`
-	Label        string               `json:"label"`
-	Required     bool                 `json:"required"`
-	DefaultValue any                  `json:"defaultValue,omitempty"`
-	Options      []FormFieldOption    `json:"options,omitempty"`
-	Rules        []FormFieldRuleSpec  `json:"rules,omitempty"`
-	State        FormFieldStateSpec   `json:"state"`
-	Suggestions  []FormSuggestionSpec `json:"suggestions,omitempty"`
-	HelpText     string               `json:"helpText,omitempty"`
-	Placeholder  string               `json:"placeholder,omitempty"`
-	Span         int                  `json:"span,omitempty"`
+	Key          string                    `json:"key"`
+	Kind         string                    `json:"kind"`
+	Label        string                    `json:"label"`
+	Required     bool                      `json:"required"`
+	DefaultValue any                       `json:"defaultValue,omitempty"`
+	Options      []FormFieldOption         `json:"options,omitempty"`
+	Rules        []FormFieldRuleSpec       `json:"rules,omitempty"`
+	Interaction  *FormFieldInteractionSpec `json:"interaction,omitempty"`
+	State        FormFieldStateSpec        `json:"state"`
+	Suggestions  []FormSuggestionSpec      `json:"suggestions,omitempty"`
+	HelpText     string                    `json:"helpText,omitempty"`
+	Placeholder  string                    `json:"placeholder,omitempty"`
+	Span         int                       `json:"span,omitempty"`
 }
 
 type FormFieldOption struct {
@@ -123,6 +143,13 @@ type FormFieldRuleSpec struct {
 	Field   string `json:"field"`
 	Equals  string `json:"equals,omitempty"`
 	Message string `json:"message,omitempty"`
+}
+
+type FormFieldInteractionSpec struct {
+	Trigger       string   `json:"trigger"`
+	Effect        string   `json:"effect"`
+	ResetSections []string `json:"resetSections,omitempty"`
+	PreserveKeys  []string `json:"preserveKeys,omitempty"`
 }
 
 type ActionSelectionSpec struct {
@@ -250,6 +277,231 @@ func buildHeaderRowField(label string, helpText string) FormFieldSpec {
 			Visible: true,
 		},
 	}
+}
+
+func buildCashflowMetaSections(isReceive bool) []FormSectionSpec {
+	return []FormSectionSpec{
+		{
+			Key:     "meta",
+			Title:   "Meta",
+			Columns: 1,
+			Fields: []FormFieldSpec{
+				{
+					Key:          "cashflowFormat",
+					Kind:         FormFieldKindSelect,
+					Label:        "Format Cashflow",
+					Required:     true,
+					DefaultValue: "standard",
+					Options: []FormFieldOption{
+						{Label: "Standard", Value: "standard"},
+						{Label: "Influencer", Value: "influencer"},
+					},
+					State: FormFieldStateSpec{
+						Visible: false,
+					},
+				},
+			},
+		},
+	}
+}
+
+func buildCashflowVariantGroup(isReceive bool) FormVariantGroupSpec {
+	return FormVariantGroupSpec{
+		Key:               "cashflow_variant",
+		FieldKey:          "cashflowFormat",
+		Label:             "Format Cashflow",
+		Description:       "Pilih format cashflow. Form tetap sama, lalu nilai default akan mengikuti format yang aktif.",
+		Component:         "tabs",
+		DefaultVariantKey: "standard",
+		Variants: []FormVariantSpec{
+			{
+				Key:         "standard",
+				Label:       "Standard",
+				Description: "Format cashflow standard.",
+				Values:      buildCashflowVariantValues(isReceive, "standard"),
+			},
+			{
+				Key:         "influencer",
+				Label:       "Influencer",
+				Description: "Format cashflow influencer.",
+				Values:      buildCashflowVariantValues(isReceive, "influencer"),
+			},
+		},
+	}
+}
+
+func buildCashflowSections(isReceive bool) []FormSectionSpec {
+	return []FormSectionSpec{
+		{
+			Key:     "source",
+			Title:   "Sumber Data",
+			Columns: 3,
+			Fields: []FormFieldSpec{
+				{
+					Key:          "sheetName",
+					Kind:         FormFieldKindSelect,
+					Label:        "Sheet",
+					Required:     true,
+					DefaultValue: "",
+					HelpText:     "Pilih dokumen cashflow terlebih dahulu untuk melihat sheet yang tersedia.",
+					State: FormFieldStateSpec{
+						Visible:  true,
+						Disabled: true,
+					},
+				},
+				buildHeaderRowField("Baris Header", "Nomor baris header pada sheet yang dipilih."),
+				{
+					Key:         "startingChequeNumber",
+					Kind:        FormFieldKindNumber,
+					Label:       map[bool]string{true: "Nomor Awal ID", false: "Nomor Awal Cheque"}[isReceive],
+					Required:    false,
+					HelpText:    map[bool]string{true: "Opsional. Kosongkan jika nomor ID ingin diisi otomatis nanti.", false: "Opsional. Kosongkan jika nomor cheque ingin dibuat otomatis oleh MYOB."}[isReceive],
+					Placeholder: "17500",
+					State: FormFieldStateSpec{
+						Visible: true,
+					},
+				},
+			},
+		},
+		{
+			Key:     "output",
+			Title:   "Output",
+			Columns: 2,
+			Fields: []FormFieldSpec{
+				{
+					Key:          "outputFilename",
+					Kind:         FormFieldKindText,
+					Label:        "Nama Output",
+					Required:     true,
+					DefaultValue: map[bool]string{true: "receive_money", false: "spend_money"}[isReceive],
+					Placeholder:  map[bool]string{true: "receive_money", false: "spend_money"}[isReceive],
+					HelpText:     "Tanpa ekstensi file.",
+					State: FormFieldStateSpec{
+						Visible: true,
+					},
+				},
+				{
+					Key:          "chequeAccount",
+					Kind:         FormFieldKindText,
+					Label:        map[bool]string{true: "Deposit Account", false: "Cheque Account"}[isReceive],
+					Required:     true,
+					DefaultValue: "12021",
+					HelpText:     map[bool]string{true: "Akun bank/deposit utama untuk file MYOB.", false: "Akun cheque utama untuk file MYOB."}[isReceive],
+					State:        FormFieldStateSpec{Visible: true},
+				},
+			},
+		},
+		buildCashflowParameterSection(),
+		{
+			Key:     "mapping",
+			Title:   "Mapping Header",
+			Columns: 2,
+			Fields:  buildCashflowMappingFields(),
+		},
+	}
+}
+
+func buildCashflowParameterSection() FormSectionSpec {
+	return FormSectionSpec{
+		Key:     "parameters",
+		Title:   "Default Sumber & Parameter",
+		Columns: 2,
+		Fields: []FormFieldSpec{
+			{
+				Key:          "remarkDelimiter",
+				Kind:         FormFieldKindText,
+				Label:        "Remark Delimiter",
+				Required:     false,
+				DefaultValue: "*",
+				Placeholder:  "*",
+				HelpText:     "Dipakai untuk memecah catatan biaya lainnya.",
+				State:        FormFieldStateSpec{Visible: true},
+			},
+			{
+				Key:          "otherCostsAccountCode",
+				Kind:         FormFieldKindText,
+				Label:        "Kode Akun Biaya Lain",
+				Required:     false,
+				DefaultValue: "62099",
+				HelpText:     "Dipakai saat terdapat komponen biaya lainnya.",
+				State:        FormFieldStateSpec{Visible: true},
+			},
+			{
+				Key:          "defaultIAccountCode",
+				Kind:         FormFieldKindText,
+				Label:        "Default Influencer Account Code",
+				Required:     false,
+				DefaultValue: "",
+				HelpText:     "Dipakai saat format influencer memilih account influencer.",
+				State:        FormFieldStateSpec{Visible: true},
+			},
+			{
+				Key:          "defaultBAccountCode",
+				Kind:         FormFieldKindText,
+				Label:        "Default Bank Account Code",
+				Required:     false,
+				DefaultValue: "",
+				HelpText:     "Dipakai saat format influencer mendeteksi transaksi bank.",
+				State:        FormFieldStateSpec{Visible: true},
+			},
+		},
+	}
+}
+
+func buildCashflowMappingFields() []FormFieldSpec {
+	return []FormFieldSpec{
+		{Key: "date", Kind: FormFieldKindText, Label: "Tanggal", Required: true, DefaultValue: "Tanggal", State: FormFieldStateSpec{Visible: true}},
+		{Key: "information", Kind: FormFieldKindText, Label: "Keterangan", Required: true, DefaultValue: "note", State: FormFieldStateSpec{Visible: true}},
+		{Key: "coa", Kind: FormFieldKindText, Label: "Chart of Account", Required: true, DefaultValue: "coa", State: FormFieldStateSpec{Visible: true}},
+		{Key: "otherCost", Kind: FormFieldKindText, Label: "Biaya Lainnya", Required: false, DefaultValue: "By Lainnya", State: FormFieldStateSpec{Visible: true}},
+		{Key: "pp23", Kind: FormFieldKindText, Label: "PP 23", Required: false, DefaultValue: "PP 23", State: FormFieldStateSpec{Visible: true}},
+		{Key: "pph15", Kind: FormFieldKindText, Label: "PPh 15%", Required: false, DefaultValue: "PPh 15%", State: FormFieldStateSpec{Visible: true}},
+		{Key: "pph21", Kind: FormFieldKindText, Label: "PPH 21", Required: false, DefaultValue: "PPH 21", State: FormFieldStateSpec{Visible: true}},
+		{Key: "pph23", Kind: FormFieldKindText, Label: "PPH 23", Required: false, DefaultValue: "PPH 23", State: FormFieldStateSpec{Visible: true}},
+		{Key: "pph42", Kind: FormFieldKindText, Label: "PPH 4 (2)", Required: false, DefaultValue: "PPH 4(2)", State: FormFieldStateSpec{Visible: true}},
+		{Key: "ppn", Kind: FormFieldKindText, Label: "PPN", Required: false, DefaultValue: "PPN", State: FormFieldStateSpec{Visible: true}},
+		{Key: "remark", Kind: FormFieldKindText, Label: "Catatan", Required: false, DefaultValue: "catatan", State: FormFieldStateSpec{Visible: true}},
+		{Key: "total", Kind: FormFieldKindText, Label: "Total", Required: true, DefaultValue: "idr", State: FormFieldStateSpec{Visible: true}},
+	}
+}
+
+func buildCashflowVariantValues(isReceive bool, variant string) map[string]any {
+	values := map[string]any{
+		"sheetName":             "",
+		"headerRowNumber":       "1",
+		"startingChequeNumber":  "",
+		"outputFilename":        map[bool]string{true: "receive_money", false: "spend_money"}[isReceive],
+		"chequeAccount":         "12021",
+		"remarkDelimiter":       "*",
+		"otherCostsAccountCode": "62099",
+		"defaultIAccountCode":   "",
+		"defaultBAccountCode":   "",
+		"date":                  "Tanggal",
+		"information":           "note",
+		"coa":                   "coa",
+		"otherCost":             "By Lainnya",
+		"pp23":                  "PP 23",
+		"pph15":                 "PPh 15%",
+		"pph21":                 "PPH 21",
+		"pph23":                 "PPH 23",
+		"pph42":                 "PPH 4(2)",
+		"ppn":                   "PPN",
+		"remark":                "catatan",
+		"total":                 "idr",
+	}
+
+	if variant == "influencer" {
+		values["defaultIAccountCode"] = "62004"
+		values["defaultBAccountCode"] = "90900"
+		values["date"] = "*Posting Date: # date"
+		values["information"] = "Notes"
+		values["coa"] = "WHT CoA"
+		values["pph15"] = "Biaya Lainnya"
+		values["pph42"] = "PPh 4 (2)"
+		values["remark"] = "WHT"
+	}
+
+	return values
 }
 
 func (s CollectionSpec) FindActionSpec(actionType string) (ActionSpec, bool) {
@@ -522,160 +774,10 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 					},
 					Form: &FormSpec{
 						Title:       "Pengaturan Spend Money",
-						Description: "Pilih sheet sumber dan atur parameter export MYOB Spend Money.",
-						Sections: []FormSectionSpec{
-							{
-								Key:     "source",
-								Title:   "Sumber Data",
-								Columns: 3,
-								Fields: []FormFieldSpec{
-									{
-										Key:          "sheetName",
-										Kind:         FormFieldKindSelect,
-										Label:        "Sheet",
-										Required:     true,
-										DefaultValue: "",
-										HelpText:     "Pilih dokumen cashflow terlebih dahulu untuk melihat sheet yang tersedia.",
-										Span:         2,
-										State: FormFieldStateSpec{
-											Visible:  true,
-											Disabled: true,
-										},
-									},
-									buildHeaderRowField("Baris Header", "Nomor baris header pada sheet yang dipilih."),
-									{
-										Key:         "startingChequeNumber",
-										Kind:        FormFieldKindNumber,
-										Label:       "Nomor Awal Cheque",
-										Required:    false,
-										HelpText:    "Opsional. Kosongkan jika nomor cheque ingin dibuat otomatis oleh MYOB.",
-										Placeholder: "17500",
-										State: FormFieldStateSpec{
-											Visible: true,
-										},
-									},
-								},
-							},
-							{
-								Key:     "output",
-								Title:   "Output",
-								Columns: 3,
-								Fields: []FormFieldSpec{
-									{
-										Key:          "outputFilename",
-										Kind:         FormFieldKindText,
-										Label:        "Nama Output",
-										Required:     true,
-										DefaultValue: "spend_money",
-										Placeholder:  "spend_money",
-										HelpText:     "Tanpa ekstensi file.",
-										State: FormFieldStateSpec{
-											Visible: true,
-										},
-									},
-									{
-										Key:          "chequeAccount",
-										Kind:         FormFieldKindText,
-										Label:        "Cheque Account",
-										Required:     true,
-										DefaultValue: "12021",
-										HelpText:     "Akun cheque utama untuk file MYOB.",
-										State:        FormFieldStateSpec{Visible: true},
-									},
-									{
-										Key:          "cashflowFormat",
-										Kind:         FormFieldKindSelect,
-										Label:        "Format Cashflow",
-										Required:     true,
-										DefaultValue: "default",
-										Options: []FormFieldOption{
-											{Label: "Default", Value: "default"},
-											{Label: "Influencer", Value: "influencer"},
-										},
-										State: FormFieldStateSpec{Visible: true},
-									},
-								},
-							},
-							{
-								Key:     "default_format",
-								Title:   "Format Default",
-								Columns: 2,
-								Fields: []FormFieldSpec{
-									{
-										Key:          "remarkDelimiter",
-										Kind:         FormFieldKindText,
-										Label:        "Remark Delimiter",
-										Required:     false,
-										DefaultValue: "*",
-										Placeholder:  "*",
-										HelpText:     "Wajib untuk format default.",
-										Rules: []FormFieldRuleSpec{
-											{Type: FormFieldRuleRequiredIf, Field: "cashflowFormat", Equals: "default", Message: "Remark Delimiter wajib diisi"},
-										},
-										State: FormFieldStateSpec{Visible: true},
-									},
-									{
-										Key:          "otherCostsAccountCode",
-										Kind:         FormFieldKindText,
-										Label:        "Kode Akun Biaya Lain",
-										Required:     false,
-										DefaultValue: "62099",
-										HelpText:     "Wajib untuk format default.",
-										Rules: []FormFieldRuleSpec{
-											{Type: FormFieldRuleRequiredIf, Field: "cashflowFormat", Equals: "default", Message: "Kode akun biaya lain wajib diisi"},
-										},
-										State: FormFieldStateSpec{Visible: true},
-									},
-								},
-							},
-							{
-								Key:     "influencer_format",
-								Title:   "Format Influencer",
-								Columns: 2,
-								Fields: []FormFieldSpec{
-									{
-										Key:          "defaultIAccountCode",
-										Kind:         FormFieldKindText,
-										Label:        "Default Influencer Account Code",
-										Required:     false,
-										DefaultValue: "62004",
-										Rules: []FormFieldRuleSpec{
-											{Type: FormFieldRuleRequiredIf, Field: "cashflowFormat", Equals: "influencer", Message: "Default Influencer Account Code wajib diisi"},
-										},
-										State: FormFieldStateSpec{Visible: true},
-									},
-									{
-										Key:          "defaultBAccountCode",
-										Kind:         FormFieldKindText,
-										Label:        "Default Bank Account Code",
-										Required:     false,
-										DefaultValue: "90900",
-										Rules: []FormFieldRuleSpec{
-											{Type: FormFieldRuleRequiredIf, Field: "cashflowFormat", Equals: "influencer", Message: "Default Bank Account Code wajib diisi"},
-										},
-										State: FormFieldStateSpec{Visible: true},
-									},
-								},
-							},
-							{
-								Key:     "mapping",
-								Title:   "Mapping Header",
-								Columns: 2,
-								Fields: []FormFieldSpec{
-									{Key: "date", Kind: FormFieldKindText, Label: "Tanggal", Required: true, DefaultValue: "Tanggal", State: FormFieldStateSpec{Visible: true}},
-									{Key: "information", Kind: FormFieldKindText, Label: "Keterangan", Required: true, DefaultValue: "note", State: FormFieldStateSpec{Visible: true}},
-									{Key: "coa", Kind: FormFieldKindText, Label: "Chart of Account", Required: true, DefaultValue: "coa", State: FormFieldStateSpec{Visible: true}},
-									{Key: "otherCost", Kind: FormFieldKindText, Label: "Biaya Lainnya", Required: false, DefaultValue: "By Lainnya", State: FormFieldStateSpec{Visible: true}},
-									{Key: "pp23", Kind: FormFieldKindText, Label: "PP 23", Required: false, DefaultValue: "PP 23", State: FormFieldStateSpec{Visible: true}},
-									{Key: "pph15", Kind: FormFieldKindText, Label: "PPh 15%", Required: false, DefaultValue: "PPh 15%", State: FormFieldStateSpec{Visible: true}},
-									{Key: "pph21", Kind: FormFieldKindText, Label: "PPH 21", Required: false, DefaultValue: "PPH 21", State: FormFieldStateSpec{Visible: true}},
-									{Key: "pph23", Kind: FormFieldKindText, Label: "PPH 23", Required: false, DefaultValue: "PPH 23", State: FormFieldStateSpec{Visible: true}},
-									{Key: "pph42", Kind: FormFieldKindText, Label: "PPH 4 (2)", Required: false, DefaultValue: "PPH 4(2)", State: FormFieldStateSpec{Visible: true}},
-									{Key: "ppn", Kind: FormFieldKindText, Label: "PPN", Required: false, DefaultValue: "PPN", State: FormFieldStateSpec{Visible: true}},
-									{Key: "remark", Kind: FormFieldKindText, Label: "Catatan", Required: false, DefaultValue: "catatan", State: FormFieldStateSpec{Visible: true}},
-									{Key: "total", Kind: FormFieldKindText, Label: "Total", Required: true, DefaultValue: "idr", State: FormFieldStateSpec{Visible: true}},
-								},
-							},
+						Description: "Pilih format cashflow lalu atur sumber data, parameter, dan mapping pada form yang sama.",
+						Sections:    append(buildCashflowMetaSections(false), buildCashflowSections(false)...),
+						VariantGroups: []FormVariantGroupSpec{
+							buildCashflowVariantGroup(false),
 						},
 					},
 					Detail: &ActionDetailSpec{
@@ -738,160 +840,10 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 					},
 					Form: &FormSpec{
 						Title:       "Pengaturan Receive Money",
-						Description: "Pilih sheet sumber dan atur parameter export MYOB Receive Money.",
-						Sections: []FormSectionSpec{
-							{
-								Key:     "source",
-								Title:   "Sumber Data",
-								Columns: 3,
-								Fields: []FormFieldSpec{
-									{
-										Key:          "sheetName",
-										Kind:         FormFieldKindSelect,
-										Label:        "Sheet",
-										Required:     true,
-										DefaultValue: "",
-										HelpText:     "Pilih dokumen cashflow terlebih dahulu untuk melihat sheet yang tersedia.",
-										Span:         2,
-										State: FormFieldStateSpec{
-											Visible:  true,
-											Disabled: true,
-										},
-									},
-									buildHeaderRowField("Baris Header", "Nomor baris header pada sheet yang dipilih."),
-									{
-										Key:         "startingChequeNumber",
-										Kind:        FormFieldKindNumber,
-										Label:       "Nomor Awal ID",
-										Required:    false,
-										HelpText:    "Opsional. Kosongkan jika nomor ID ingin diisi otomatis nanti.",
-										Placeholder: "17500",
-										State: FormFieldStateSpec{
-											Visible: true,
-										},
-									},
-								},
-							},
-							{
-								Key:     "output",
-								Title:   "Output",
-								Columns: 3,
-								Fields: []FormFieldSpec{
-									{
-										Key:          "outputFilename",
-										Kind:         FormFieldKindText,
-										Label:        "Nama Output",
-										Required:     true,
-										DefaultValue: "receive_money",
-										Placeholder:  "receive_money",
-										HelpText:     "Tanpa ekstensi file.",
-										State: FormFieldStateSpec{
-											Visible: true,
-										},
-									},
-									{
-										Key:          "chequeAccount",
-										Kind:         FormFieldKindText,
-										Label:        "Deposit Account",
-										Required:     true,
-										DefaultValue: "12021",
-										HelpText:     "Akun bank/deposit utama untuk file MYOB.",
-										State:        FormFieldStateSpec{Visible: true},
-									},
-									{
-										Key:          "cashflowFormat",
-										Kind:         FormFieldKindSelect,
-										Label:        "Format Cashflow",
-										Required:     true,
-										DefaultValue: "default",
-										Options: []FormFieldOption{
-											{Label: "Default", Value: "default"},
-											{Label: "Influencer", Value: "influencer"},
-										},
-										State: FormFieldStateSpec{Visible: true},
-									},
-								},
-							},
-							{
-								Key:     "default_format",
-								Title:   "Format Default",
-								Columns: 2,
-								Fields: []FormFieldSpec{
-									{
-										Key:          "remarkDelimiter",
-										Kind:         FormFieldKindText,
-										Label:        "Remark Delimiter",
-										Required:     false,
-										DefaultValue: "*",
-										Placeholder:  "*",
-										HelpText:     "Wajib untuk format default.",
-										Rules: []FormFieldRuleSpec{
-											{Type: FormFieldRuleRequiredIf, Field: "cashflowFormat", Equals: "default", Message: "Remark Delimiter wajib diisi"},
-										},
-										State: FormFieldStateSpec{Visible: true},
-									},
-									{
-										Key:          "otherCostsAccountCode",
-										Kind:         FormFieldKindText,
-										Label:        "Kode Akun Biaya Lain",
-										Required:     false,
-										DefaultValue: "62099",
-										HelpText:     "Wajib untuk format default.",
-										Rules: []FormFieldRuleSpec{
-											{Type: FormFieldRuleRequiredIf, Field: "cashflowFormat", Equals: "default", Message: "Kode akun biaya lain wajib diisi"},
-										},
-										State: FormFieldStateSpec{Visible: true},
-									},
-								},
-							},
-							{
-								Key:     "influencer_format",
-								Title:   "Format Influencer",
-								Columns: 2,
-								Fields: []FormFieldSpec{
-									{
-										Key:          "defaultIAccountCode",
-										Kind:         FormFieldKindText,
-										Label:        "Default Influencer Account Code",
-										Required:     false,
-										DefaultValue: "62004",
-										Rules: []FormFieldRuleSpec{
-											{Type: FormFieldRuleRequiredIf, Field: "cashflowFormat", Equals: "influencer", Message: "Default Influencer Account Code wajib diisi"},
-										},
-										State: FormFieldStateSpec{Visible: true},
-									},
-									{
-										Key:          "defaultBAccountCode",
-										Kind:         FormFieldKindText,
-										Label:        "Default Bank Account Code",
-										Required:     false,
-										DefaultValue: "90900",
-										Rules: []FormFieldRuleSpec{
-											{Type: FormFieldRuleRequiredIf, Field: "cashflowFormat", Equals: "influencer", Message: "Default Bank Account Code wajib diisi"},
-										},
-										State: FormFieldStateSpec{Visible: true},
-									},
-								},
-							},
-							{
-								Key:     "mapping",
-								Title:   "Mapping Header",
-								Columns: 2,
-								Fields: []FormFieldSpec{
-									{Key: "date", Kind: FormFieldKindText, Label: "Tanggal", Required: true, DefaultValue: "Tanggal", State: FormFieldStateSpec{Visible: true}},
-									{Key: "information", Kind: FormFieldKindText, Label: "Keterangan", Required: true, DefaultValue: "note", State: FormFieldStateSpec{Visible: true}},
-									{Key: "coa", Kind: FormFieldKindText, Label: "Chart of Account", Required: true, DefaultValue: "coa", State: FormFieldStateSpec{Visible: true}},
-									{Key: "otherCost", Kind: FormFieldKindText, Label: "Biaya Lainnya", Required: false, DefaultValue: "By Lainnya", State: FormFieldStateSpec{Visible: true}},
-									{Key: "pp23", Kind: FormFieldKindText, Label: "PP 23", Required: false, DefaultValue: "PP 23", State: FormFieldStateSpec{Visible: true}},
-									{Key: "pph15", Kind: FormFieldKindText, Label: "PPh 15%", Required: false, DefaultValue: "PPh 15%", State: FormFieldStateSpec{Visible: true}},
-									{Key: "pph21", Kind: FormFieldKindText, Label: "PPH 21", Required: false, DefaultValue: "PPH 21", State: FormFieldStateSpec{Visible: true}},
-									{Key: "pph23", Kind: FormFieldKindText, Label: "PPH 23", Required: false, DefaultValue: "PPH 23", State: FormFieldStateSpec{Visible: true}},
-									{Key: "pph42", Kind: FormFieldKindText, Label: "PPH 4 (2)", Required: false, DefaultValue: "PPH 4(2)", State: FormFieldStateSpec{Visible: true}},
-									{Key: "ppn", Kind: FormFieldKindText, Label: "PPN", Required: false, DefaultValue: "PPN", State: FormFieldStateSpec{Visible: true}},
-									{Key: "remark", Kind: FormFieldKindText, Label: "Catatan", Required: false, DefaultValue: "catatan", State: FormFieldStateSpec{Visible: true}},
-									{Key: "total", Kind: FormFieldKindText, Label: "Total", Required: true, DefaultValue: "idr", State: FormFieldStateSpec{Visible: true}},
-								},
-							},
+						Description: "Pilih format cashflow lalu atur sumber data, parameter, dan mapping pada form yang sama.",
+						Sections:    append(buildCashflowMetaSections(true), buildCashflowSections(true)...),
+						VariantGroups: []FormVariantGroupSpec{
+							buildCashflowVariantGroup(true),
 						},
 					},
 					Detail: &ActionDetailSpec{

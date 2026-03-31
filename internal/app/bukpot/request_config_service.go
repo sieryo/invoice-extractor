@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/sieryo/invoice-extractor/internal/app/specutil"
@@ -17,6 +18,7 @@ type RequestConfigSpec struct {
 	SchemaVersion    string                   `json:"schemaVersion"`
 	Defaults         RequestConfigDefaults    `json:"defaults"`
 	HeaderRowOptions []int                    `json:"headerRowOptions,omitempty"`
+	DefaultFields    []RequestConfigFieldSpec `json:"defaultFields,omitempty"`
 	Fields           []RequestConfigFieldSpec `json:"fields"`
 }
 
@@ -31,6 +33,14 @@ type RequestConfigFieldSpec struct {
 	Required     bool   `json:"required"`
 	DefaultValue string `json:"defaultValue,omitempty"`
 	Description  string `json:"description,omitempty"`
+	Kind         string `json:"kind,omitempty"`
+	Group        string `json:"group,omitempty"`
+	Options      []RequestConfigFieldOption `json:"options,omitempty"`
+}
+
+type RequestConfigFieldOption struct {
+	Label string `json:"label"`
+	Value string `json:"value"`
 }
 
 type RequestConfig struct {
@@ -45,6 +55,8 @@ type RequestConfigField struct {
 	Required    bool   `json:"required"`
 	Value       string `json:"value"`
 	Description string `json:"description,omitempty"`
+	Kind        string `json:"kind,omitempty"`
+	Group       string `json:"group,omitempty"`
 }
 
 type RequestConfigStatus struct {
@@ -71,18 +83,22 @@ func (s *RequestConfigService) Spec() RequestConfigSpec {
 			HeaderRowNumber: 1,
 		},
 		HeaderRowOptions: specutil.HeaderRowNumbers(10),
+		DefaultFields: []RequestConfigFieldSpec{
+			{Key: "sheetName", Label: "Sheet Default", Required: false, DefaultValue: "", Description: "Nilai awal sheet saat action dibuka.", Kind: "text", Group: "source"},
+			{Key: "headerRowNumber", Label: "Baris Header Default", Required: true, DefaultValue: "1", Description: "Baris header default untuk source Excel.", Kind: "select", Group: "source", Options: buildHeaderRowRequestOptions(10)},
+		},
 		Fields: []RequestConfigFieldSpec{
-			{Key: "entity", Label: "Entity", Required: true, DefaultValue: "Entity", Description: "Dipakai untuk filter alias profile."},
-			{Key: "settlementDate", Label: "Settlement Date", Required: true, DefaultValue: "Settlemet Date", Description: "Dipakai untuk masa pajak, tahun pajak, dan tanggal pemotongan."},
-			{Key: "npwp", Label: "NPWP", Required: true, DefaultValue: "NPWP", Description: "NPWP penerima penghasilan dari source Excel."},
-			{Key: "nitku", Label: "NITKU", Required: true, DefaultValue: "NITKU", Description: "ID TKU penerima penghasilan."},
-			{Key: "facility", Label: "Fasilitas", Required: false, DefaultValue: "Fasilitas", Description: "Dipakai jika logic fasilitas dan tarif aktif."},
-			{Key: "taxObjectCode", Label: "Kode Objek Pajak", Required: true, DefaultValue: "Kode Objek Pajak", Description: "Kode objek pajak untuk output Coretax."},
-			{Key: "taxBase", Label: "DPP", Required: true, DefaultValue: "(Rp)Total Invoice (Exc VAT)", Description: "Nilai dasar pengenaan pajak."},
-			{Key: "withholdingRate", Label: "Tarif / WHT", Required: true, DefaultValue: "WHT", Description: "Tarif pemotongan dari source Excel."},
-			{Key: "taxInvoiceNumber", Label: "Faktur Pajak No", Required: false, DefaultValue: "Faktur Pajak No", Description: "Dipakai untuk jenis dan nomor dokumen referensi."},
-			{Key: "referenceNumber", Label: "Invoice / Kwitansi No", Required: true, DefaultValue: "Invoice / Kwitansi No", Description: "Fallback nomor dokumen referensi jika faktur pajak kosong."},
-			{Key: "referenceDate", Label: "FP DATE", Required: true, DefaultValue: "FP DATE", Description: "Tanggal dokumen referensi."},
+			{Key: "entity", Label: "Entity", Required: true, DefaultValue: "Entity", Description: "Dipakai untuk filter alias profile.", Kind: "text", Group: "mapping"},
+			{Key: "settlementDate", Label: "Settlement Date", Required: true, DefaultValue: "Settlemet Date", Description: "Dipakai untuk masa pajak, tahun pajak, dan tanggal pemotongan.", Kind: "text", Group: "mapping"},
+			{Key: "npwp", Label: "NPWP", Required: true, DefaultValue: "NPWP", Description: "NPWP penerima penghasilan dari source Excel.", Kind: "text", Group: "mapping"},
+			{Key: "nitku", Label: "NITKU", Required: true, DefaultValue: "NITKU", Description: "ID TKU penerima penghasilan.", Kind: "text", Group: "mapping"},
+			{Key: "facility", Label: "Fasilitas", Required: false, DefaultValue: "Fasilitas", Description: "Dipakai jika logic fasilitas dan tarif aktif.", Kind: "text", Group: "mapping"},
+			{Key: "taxObjectCode", Label: "Kode Objek Pajak", Required: true, DefaultValue: "Kode Objek Pajak", Description: "Kode objek pajak untuk output Coretax.", Kind: "text", Group: "mapping"},
+			{Key: "taxBase", Label: "DPP", Required: true, DefaultValue: "(Rp)Total Invoice (Exc VAT)", Description: "Nilai dasar pengenaan pajak.", Kind: "text", Group: "mapping"},
+			{Key: "withholdingRate", Label: "Tarif / WHT", Required: true, DefaultValue: "WHT", Description: "Tarif pemotongan dari source Excel.", Kind: "text", Group: "mapping"},
+			{Key: "taxInvoiceNumber", Label: "Faktur Pajak No", Required: false, DefaultValue: "Faktur Pajak No", Description: "Dipakai untuk jenis dan nomor dokumen referensi.", Kind: "text", Group: "mapping"},
+			{Key: "referenceNumber", Label: "Invoice / Kwitansi No", Required: true, DefaultValue: "Invoice / Kwitansi No", Description: "Fallback nomor dokumen referensi jika faktur pajak kosong.", Kind: "text", Group: "mapping"},
+			{Key: "referenceDate", Label: "FP DATE", Required: true, DefaultValue: "FP DATE", Description: "Tanggal dokumen referensi.", Kind: "text", Group: "mapping"},
 		},
 	}
 }
@@ -169,6 +185,8 @@ func (s *RequestConfigService) defaultConfig() RequestConfig {
 			Required:    item.Required,
 			Value:       item.DefaultValue,
 			Description: item.Description,
+			Kind:        item.Kind,
+			Group:       item.Group,
 		})
 	}
 	return RequestConfig{
@@ -197,6 +215,8 @@ func (s *RequestConfigService) normalizeConfig(cfg RequestConfig) RequestConfig 
 			Required:    item.Required,
 			Value:       item.DefaultValue,
 			Description: item.Description,
+			Kind:        item.Kind,
+			Group:       item.Group,
 		}
 		if current, ok := byKey[item.Key]; ok {
 			if value := strings.TrimSpace(current.Value); value != "" {
@@ -221,4 +241,16 @@ func (s *RequestConfigService) normalizeConfig(cfg RequestConfig) RequestConfig 
 		Defaults:      defaults,
 		Fields:        fields,
 	}
+}
+
+func buildHeaderRowRequestOptions(max int) []RequestConfigFieldOption {
+	options := make([]RequestConfigFieldOption, 0, max)
+	for _, value := range specutil.HeaderRowNumbers(max) {
+		label := strings.TrimSpace(strconv.Itoa(value))
+		options = append(options, RequestConfigFieldOption{
+			Label: label,
+			Value: label,
+		})
+	}
+	return options
 }

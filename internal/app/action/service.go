@@ -379,7 +379,7 @@ func (s *Service) ResolveActionSpec(
 
 	resolved := actionSpec
 	if collectionKind == document.CollectionKindCashflowImport && isCashflowExportAction(actionSpec.ActionType) {
-		resolved, err = s.resolveCashflowActionSpec(ctx, coll.UserID, req.CollectionID, collectionKind, sourceFormat, actionSpec, req.DocumentIDs)
+		resolved, err = s.resolveCashflowActionSpec(ctx, coll.UserID, req.CollectionID, collectionKind, sourceFormat, actionSpec, req.DocumentIDs, req.Input)
 		if err != nil {
 			return nil, err
 		}
@@ -905,13 +905,36 @@ func normalizeAndValidateActionInput(
 }
 
 func flattenFormFields(form *document.FormSpec) []document.FormFieldSpec {
-	if form == nil || len(form.Sections) == 0 {
+	if form == nil {
 		return nil
 	}
 
 	fields := make([]document.FormFieldSpec, 0)
+	seen := map[string]struct{}{}
+	appendField := func(field document.FormFieldSpec) {
+		normalizedKey := strings.ToLower(strings.TrimSpace(field.Key))
+		if normalizedKey == "" {
+			return
+		}
+		if _, ok := seen[normalizedKey]; ok {
+			return
+		}
+		seen[normalizedKey] = struct{}{}
+		fields = append(fields, field)
+	}
 	for _, section := range form.Sections {
-		fields = append(fields, section.Fields...)
+		for _, field := range section.Fields {
+			appendField(field)
+		}
+	}
+	for _, group := range form.VariantGroups {
+		for _, variant := range group.Variants {
+			for _, section := range variant.Sections {
+				for _, field := range section.Fields {
+					appendField(field)
+				}
+			}
+		}
 	}
 	return fields
 }
@@ -1096,6 +1119,7 @@ func (s *Service) resolveCashflowActionSpec(
 	sourceFormat document.SourceFormat,
 	actionSpec document.ActionSpec,
 	documentIDs []string,
+	input json.RawMessage,
 ) (document.ActionSpec, error) {
 	if s.cashflowProfileConfig != nil {
 		var configKey appcashflow.ProfileConfigKey
@@ -1108,36 +1132,43 @@ func (s *Service) resolveCashflowActionSpec(
 
 		cfg, err := s.cashflowProfileConfig.Load(profileID, configKey)
 		if err == nil {
-			selectedFormat := appcashflow.DefaultFormat
-			if strings.EqualFold(strings.TrimSpace(cfg.Defaults.CashflowFormat), string(appcashflow.InfluencerFormat)) {
-				selectedFormat = appcashflow.InfluencerFormat
+			selectedFormatRaw := strings.TrimSpace(extractStringInput(input, "cashflowFormat"))
+			selectedFormat := appcashflow.NormalizeFormat(selectedFormatRaw)
+			if selectedFormatRaw == "" {
+				selectedFormat = appcashflow.StandardFormat
+				selectedFormatRaw = string(selectedFormat)
+			}
+			if selectedFormat == "" {
+				selectedFormat = appcashflow.StandardFormat
+				selectedFormatRaw = string(selectedFormat)
 			}
 
-			for key, value := range appcashflow.ResolveProfileConfigValues(cfg, string(selectedFormat)) {
-				field, ok := findFormField(actionSpec.Form, key)
-				if !ok {
-					continue
-				}
-				field.DefaultValue = strings.TrimSpace(value)
-				updateFormField(actionSpec.Form, field)
-			}
 			if field, ok := findFormField(actionSpec.Form, "cashflowFormat"); ok {
-				field.DefaultValue = string(selectedFormat)
+				field.DefaultValue = selectedFormatRaw
 				updateFormField(actionSpec.Form, field)
 			}
-			if field, ok := findFormField(actionSpec.Form, "headerRowNumber"); ok && cfg.Defaults.HeaderRowNumber > 0 {
-				field.DefaultValue = strconv.Itoa(cfg.Defaults.HeaderRowNumber)
-				updateFormField(actionSpec.Form, field)
-			}
-			if field, ok := findFormField(actionSpec.Form, "sheetName"); ok && strings.TrimSpace(cfg.Defaults.SheetName) != "" {
-				field.DefaultValue = strings.TrimSpace(cfg.Defaults.SheetName)
-				updateFormField(actionSpec.Form, field)
-			}
-			if field, ok := findFormField(actionSpec.Form, "startingChequeNumber"); ok && cfg.Defaults.StartingChequeNumber != nil && *cfg.Defaults.StartingChequeNumber > 0 {
-				field.DefaultValue = *cfg.Defaults.StartingChequeNumber
-				updateFormField(actionSpec.Form, field)
+			updateFormVariantGroupDefault(actionSpec.Form, "cashflowFormat", selectedFormatRaw)
+
+			for _, variantKey := range []string{string(appcashflow.StandardFormat), string(appcashflow.InfluencerFormat)} {
+				updateVariantFormValues(
+					actionSpec.Form,
+					"cashflowFormat",
+					variantKey,
+					stringMapToAnyMap(appcashflow.ResolveProfileConfigValues(cfg, variantKey)),
+				)
 			}
 		}
+	}
+
+	selectedFormatRaw := strings.TrimSpace(extractStringInput(input, "cashflowFormat"))
+	if selectedFormatRaw == "" {
+		if field, ok := findFormField(actionSpec.Form, "cashflowFormat"); ok {
+			selectedFormatRaw = formFieldDefaultString(field.DefaultValue)
+		}
+	}
+	selectedFormat := appcashflow.NormalizeFormat(selectedFormatRaw)
+	if selectedFormat == "" {
+		selectedFormat = appcashflow.StandardFormat
 	}
 
 	field, ok := findFormField(actionSpec.Form, "sheetName")
@@ -1154,7 +1185,6 @@ func (s *Service) resolveCashflowActionSpec(
 		field.HelpText = "Pilih minimal satu dokumen cashflow untuk melihat sheet yang tersedia."
 		field.State.Disabled = true
 		field.State.Message = "Sheet akan tersedia setelah Anda memilih dokumen cashflow."
-		field.DefaultValue = ""
 		updateFormField(actionSpec.Form, field)
 		return actionSpec, nil
 	}
@@ -1187,6 +1217,11 @@ func (s *Service) resolveCashflowActionSpec(
 		field.State.Message = actionSpec.State.Message
 		field.DefaultValue = ""
 		updateFormField(actionSpec.Form, field)
+		for _, variantKey := range []string{string(appcashflow.StandardFormat), string(appcashflow.InfluencerFormat)} {
+			updateVariantFormValues(actionSpec.Form, "cashflowFormat", variantKey, map[string]any{
+				"sheetName": "",
+			})
+		}
 		return actionSpec, nil
 	}
 
@@ -1200,15 +1235,29 @@ func (s *Service) resolveCashflowActionSpec(
 	field.HelpText = "Sheet yang tersedia pada semua dokumen terpilih."
 	field.State.Disabled = false
 	field.State.Message = ""
-	if defaultSheet != "" {
-		field.DefaultValue = defaultSheet
-	} else {
-		field.DefaultValue = ""
-	}
+	field.DefaultValue = pickPreferredSheetName(
+		commonSheetNames,
+		formVariantValueString(actionSpec.Form, "cashflowFormat", string(selectedFormat), "sheetName"),
+		defaultSheet,
+	)
 	updateFormField(actionSpec.Form, field)
 
-	if headerField, ok := findFormField(actionSpec.Form, "headerRowNumber"); ok {
-		if defaultHeaderRow > 0 {
+	for _, variantKey := range []string{string(appcashflow.StandardFormat), string(appcashflow.InfluencerFormat)} {
+		nextValues := map[string]any{
+			"sheetName": pickPreferredSheetName(
+				commonSheetNames,
+				formVariantValueString(actionSpec.Form, "cashflowFormat", variantKey, "sheetName"),
+				defaultSheet,
+			),
+		}
+		if defaultHeaderRow > 0 && strings.TrimSpace(formVariantValueString(actionSpec.Form, "cashflowFormat", variantKey, "headerRowNumber")) == "" {
+			nextValues["headerRowNumber"] = strconv.Itoa(defaultHeaderRow)
+		}
+		updateVariantFormValues(actionSpec.Form, "cashflowFormat", variantKey, nextValues)
+	}
+
+	if headerField, ok := findFormField(actionSpec.Form, "headerRowNumber"); ok && defaultHeaderRow > 0 {
+		if formFieldDefaultString(headerField.DefaultValue) == "" {
 			headerField.DefaultValue = strconv.Itoa(defaultHeaderRow)
 		}
 		updateFormField(actionSpec.Form, headerField)
@@ -1261,6 +1310,7 @@ func (s *Service) resolveBukpotRequestActionSpec(
 	if !ok {
 		return actionSpec, nil
 	}
+	preferredSheetName := formFieldDefaultString(field.DefaultValue)
 
 	normalizedIDs, err := normalizeDocumentIDs(documentIDs)
 	if err != nil {
@@ -1271,7 +1321,6 @@ func (s *Service) resolveBukpotRequestActionSpec(
 		field.HelpText = "Pilih minimal satu dokumen request bukpot untuk melihat sheet yang tersedia."
 		field.State.Disabled = true
 		field.State.Message = "Sheet akan tersedia setelah Anda memilih dokumen source."
-		field.DefaultValue = ""
 		updateFormField(actionSpec.Form, field)
 		return actionSpec, nil
 	}
@@ -1316,9 +1365,7 @@ func (s *Service) resolveBukpotRequestActionSpec(
 	field.HelpText = "Sheet yang tersedia pada semua dokumen terpilih."
 	field.State.Disabled = false
 	field.State.Message = ""
-	if defaultSheet != "" {
-		field.DefaultValue = defaultSheet
-	}
+	field.DefaultValue = pickPreferredSheetName(commonSheetNames, preferredSheetName, defaultSheet)
 	updateFormField(actionSpec.Form, field)
 
 	if headerField, ok := findFormField(actionSpec.Form, "headerRowNumber"); ok && defaultHeaderRow > 0 {
@@ -1410,6 +1457,35 @@ func findFormField(form *document.FormSpec, key string) (document.FormFieldSpec,
 	return document.FormFieldSpec{}, false
 }
 
+func findVariantFormField(
+	form *document.FormSpec,
+	groupFieldKey string,
+	variantKey string,
+	fieldKey string,
+) (document.FormFieldSpec, bool) {
+	if form == nil {
+		return document.FormFieldSpec{}, false
+	}
+	for _, group := range form.VariantGroups {
+		if !strings.EqualFold(strings.TrimSpace(group.FieldKey), strings.TrimSpace(groupFieldKey)) {
+			continue
+		}
+		for _, variant := range group.Variants {
+			if !strings.EqualFold(strings.TrimSpace(variant.Key), strings.TrimSpace(variantKey)) {
+				continue
+			}
+			for _, field := range variant.Sections {
+				for _, item := range field.Fields {
+					if strings.EqualFold(strings.TrimSpace(item.Key), strings.TrimSpace(fieldKey)) {
+						return item, true
+					}
+				}
+			}
+		}
+	}
+	return document.FormFieldSpec{}, false
+}
+
 func updateFormField(form *document.FormSpec, updated document.FormFieldSpec) {
 	if form == nil {
 		return
@@ -1422,6 +1498,179 @@ func updateFormField(form *document.FormSpec, updated document.FormFieldSpec) {
 			}
 		}
 	}
+}
+
+func updateFormVariantGroupDefault(form *document.FormSpec, groupFieldKey string, defaultVariantKey string) {
+	if form == nil {
+		return
+	}
+	for groupIndex := range form.VariantGroups {
+		if strings.EqualFold(strings.TrimSpace(form.VariantGroups[groupIndex].FieldKey), strings.TrimSpace(groupFieldKey)) {
+			form.VariantGroups[groupIndex].DefaultVariantKey = strings.TrimSpace(defaultVariantKey)
+			return
+		}
+	}
+}
+
+func updateVariantFormValues(
+	form *document.FormSpec,
+	groupFieldKey string,
+	variantKey string,
+	updated map[string]any,
+) {
+	if form == nil {
+		return
+	}
+	for groupIndex := range form.VariantGroups {
+		if !strings.EqualFold(strings.TrimSpace(form.VariantGroups[groupIndex].FieldKey), strings.TrimSpace(groupFieldKey)) {
+			continue
+		}
+		for variantIndex := range form.VariantGroups[groupIndex].Variants {
+			if !strings.EqualFold(strings.TrimSpace(form.VariantGroups[groupIndex].Variants[variantIndex].Key), strings.TrimSpace(variantKey)) {
+				continue
+			}
+			if form.VariantGroups[groupIndex].Variants[variantIndex].Values == nil {
+				form.VariantGroups[groupIndex].Variants[variantIndex].Values = map[string]any{}
+			}
+			for key, value := range updated {
+				normalizedKey := strings.TrimSpace(key)
+				if normalizedKey == "" {
+					continue
+				}
+				form.VariantGroups[groupIndex].Variants[variantIndex].Values[normalizedKey] = value
+			}
+			return
+		}
+	}
+}
+
+func formVariantValueString(
+	form *document.FormSpec,
+	groupFieldKey string,
+	variantKey string,
+	fieldKey string,
+) string {
+	if form == nil {
+		return ""
+	}
+	for _, group := range form.VariantGroups {
+		if !strings.EqualFold(strings.TrimSpace(group.FieldKey), strings.TrimSpace(groupFieldKey)) {
+			continue
+		}
+		for _, variant := range group.Variants {
+			if !strings.EqualFold(strings.TrimSpace(variant.Key), strings.TrimSpace(variantKey)) {
+				continue
+			}
+			if variant.Values != nil {
+				if value, ok := variant.Values[strings.TrimSpace(fieldKey)]; ok {
+					return formFieldDefaultString(value)
+				}
+			}
+			for _, section := range variant.Sections {
+				for _, field := range section.Fields {
+					if strings.EqualFold(strings.TrimSpace(field.Key), strings.TrimSpace(fieldKey)) {
+						return formFieldDefaultString(field.DefaultValue)
+					}
+				}
+			}
+			return ""
+		}
+	}
+	return ""
+}
+
+func stringMapToAnyMap(values map[string]string) map[string]any {
+	out := make(map[string]any, len(values))
+	for key, value := range values {
+		out[key] = value
+	}
+	return out
+}
+
+func updateVariantFormField(
+	form *document.FormSpec,
+	groupFieldKey string,
+	variantKey string,
+	updated document.FormFieldSpec,
+) {
+	if form == nil {
+		return
+	}
+	for groupIndex := range form.VariantGroups {
+		if !strings.EqualFold(strings.TrimSpace(form.VariantGroups[groupIndex].FieldKey), strings.TrimSpace(groupFieldKey)) {
+			continue
+		}
+		for variantIndex := range form.VariantGroups[groupIndex].Variants {
+			if !strings.EqualFold(strings.TrimSpace(form.VariantGroups[groupIndex].Variants[variantIndex].Key), strings.TrimSpace(variantKey)) {
+				continue
+			}
+			for sectionIndex := range form.VariantGroups[groupIndex].Variants[variantIndex].Sections {
+				for fieldIndex := range form.VariantGroups[groupIndex].Variants[variantIndex].Sections[sectionIndex].Fields {
+					if strings.EqualFold(strings.TrimSpace(form.VariantGroups[groupIndex].Variants[variantIndex].Sections[sectionIndex].Fields[fieldIndex].Key), strings.TrimSpace(updated.Key)) {
+						form.VariantGroups[groupIndex].Variants[variantIndex].Sections[sectionIndex].Fields[fieldIndex] = updated
+						return
+					}
+				}
+			}
+		}
+	}
+}
+
+func pickPreferredSheetName(options []string, preferred string, fallback string) string {
+	preferred = strings.TrimSpace(preferred)
+	if preferred != "" {
+		for _, option := range options {
+			if strings.EqualFold(strings.TrimSpace(option), preferred) {
+				return option
+			}
+		}
+	}
+
+	fallback = strings.TrimSpace(fallback)
+	if fallback != "" {
+		for _, option := range options {
+			if strings.EqualFold(strings.TrimSpace(option), fallback) {
+				return option
+			}
+		}
+	}
+
+	if len(options) == 0 {
+		return ""
+	}
+
+	return options[0]
+}
+
+func formFieldDefaultString(value any) string {
+	if value == nil {
+		return ""
+	}
+
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	default:
+		return strings.TrimSpace(fmt.Sprint(typed))
+	}
+}
+
+func extractStringInput(input json.RawMessage, key string) string {
+	if len(input) == 0 {
+		return ""
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(input, &payload); err != nil {
+		return ""
+	}
+
+	raw, ok := payload[key]
+	if !ok || raw == nil {
+		return ""
+	}
+
+	return strings.TrimSpace(fmt.Sprint(raw))
 }
 
 func validateSnapshotStatuses(snapshotDocs []SnapshotDocument, allowed []string) error {

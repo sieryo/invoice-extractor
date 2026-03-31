@@ -41,6 +41,7 @@ type RunActionRequest struct {
 
 type ResolveActionSpecRequest struct {
 	ActionType  string   `json:"actionType"`
+	Input       json.RawMessage `json:"input,omitempty"`
 	DocumentIDs []string `json:"documentIds,omitempty"`
 }
 
@@ -230,6 +231,7 @@ func (h *ActionHandler) ResolveActionSpec(c *fiber.Ctx) error {
 		UserID:       userID,
 		CollectionID: collectionID,
 		ActionType:   req.ActionType,
+		Input:        req.Input,
 		DocumentIDs:  req.DocumentIDs,
 	})
 	if err != nil {

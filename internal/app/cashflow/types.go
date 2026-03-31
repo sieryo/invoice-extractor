@@ -11,7 +11,7 @@ import (
 type Format string
 
 const (
-	DefaultFormat    Format = "default"
+	StandardFormat   Format = "standard"
 	InfluencerFormat Format = "influencer"
 )
 
@@ -80,7 +80,7 @@ func ParseExportMYOBInput(raw json.RawMessage) (ExportMYOBInput, error) {
 	input := ExportMYOBInput{
 		OutputFilename:  "cashflow-myob",
 		HeaderRowNumber: 1,
-		CashflowFormat:  DefaultFormat,
+		CashflowFormat:  StandardFormat,
 		CashflowType:    SpendMoneyType,
 	}
 
@@ -107,7 +107,7 @@ func ParseExportMYOBInput(raw json.RawMessage) (ExportMYOBInput, error) {
 		input.ChequeAccount = strings.TrimSpace(v)
 	}
 	if v, ok := payload["cashflowFormat"].(string); ok {
-		input.CashflowFormat = Format(strings.TrimSpace(v))
+		input.CashflowFormat = NormalizeFormat(v)
 	}
 	if v, ok := payload["cashflowType"].(string); ok {
 		input.CashflowType = Type(strings.TrimSpace(v))
@@ -164,9 +164,7 @@ func (i *ExportMYOBInput) Normalize() {
 	if i.StartingChequeNumber != nil && *i.StartingChequeNumber <= 0 {
 		i.StartingChequeNumber = nil
 	}
-	if i.CashflowFormat == "" {
-		i.CashflowFormat = DefaultFormat
-	}
+	i.CashflowFormat = NormalizeFormat(string(i.CashflowFormat))
 	if i.CashflowType == "" {
 		i.CashflowType = SpendMoneyType
 	}
@@ -230,5 +228,16 @@ func parseInt(value any) (int, error) {
 		return i, nil
 	default:
 		return 0, fmt.Errorf("unsupported type %T", value)
+	}
+}
+
+func NormalizeFormat(raw string) Format {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case string(InfluencerFormat):
+		return InfluencerFormat
+	case "default", string(StandardFormat):
+		return StandardFormat
+	default:
+		return StandardFormat
 	}
 }
