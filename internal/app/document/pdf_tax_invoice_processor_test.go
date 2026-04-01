@@ -41,21 +41,17 @@ func TestRenderTaxInvoiceFilename_UsesFallbackWhenTemplateUnknown(t *testing.T) 
 	}
 }
 
-func TestEnsureUniqueArchiveFilename(t *testing.T) {
+func TestRememberUniqueArchiveFilename(t *testing.T) {
 	used := map[string]struct{}{}
 
-	first := ensureUniqueArchiveFilename("faktur.pdf", used)
-	second := ensureUniqueArchiveFilename("faktur.pdf", used)
-	third := ensureUniqueArchiveFilename("faktur.pdf", used)
-
-	if first != "faktur.pdf" {
-		t.Fatalf("unexpected first value: %s", first)
+	if !rememberUniqueArchiveFilename("faktur.pdf", used) {
+		t.Fatalf("expected first filename to be accepted")
 	}
-	if second != "faktur (2).pdf" {
-		t.Fatalf("unexpected second value: %s", second)
+	if rememberUniqueArchiveFilename("faktur.pdf", used) {
+		t.Fatalf("expected duplicate filename to be rejected")
 	}
-	if third != "faktur (3).pdf" {
-		t.Fatalf("unexpected third value: %s", third)
+	if !rememberUniqueArchiveFilename("faktur-2.pdf", used) {
+		t.Fatalf("expected different filename to be accepted")
 	}
 }
 

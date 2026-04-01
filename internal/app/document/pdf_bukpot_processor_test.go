@@ -3,6 +3,7 @@ package document
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/json"
 	"testing"
 
 	bukpotdomain "github.com/sieryo/invoice-extractor/internal/domain/bukpot"
@@ -71,6 +72,21 @@ func TestRenderBukpotDocumentNumberFilename(t *testing.T) {
 	}
 	got := renderBukpotDocumentNumberFilename("INV-2026-001", parsed, "", "")
 	if got != "INV-2026-001 - HIBURAN JALAN KELUAR" {
+		t.Fatalf("unexpected filename: %q", got)
+	}
+}
+
+func TestRenderBukpotCategoryFilename_IncludesMasaPajak(t *testing.T) {
+	parsed := &bukpotdomain.ParsedDocument{
+		Kind: bukpotdomain.KindBPPU,
+		BPPU: &bukpotdomain.BPPUDocument{
+			NamaPenerima: "HIBURAN JALAN KELUAR",
+			MasaPajak:    "11-2025",
+		},
+	}
+
+	got := renderBukpotCategoryFilename("KOL", parsed, "", "")
+	if got != "KOL - HIBURAN JALAN KELUAR - 11-2025" {
 		t.Fatalf("unexpected filename: %q", got)
 	}
 }
@@ -146,5 +162,107 @@ func TestBuildBukpotTemplateMapBPA1IncludesPosisi(t *testing.T) {
 	}
 	if values["statusptkp"] != "TK0" {
 		t.Fatalf("expected statusPtkp token to be populated, got %q", values["statusptkp"])
+	}
+}
+
+func TestParseBukpotRenameParams_DefaultsOnlyNormalStatus(t *testing.T) {
+	params, err := parseBukpotRenameParams(nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !params.OnlyNormalStatus {
+		t.Fatalf("expected onlyNormalStatus default to true")
+	}
+	if params.FilenameTemplate != defaultBukpotNameTemplate {
+		t.Fatalf("unexpected default template: %q", params.FilenameTemplate)
+	}
+}
+
+func TestParseBukpotRenameParams_AllowsDisablingOnlyNormalStatus(t *testing.T) {
+	raw, err := json.Marshal(map[string]any{
+		"onlyNormalStatus": false,
+	})
+	if err != nil {
+		t.Fatalf("unexpected marshal error: %v", err)
+	}
+
+	params, parseErr := parseBukpotRenameParams(raw)
+	if parseErr != nil {
+		t.Fatalf("unexpected error: %v", parseErr)
+	}
+	if params.OnlyNormalStatus {
+		t.Fatalf("expected onlyNormalStatus to be false")
+	}
+}
+
+func TestShouldRejectBukpotStatus(t *testing.T) {
+	tests := []struct {
+		name             string
+		statusBukti      string
+		onlyNormalStatus bool
+		wantRejected     bool
+		wantStatus       string
+	}{
+		{
+			name:             "normal is allowed",
+			statusBukti:      "NORMAL",
+			onlyNormalStatus: true,
+			wantRejected:     false,
+			wantStatus:       "NORMAL",
+		},
+		{
+			name:             "pembetulan is rejected",
+			statusBukti:      "PEMBETULAN",
+			onlyNormalStatus: true,
+			wantRejected:     true,
+			wantStatus:       "PEMBETULAN",
+		},
+		{
+			name:             "dibatalkan is rejected",
+			statusBukti:      "DIBATALKAN",
+			onlyNormalStatus: true,
+			wantRejected:     true,
+			wantStatus:       "DIBATALKAN",
+		},
+		{
+			name:             "filter disabled allows all statuses",
+			statusBukti:      "PEMBETULAN",
+			onlyNormalStatus: false,
+			wantRejected:     false,
+			wantStatus:       "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parsed := &bukpotdomain.ParsedDocument{
+				Kind: bukpotdomain.KindBPPU,
+				BPPU: &bukpotdomain.BPPUDocument{
+					StatusBukti: tt.statusBukti,
+				},
+			}
+
+			rejected, statusLabel := shouldRejectBukpotStatus(parsed, tt.onlyNormalStatus)
+			if rejected != tt.wantRejected {
+				t.Fatalf("unexpected rejected flag: got %v, want %v", rejected, tt.wantRejected)
+			}
+			if statusLabel != tt.wantStatus {
+				t.Fatalf("unexpected status label: got %q, want %q", statusLabel, tt.wantStatus)
+			}
+		})
+	}
+}
+
+func TestRememberUniqueBukpotFilename(t *testing.T) {
+	used := map[string]struct{}{}
+
+	if !rememberUniqueBukpotFilename("bukpot.pdf", used) {
+		t.Fatalf("expected first filename to be accepted")
+	}
+	if rememberUniqueBukpotFilename("bukpot.pdf", used) {
+		t.Fatalf("expected duplicate filename to be rejected")
+	}
+	if !rememberUniqueBukpotFilename("bukpot-2.pdf", used) {
+		t.Fatalf("expected different filename to be accepted")
 	}
 }

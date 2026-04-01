@@ -41,6 +41,7 @@ var bukpotInvalidFilenameCharRegex = regexp.MustCompile(`[<>:"/\\|?*\x00-\x1F]`)
 
 type bukpotRenameParams struct {
 	FilenameTemplate string `json:"filenameTemplate"`
+	OnlyNormalStatus bool   `json:"onlyNormalStatus"`
 }
 
 type bukpotActionHandler func(ctx context.Context, req ActionRequest) (ActionResult, error)
@@ -177,8 +178,17 @@ func (p *PDFBukpotProcessor) runRenameByCategory(ctx context.Context, req Action
 		return result, errors.New("snapshot is empty")
 	}
 
+	params, err := parseBukpotRenameParams(req.Input)
+	if err != nil {
+		result.Status = "failed"
+		result.Message = "invalid action params"
+		result.FinishedAt = time.Now()
+		return result, err
+	}
+
 	entries := make([]bukpotZipEntry, 0, len(req.SnapshotDocs))
 	usedNamesByCategory := make(map[string]map[string]struct{}, len(req.SnapshotDocs))
+	hasWarning := false
 
 	for _, doc := range req.SnapshotDocs {
 		payload, rawBytes, loadErr := p.loadBukpotSourceForAction(ctx, req.CollectionID, doc)
@@ -191,6 +201,15 @@ func (p *PDFBukpotProcessor) runRenameByCategory(ctx context.Context, req Action
 			})
 			continue
 		}
+		if rejected, statusLabel := shouldRejectBukpotStatus(payload.Bukpot, params.OnlyNormalStatus); rejected {
+			result.ItemResults = append(result.ItemResults, ActionItemResult{
+				DocumentID: doc.DocumentID,
+				Status:     "failed",
+				Message:    "bukpot tidak diproses karena statusnya bukan Normal",
+				Error:      fmt.Sprintf("status bukti bukan Normal: Status: %s", statusLabel),
+			})
+			continue
+		}
 
 		category, dokumenNomor := extractBukpotCategoryAndDocumentNumber(p.collectionKind, payload.Bukpot)
 		category = sanitizeBukpotPathSegment(category)
@@ -198,7 +217,7 @@ func (p *PDFBukpotProcessor) runRenameByCategory(ctx context.Context, req Action
 			category = bukpotUnknownCategory
 		}
 
-		filename := renderBukpotDocumentNumberFilename(dokumenNomor, payload.Bukpot, payload.SourceName, doc.SourceName)
+		filename := renderBukpotCategoryFilename(dokumenNomor, payload.Bukpot, payload.SourceName, doc.SourceName)
 		filename = sanitizeBukpotFilename(filename)
 		if filename == "" {
 			filename = bukpotDefaultFallbackFilename
@@ -210,7 +229,19 @@ func (p *PDFBukpotProcessor) runRenameByCategory(ctx context.Context, req Action
 		if _, ok := usedNamesByCategory[category]; !ok {
 			usedNamesByCategory[category] = map[string]struct{}{}
 		}
-		filename = ensureUniqueBukpotFilename(filename, usedNamesByCategory[category])
+		entryPath := filepath.ToSlash(filepath.Join(category, filename))
+		if !rememberUniqueBukpotFilename(filename, usedNamesByCategory[category]) {
+			result.ItemResults = append(result.ItemResults, ActionItemResult{
+				DocumentID: doc.DocumentID,
+				Status:     "warning",
+				Message:    "duplicate filename skipped",
+				Warnings: []string{
+					fmt.Sprintf("duplicate filename skipped: Path: %s", entryPath),
+				},
+			})
+			hasWarning = true
+			continue
+		}
 
 		result.ItemResults = append(result.ItemResults, ActionItemResult{
 			DocumentID: doc.DocumentID,
@@ -252,6 +283,9 @@ func (p *PDFBukpotProcessor) runRenameByCategory(ctx context.Context, req Action
 	if result.Failed > 0 {
 		result.Status = "partial"
 		result.Message = fmt.Sprintf("rename completed with partial results (%d success, %d failed)", result.Success, result.Failed)
+	} else if hasWarning || result.Warning > 0 {
+		result.Status = "warning"
+		result.Message = "rename completed with warnings"
 	} else {
 		result.Status = "success"
 		result.Message = "rename completed"
@@ -299,10 +333,30 @@ func (p *PDFBukpotProcessor) runRenameWithTemplate(ctx context.Context, req Acti
 			})
 			continue
 		}
+		if rejected, statusLabel := shouldRejectBukpotStatus(payload.Bukpot, params.OnlyNormalStatus); rejected {
+			result.ItemResults = append(result.ItemResults, ActionItemResult{
+				DocumentID: doc.DocumentID,
+				Status:     "failed",
+				Message:    "bukpot tidak diproses karena statusnya bukan Normal",
+				Error:      fmt.Sprintf("status bukti bukan Normal: Status: %s", statusLabel),
+			})
+			continue
+		}
 
 		values := buildBukpotTemplateMap(p.collectionKind, payload.Bukpot, payload.SourceName, payload.DocumentTag)
 		filename, warnings := renderBukpotFilename(params.FilenameTemplate, values)
-		filename = ensureUniqueBukpotFilename(filename, usedNames)
+		if !rememberUniqueBukpotFilename(filename, usedNames) {
+			result.ItemResults = append(result.ItemResults, ActionItemResult{
+				DocumentID: doc.DocumentID,
+				Status:     "warning",
+				Message:    "duplicate filename skipped",
+				Warnings: []string{
+					fmt.Sprintf("duplicate filename skipped: Filename: %s", filename),
+				},
+			})
+			hasWarning = true
+			continue
+		}
 
 		itemStatus := "success"
 		itemMessage := fmt.Sprintf("renamed to %s", filename)
@@ -528,7 +582,10 @@ func supportsBukpotCategoryAction(collectionKind CollectionKind) bool {
 }
 
 func parseBukpotRenameParams(raw json.RawMessage) (bukpotRenameParams, error) {
-	params := bukpotRenameParams{FilenameTemplate: defaultBukpotNameTemplate}
+	params := bukpotRenameParams{
+		FilenameTemplate: defaultBukpotNameTemplate,
+		OnlyNormalStatus: true,
+	}
 	trimmed := strings.TrimSpace(string(raw))
 	if trimmed == "" || strings.EqualFold(trimmed, "null") {
 		return params, nil
@@ -655,6 +712,23 @@ func renderBukpotDocumentNumberFilename(
 	return documentNumber + " - " + receiver
 }
 
+func renderBukpotCategoryFilename(
+	numberedPrefix string,
+	parsed *bukpotdomain.ParsedDocument,
+	sourceName string,
+	fallbackSourceName string,
+) string {
+	base := renderBukpotDocumentNumberFilename(numberedPrefix, parsed, sourceName, fallbackSourceName)
+	masaPajak := strings.TrimSpace(getBukpotMasaPajak(parsed))
+	if masaPajak == "" {
+		return base
+	}
+	if strings.TrimSpace(base) == "" {
+		return masaPajak
+	}
+	return base + " - " + masaPajak
+}
+
 func renderBukpotFallbackFilename(
 	parsed *bukpotdomain.ParsedDocument,
 	sourceName string,
@@ -722,6 +796,59 @@ func getBukpotNomorBukti(parsed *bukpotdomain.ParsedDocument) string {
 		}
 	}
 	return ""
+}
+
+func getBukpotStatusBukti(parsed *bukpotdomain.ParsedDocument) string {
+	if parsed == nil {
+		return ""
+	}
+	switch parsed.Kind {
+	case bukpotdomain.KindBPPU:
+		if parsed.BPPU != nil {
+			return parsed.BPPU.StatusBukti
+		}
+	case bukpotdomain.KindBP21:
+		if parsed.BP21 != nil {
+			return parsed.BP21.StatusBukti
+		}
+	case bukpotdomain.KindBPA1:
+		if parsed.BPA1 != nil {
+			return parsed.BPA1.StatusBukti
+		}
+	}
+	return ""
+}
+
+func getBukpotMasaPajak(parsed *bukpotdomain.ParsedDocument) string {
+	if parsed == nil {
+		return ""
+	}
+	switch parsed.Kind {
+	case bukpotdomain.KindBPPU:
+		if parsed.BPPU != nil {
+			return parsed.BPPU.MasaPajak
+		}
+	case bukpotdomain.KindBP21:
+		if parsed.BP21 != nil {
+			return parsed.BP21.MasaPajak
+		}
+	}
+	return ""
+}
+
+func shouldRejectBukpotStatus(parsed *bukpotdomain.ParsedDocument, onlyNormalStatus bool) (bool, string) {
+	if !onlyNormalStatus {
+		return false, ""
+	}
+
+	statusLabel := strings.TrimSpace(getBukpotStatusBukti(parsed))
+	if strings.EqualFold(statusLabel, "normal") {
+		return false, statusLabel
+	}
+	if statusLabel == "" {
+		statusLabel = "UNKNOWN"
+	}
+	return true, statusLabel
 }
 
 func buildBukpotTemplateMap(
@@ -868,33 +995,18 @@ func sanitizeBukpotPathSegment(raw string) string {
 	return strings.TrimSpace(value)
 }
 
-func ensureUniqueBukpotFilename(name string, used map[string]struct{}) string {
+func rememberUniqueBukpotFilename(name string, used map[string]struct{}) bool {
 	candidate := strings.TrimSpace(name)
 	if candidate == "" {
 		candidate = bukpotDefaultFallbackFilename + ".pdf"
 	}
 
-	ext := filepath.Ext(candidate)
-	base := strings.TrimSuffix(candidate, ext)
-	if ext == "" {
-		ext = ".pdf"
-	}
-
 	lowered := strings.ToLower(candidate)
-	if _, exists := used[lowered]; !exists {
-		used[lowered] = struct{}{}
-		return candidate
+	if _, exists := used[lowered]; exists {
+		return false
 	}
-
-	for i := 2; ; i++ {
-		next := fmt.Sprintf("%s (%d)%s", base, i, ext)
-		key := strings.ToLower(next)
-		if _, exists := used[key]; exists {
-			continue
-		}
-		used[key] = struct{}{}
-		return next
-	}
+	used[lowered] = struct{}{}
+	return true
 }
 
 func buildBukpotZipArchive(entries []bukpotZipEntry, withCategoryFolder bool) ([]byte, error) {

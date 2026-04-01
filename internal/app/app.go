@@ -56,6 +56,7 @@ type App struct {
 	CashflowBillCategoryService  *appcashflowbill.CategoryAccountService
 	CashflowBillProfileService   *appcashflowbill.ProfileConfigService
 	BukpotRequestConfigService   *appbukpot.RequestConfigService
+	BukpotActionProfileService   *appbukpot.ActionProfileService
 	SettingsService              *config.SettingsService
 
 	TemplateRegistryService *template.TemplateRegistryService
@@ -93,6 +94,7 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string, cfg config.Config) *Ap
 	settingsService := config.NewSettingsService(rootDir, cfg.Features)
 	buyerRegistryService := buyer.NewBuyerRegistryService(rootDir)
 	bukpotRequestConfigService := appbukpot.NewRequestConfigService(rootDir)
+	bukpotActionProfileService := appbukpot.NewActionProfileService(rootDir)
 	invoiceExtractService := invoiceextract.NewInvoiceExtractService(templateRegistry, buyerRegistryService)
 	invoiceService := invoice.NewInvoiceService(invoiceExporter, fs)
 	taxInvoiceExtractService := extract.NewTaxInvoiceExtractService()
@@ -144,6 +146,7 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string, cfg config.Config) *Ap
 		cashflowBillCategoryService,
 		cashflowBillProfileService,
 		bukpotRequestConfigService,
+		bukpotActionProfileService,
 		fs,
 		1,
 	)
@@ -180,6 +183,7 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string, cfg config.Config) *Ap
 		CashflowBillCategoryService:  cashflowBillCategoryService,
 		CashflowBillProfileService:   cashflowBillProfileService,
 		BukpotRequestConfigService:   bukpotRequestConfigService,
+		BukpotActionProfileService:   bukpotActionProfileService,
 		SettingsService:              settingsService,
 		TemplateRegistryService:      templateRegistryService,
 		DocumentProcessors:           documentRegistry,

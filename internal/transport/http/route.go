@@ -20,6 +20,7 @@ func (s *Server) registerRoutes() {
 	s.registerCashflowProfileConfigRoutes(protected)
 	s.registerCashflowBillProfileConfigRoutes(protected)
 	s.registerBukpotRequestConfigRoutes(protected)
+	s.registerBukpotActionProfileRoutes(protected)
 	s.registerInvoiceRoutes(protected)
 	s.registerCollectionRoutes(protected)
 	s.registerTemplateRoutes(protected)

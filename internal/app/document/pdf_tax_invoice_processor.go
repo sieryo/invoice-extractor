@@ -229,7 +229,18 @@ func (p *PDFTaxInvoiceProcessor) RunAction(ctx context.Context, req ActionReques
 			payload.Invoice,
 			doc.SourceName,
 		)
-		filename = ensureUniqueArchiveFilename(filename, outputNameSet)
+		if !rememberUniqueArchiveFilename(filename, outputNameSet) {
+			result.ItemResults = append(result.ItemResults, ActionItemResult{
+				DocumentID: doc.DocumentID,
+				Status:     "warning",
+				Message:    "duplicate filename skipped",
+				Warnings: []string{
+					fmt.Sprintf("duplicate filename skipped: Filename: %s", filename),
+				},
+			})
+			hasWarning = true
+			continue
+		}
 
 		rawBytes, readErr := p.fileStore.Read(ctx, req.CollectionID, doc.RawRef)
 		if readErr != nil {
@@ -610,33 +621,18 @@ func sanitizeTaxInvoiceFilename(raw string) string {
 	return value
 }
 
-func ensureUniqueArchiveFilename(name string, used map[string]struct{}) string {
+func rememberUniqueArchiveFilename(name string, used map[string]struct{}) bool {
 	candidate := strings.TrimSpace(name)
 	if candidate == "" {
 		candidate = taxInvoiceDefaultFallbackName + ".pdf"
 	}
 
-	ext := filepath.Ext(candidate)
-	base := strings.TrimSuffix(candidate, ext)
-	if ext == "" {
-		ext = ".pdf"
-	}
-
 	lowered := strings.ToLower(candidate)
-	if _, exists := used[lowered]; !exists {
-		used[lowered] = struct{}{}
-		return candidate
+	if _, exists := used[lowered]; exists {
+		return false
 	}
-
-	for i := 2; ; i++ {
-		next := fmt.Sprintf("%s (%d)%s", base, i, ext)
-		key := strings.ToLower(next)
-		if _, exists := used[key]; exists {
-			continue
-		}
-		used[key] = struct{}{}
-		return next
-	}
+	used[lowered] = struct{}{}
+	return true
 }
 
 func uniqueStrings(input []string) []string {

@@ -1328,8 +1328,26 @@ func buildBukpotCollectionSpec(
 								Visible: true,
 							},
 						},
+						{
+							Key:          "onlyNormalStatus",
+							Kind:         FormFieldKindCheckbox,
+							Label:        "Hanya include status Normal",
+							Required:     false,
+							DefaultValue: true,
+							HelpText:     "Jika aktif, bukpot berstatus DIBATALKAN atau PEMBETULAN tidak diproses dan item akan ditandai failed.",
+							State: FormFieldStateSpec{
+								Visible: true,
+							},
+						},
 					},
 				},
+			},
+		},
+		Detail: &ActionDetailSpec{
+			Summary: "Mengganti nama file bukpot memakai template lalu menggabungkannya ke ZIP.",
+			Warnings: []string{
+				"Jika filter status Normal aktif, bukpot berstatus DIBATALKAN atau PEMBETULAN tidak akan diproses.",
+				"Dokumen yang statusnya bukan Normal akan muncul sebagai failed pada items table.",
 			},
 		},
 		Outputs: []ActionOutputSpec{
@@ -1359,6 +1377,36 @@ func buildBukpotCollectionSpec(
 				AllowCheckAll:  true,
 				AllowedStatus:  []string{"ready", "warning"},
 				MinDocumentCnt: 1,
+			},
+			Form: &FormSpec{
+				Title: "Pengaturan Rename by Category",
+				Sections: []FormSectionSpec{
+					{
+						Key:     "filter",
+						Title:   "Filter Dokumen",
+						Columns: 1,
+						Fields: []FormFieldSpec{
+							{
+								Key:          "onlyNormalStatus",
+								Kind:         FormFieldKindCheckbox,
+								Label:        "Hanya include status Normal",
+								Required:     false,
+								DefaultValue: true,
+								HelpText:     "Jika aktif, bukpot berstatus DIBATALKAN atau PEMBETULAN tidak diproses dan item akan ditandai failed.",
+								State: FormFieldStateSpec{
+									Visible: true,
+								},
+							},
+						},
+					},
+				},
+			},
+			Detail: &ActionDetailSpec{
+				Summary: "Mengelompokkan bukpot ke folder kategori dari Dokumen Referensi Nomor lalu membuat ZIP.",
+				Warnings: []string{
+					"Jika filter status Normal aktif, bukpot berstatus DIBATALKAN atau PEMBETULAN tidak akan diproses.",
+					"Dokumen yang statusnya bukan Normal akan muncul sebagai failed pada items table.",
+				},
 			},
 			Outputs: []ActionOutputSpec{
 				{

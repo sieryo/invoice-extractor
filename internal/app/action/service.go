@@ -50,17 +50,22 @@ type BukpotRequestConfigProvider interface {
 	Load(profileID string) (appbukpot.RequestConfig, error)
 }
 
+type BukpotActionProfileProvider interface {
+	Load(profileID string, key appbukpot.ActionProfileKey) (appbukpot.ActionProfile, error)
+}
+
 type Service struct {
-	repo                  Repository
-	collectionRepo        dcollection.Repository
-	processors            *document.Registry
-	buyerRegistry         BuyerRegistryStatusProvider
-	taxAccounts           CashflowTaxAccountStatusProvider
-	cashflowProfileConfig CashflowProfileConfigProvider
-	cashflowBillCategories CashflowBillCategoryStatusProvider
+	repo                      Repository
+	collectionRepo            dcollection.Repository
+	processors                *document.Registry
+	buyerRegistry             BuyerRegistryStatusProvider
+	taxAccounts               CashflowTaxAccountStatusProvider
+	cashflowProfileConfig     CashflowProfileConfigProvider
+	cashflowBillCategories    CashflowBillCategoryStatusProvider
 	cashflowBillProfileConfig CashflowBillProfileConfigProvider
-	bukpotRequestConfig   BukpotRequestConfigProvider
-	fileStore             file.FileStore
+	bukpotRequestConfig       BukpotRequestConfigProvider
+	bukpotActionProfiles      BukpotActionProfileProvider
+	fileStore                 file.FileStore
 
 	queue   chan string
 	workers int
@@ -87,6 +92,7 @@ func NewService(
 	cashflowBillCategories CashflowBillCategoryStatusProvider,
 	cashflowBillProfileConfig CashflowBillProfileConfigProvider,
 	bukpotRequestConfig BukpotRequestConfigProvider,
+	bukpotActionProfiles BukpotActionProfileProvider,
 	fileStore file.FileStore,
 	workers int,
 ) *Service {
@@ -95,18 +101,19 @@ func NewService(
 	}
 
 	return &Service{
-		repo:                  repo,
-		collectionRepo:        collectionRepo,
-		processors:            processors,
-		buyerRegistry:         buyerRegistry,
-		taxAccounts:           taxAccounts,
-		cashflowProfileConfig: cashflowProfileConfig,
-		cashflowBillCategories: cashflowBillCategories,
+		repo:                      repo,
+		collectionRepo:            collectionRepo,
+		processors:                processors,
+		buyerRegistry:             buyerRegistry,
+		taxAccounts:               taxAccounts,
+		cashflowProfileConfig:     cashflowProfileConfig,
+		cashflowBillCategories:    cashflowBillCategories,
 		cashflowBillProfileConfig: cashflowBillProfileConfig,
-		bukpotRequestConfig:   bukpotRequestConfig,
-		fileStore:             fileStore,
-		queue:                 make(chan string, 64),
-		workers:               workers,
+		bukpotRequestConfig:       bukpotRequestConfig,
+		bukpotActionProfiles:      bukpotActionProfiles,
+		fileStore:                 fileStore,
+		queue:                     make(chan string, 64),
+		workers:                   workers,
 	}
 }
 
@@ -158,6 +165,7 @@ func (s *Service) RunAction(ctx context.Context, req RunRequest) (*CollectionAct
 	if !ok {
 		return nil, ErrActionNotSupported
 	}
+	actionSpec = s.applyBukpotActionProfileDefaults(actionSpec, coll.UserID, collectionKind)
 	if !actionSpec.State.Enabled {
 		reason := strings.TrimSpace(actionSpec.State.Message)
 		if reason != "" {
@@ -361,6 +369,7 @@ func (s *Service) GetActionSpec(
 		return nil, ErrSpecNotFound
 	}
 	spec = s.applyRuntimeRequirements(spec, coll.UserID)
+	spec = s.applyBukpotActionProfileCollectionSpec(spec, coll.UserID)
 	if coll.IsFrozen() {
 		spec = applyFrozenCollectionSpec(spec)
 	}
@@ -385,6 +394,7 @@ func (s *Service) ResolveActionSpec(
 		return nil, ErrSpecNotFound
 	}
 	spec = s.applyRuntimeRequirements(spec, coll.UserID)
+	spec = s.applyBukpotActionProfileCollectionSpec(spec, coll.UserID)
 	if coll.IsFrozen() {
 		spec = applyFrozenCollectionSpec(spec)
 	}
@@ -2003,6 +2013,62 @@ func (s *Service) applyRuntimeRequirements(spec document.CollectionSpec, profile
 	}
 	spec.Actions = actions
 	return spec
+}
+
+func (s *Service) applyBukpotActionProfileCollectionSpec(
+	spec document.CollectionSpec,
+	profileID string,
+) document.CollectionSpec {
+	if s.bukpotActionProfiles == nil {
+		return spec
+	}
+
+	actions := make([]document.ActionSpec, 0, len(spec.Actions))
+	for _, item := range spec.Actions {
+		actions = append(actions, s.applyBukpotActionProfileDefaults(item, profileID, spec.CollectionKind))
+	}
+	spec.Actions = actions
+	return spec
+}
+
+func (s *Service) applyBukpotActionProfileDefaults(
+	actionSpec document.ActionSpec,
+	profileID string,
+	collectionKind document.CollectionKind,
+) document.ActionSpec {
+	if s.bukpotActionProfiles == nil || actionSpec.Form == nil {
+		return actionSpec
+	}
+
+	profileKey, ok := appbukpot.ResolveActionProfileKey(string(collectionKind), actionSpec.ActionType)
+	if !ok {
+		return actionSpec
+	}
+
+	cfg, err := s.bukpotActionProfiles.Load(profileID, profileKey)
+	if err != nil {
+		return actionSpec
+	}
+
+	for _, item := range cfg.Fields {
+		field, found := findFormField(actionSpec.Form, item.Key)
+		if !found {
+			continue
+		}
+		switch strings.ToLower(strings.TrimSpace(field.Kind)) {
+		case document.FormFieldKindCheckbox:
+			field.DefaultValue = strings.EqualFold(strings.TrimSpace(item.Value), "true")
+		case document.FormFieldKindNumber:
+			if n, convErr := strconv.Atoi(strings.TrimSpace(item.Value)); convErr == nil {
+				field.DefaultValue = float64(n)
+			}
+		default:
+			field.DefaultValue = strings.TrimSpace(item.Value)
+		}
+		updateFormField(actionSpec.Form, field)
+	}
+
+	return actionSpec
 }
 
 func (s *Service) applyBuyerRegistryRequirement(actionSpec document.ActionSpec, profileID string) document.ActionSpec {

@@ -173,13 +173,13 @@ func ResolveProfileConfigValues(cfg ProfileConfig) map[string]string {
 }
 
 func buildProfileConfigSpec(key ProfileConfigKey) ProfileConfigSpec {
-	label := "Default Profil Cashflow Pay Bills"
+	label := "Cashflow Pay Bills"
 	description := "Nilai default untuk action cashflow ke MYOB Pay Bills."
 	outputDefault := "pay_bills"
 	accountLabel := "Payment Account"
 	accountDescription := "Akun payment utama untuk output MYOB."
 	if key == ProfileConfigReceivePayments {
-		label = "Default Profil Cashflow Receive Payments"
+		label = "Cashflow Receive Payments"
 		description = "Nilai default untuk action cashflow ke MYOB Receive Payments."
 		outputDefault = "receive_payments"
 		accountLabel = "Deposit Account"
@@ -212,15 +212,15 @@ func buildProfileConfigSpec(key ProfileConfigKey) ProfileConfigSpec {
 				Label:       "Default",
 				Description: "Konfigurasi default action cashflow bills.",
 				Values: map[string]string{
-					"sheetName":        "",
-					"headerRowNumber":  "1",
-					"outputFilename":   outputDefault,
-					"chequeAccount":    "12021",
-					"date":             "date",
-					"category":         "Category",
-					"information":      "Note",
-					"partyName":        "nama customer / supplier",
-					"total":            "idr",
+					"sheetName":       "",
+					"headerRowNumber": "1",
+					"outputFilename":  outputDefault,
+					"chequeAccount":   "12021",
+					"date":            "date",
+					"category":        "Category",
+					"information":     "Note",
+					"partyName":       "nama customer / supplier",
+					"total":           "idr",
 				},
 			},
 		},

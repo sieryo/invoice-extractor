@@ -3,6 +3,7 @@ package configmodule
 import (
 	"strings"
 
+	appbukpot "github.com/sieryo/invoice-extractor/internal/app/bukpot"
 	"github.com/sieryo/invoice-extractor/internal/app/document"
 )
 
@@ -68,13 +69,68 @@ func ListModules(enableCashflowXLSX bool) []ModuleSpec {
 		{
 			Key:             "bukpot_request_gst_deduction_mt",
 			RouteKey:        "bukpot_request_gst_deduction_mt",
-			Label:           "Default Profil Request Bukpot GST Deduction MT",
+			Label:           "Request Bukpot GST Deduction MT",
 			Description:     "Mapping default untuk action Request Bukpot GST Deduction MT.",
 			Kind:            string(ModuleKindDefaultProfile),
 			Group:           "request_bukpot",
 			GroupLabel:      "Request Bukpot",
 			IconKey:         "receipt-text",
 			CollectionKinds: []string{string(document.CollectionKindBukpotRequestGSTDeductionMT)},
+		},
+		{
+			Key:             string(appbukpot.ActionProfileBPPURenameBukpot),
+			RouteKey:        string(appbukpot.ActionProfileBPPURenameBukpot),
+			Label:           "BPPU Rename Bukpot",
+			Description:     "Nilai default parameter untuk action Rename Bukpot pada collection BPPU.",
+			Kind:            string(ModuleKindDefaultProfile),
+			Group:           "bukpot",
+			GroupLabel:      "Bukpot",
+			IconKey:         "receipt-text",
+			CollectionKinds: []string{string(document.CollectionKindBukpotBPPU)},
+		},
+		{
+			Key:             string(appbukpot.ActionProfileBP21RenameBukpot),
+			RouteKey:        string(appbukpot.ActionProfileBP21RenameBukpot),
+			Label:           "BP21 Rename Bukpot",
+			Description:     "Nilai default parameter untuk action Rename Bukpot pada collection BP21.",
+			Kind:            string(ModuleKindDefaultProfile),
+			Group:           "bukpot",
+			GroupLabel:      "Bukpot",
+			IconKey:         "receipt-text",
+			CollectionKinds: []string{string(document.CollectionKindBukpotBP21)},
+		},
+		{
+			Key:             string(appbukpot.ActionProfileBPA1RenameBukpot),
+			RouteKey:        string(appbukpot.ActionProfileBPA1RenameBukpot),
+			Label:           "BPA1 Rename Bukpot",
+			Description:     "Nilai default parameter untuk action Rename Bukpot pada collection BPA1.",
+			Kind:            string(ModuleKindDefaultProfile),
+			Group:           "bukpot",
+			GroupLabel:      "Bukpot",
+			IconKey:         "receipt-text",
+			CollectionKinds: []string{string(document.CollectionKindBukpotBPA1)},
+		},
+		{
+			Key:             string(appbukpot.ActionProfileBPPURenameByCategory),
+			RouteKey:        string(appbukpot.ActionProfileBPPURenameByCategory),
+			Label:           "BPPU Rename by Category",
+			Description:     "Nilai default parameter untuk action Rename by Category pada collection BPPU.",
+			Kind:            string(ModuleKindDefaultProfile),
+			Group:           "bukpot",
+			GroupLabel:      "Bukpot",
+			IconKey:         "receipt-text",
+			CollectionKinds: []string{string(document.CollectionKindBukpotBPPU)},
+		},
+		{
+			Key:             string(appbukpot.ActionProfileBP21RenameByCategory),
+			RouteKey:        string(appbukpot.ActionProfileBP21RenameByCategory),
+			Label:           "BP21 Rename by Category",
+			Description:     "Nilai default parameter untuk action Rename by Category pada collection BP21.",
+			Kind:            string(ModuleKindDefaultProfile),
+			Group:           "bukpot",
+			GroupLabel:      "Bukpot",
+			IconKey:         "receipt-text",
+			CollectionKinds: []string{string(document.CollectionKindBukpotBP21)},
 		},
 	}
 
@@ -83,7 +139,7 @@ func ListModules(enableCashflowXLSX bool) []ModuleSpec {
 			ModuleSpec{
 				Key:             "cashflow_spend_money",
 				RouteKey:        "cashflow_spend_money",
-				Label:           "Default Profil Cashflow Spend Money",
+				Label:           "Cashflow Spend Money",
 				Description:     "Nilai default untuk action export cashflow ke MYOB Spend Money.",
 				Kind:            string(ModuleKindDefaultProfile),
 				Group:           "cashflow",
@@ -94,7 +150,7 @@ func ListModules(enableCashflowXLSX bool) []ModuleSpec {
 			ModuleSpec{
 				Key:             "cashflow_receive_money",
 				RouteKey:        "cashflow_receive_money",
-				Label:           "Default Profil Cashflow Receive Money",
+				Label:           "Cashflow Receive Money",
 				Description:     "Nilai default untuk action export cashflow ke MYOB Receive Money.",
 				Kind:            string(ModuleKindDefaultProfile),
 				Group:           "cashflow",
@@ -105,7 +161,7 @@ func ListModules(enableCashflowXLSX bool) []ModuleSpec {
 			ModuleSpec{
 				Key:             "cashflow_pay_bills",
 				RouteKey:        "cashflow_pay_bills",
-				Label:           "Default Profil Cashflow Pay Bills",
+				Label:           "Cashflow Pay Bills",
 				Description:     "Nilai default untuk action cashflow ke MYOB Pay Bills.",
 				Kind:            string(ModuleKindDefaultProfile),
 				Group:           "cashflow",
@@ -116,7 +172,7 @@ func ListModules(enableCashflowXLSX bool) []ModuleSpec {
 			ModuleSpec{
 				Key:             "cashflow_receive_payments",
 				RouteKey:        "cashflow_receive_payments",
-				Label:           "Default Profil Cashflow Receive Payments",
+				Label:           "Cashflow Receive Payments",
 				Description:     "Nilai default untuk action cashflow ke MYOB Receive Payments.",
 				Kind:            string(ModuleKindDefaultProfile),
 				Group:           "cashflow",

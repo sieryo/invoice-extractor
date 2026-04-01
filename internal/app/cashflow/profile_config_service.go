@@ -244,10 +244,10 @@ func resolveProfileConfigValuesByGroups(
 }
 
 func buildProfileConfigSpec(key ProfileConfigKey) ProfileConfigSpec {
-	label := "Default Profil Cashflow Spend Money"
+	label := "Cashflow Spend Money"
 	description := "Nilai default untuk action export cashflow ke MYOB Spend Money."
 	if key == ProfileConfigReceiveMoney {
-		label = "Default Profil Cashflow Receive Money"
+		label = "Cashflow Receive Money"
 		description = "Nilai default untuk action export cashflow ke MYOB Receive Money."
 	}
 

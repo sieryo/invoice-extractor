@@ -45,6 +45,14 @@ func BukpotRequestConfigJSON(rootDir string, profileID string) string {
 	return filepath.Join(ProfileDir(rootDir, profileID), "request_bukpot.json")
 }
 
+func BukpotActionProfilesDir(rootDir string, profileID string) string {
+	return filepath.Join(ProfileDir(rootDir, profileID), "bukpot_actions")
+}
+
+func BukpotActionProfileJSON(rootDir string, profileID string, key string) string {
+	return filepath.Join(BukpotActionProfilesDir(rootDir, profileID), strings.TrimSpace(key)+".json")
+}
+
 func CashflowConfigDir(rootDir string, profileID string) string {
 	return filepath.Join(ProfileDir(rootDir, profileID), "cashflow")
 }
