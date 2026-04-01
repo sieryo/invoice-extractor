@@ -24,7 +24,7 @@ func TestNormalizeAndValidateActionInput_RequiredMissing(t *testing.T) {
 				},
 			},
 		},
-	})
+	}, nil)
 
 	if !errors.Is(err, ErrInvalidActionParams) {
 		t.Fatalf("expected ErrInvalidActionParams, got %v", err)
@@ -47,7 +47,7 @@ func TestNormalizeAndValidateActionInput_UnknownField(t *testing.T) {
 				},
 			},
 		},
-	})
+	}, nil)
 
 	if !errors.Is(err, ErrInvalidActionParams) {
 		t.Fatalf("expected ErrInvalidActionParams, got %v", err)
@@ -70,7 +70,7 @@ func TestNormalizeAndValidateActionInput_NumberCoercion(t *testing.T) {
 				},
 			},
 		},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestNormalizeAndValidateActionInput_DefaultApplied(t *testing.T) {
 				},
 			},
 		},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -141,7 +141,7 @@ func TestNormalizeAndValidateActionInput_OptionsRejectInvalid(t *testing.T) {
 				},
 			},
 		},
-	})
+	}, nil)
 	if !errors.Is(err, ErrInvalidActionParams) {
 		t.Fatalf("expected ErrInvalidActionParams, got %v", err)
 	}
@@ -177,7 +177,7 @@ func TestNormalizeAndValidateActionInput_RequiredIfRule(t *testing.T) {
 		},
 	}
 
-	_, err := normalizeAndValidateActionInput(json.RawMessage(`{"cashflowFormat":"influencer"}`), form)
+	_, err := normalizeAndValidateActionInput(json.RawMessage(`{"cashflowFormat":"influencer"}`), form, nil)
 	if !errors.Is(err, ErrInvalidActionParams) {
 		t.Fatalf("expected ErrInvalidActionParams, got %v", err)
 	}
@@ -185,6 +185,7 @@ func TestNormalizeAndValidateActionInput_RequiredIfRule(t *testing.T) {
 	_, okErr := normalizeAndValidateActionInput(
 		json.RawMessage(`{"cashflowFormat":"influencer","defaultIAccountCode":"62004"}`),
 		form,
+		nil,
 	)
 	if okErr != nil {
 		t.Fatalf("unexpected error: %v", okErr)

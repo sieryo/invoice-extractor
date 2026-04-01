@@ -20,7 +20,7 @@ func TestXLSXCashflowProcessorIngest(t *testing.T) {
 	ctx := context.Background()
 	tempDir := t.TempDir()
 	fileStore := filestore.NewLocalFileStore(filepath.Join(tempDir, "storage"))
-	processor := NewXLSXCashflowProcessor(fileStore, nil)
+	processor := NewXLSXCashflowProcessor(fileStore, nil, nil)
 
 	workbookPath := filepath.Join(tempDir, "example_cashflow.xlsx")
 	createCashflowWorkbook(t, workbookPath)

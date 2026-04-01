@@ -21,6 +21,8 @@ const (
 	cashflowMYOBActionType  = "export_cashflow_myob"
 	cashflowSpendActionType = "export_cashflow_spend_money"
 	cashflowRecvActionType  = "export_cashflow_receive_money"
+	cashflowPayBillsActionType = "cashflow_to_pay_bills"
+	cashflowReceivePaymentsActionType = "cashflow_to_receive_payments"
 	cashflowDefaultTextName = "cashflow-myob"
 )
 
@@ -70,6 +72,9 @@ func (p *XLSXCashflowProcessor) RunAction(ctx context.Context, req ActionRequest
 	}
 
 	if !isCashflowMYOBAction(req.ActionType) {
+		if isCashflowBillActionType(req.ActionType) {
+			return p.runCashflowBillAction(ctx, req)
+		}
 		result.Status = "failed"
 		result.Message = "unsupported action for cashflow_import"
 		result.FinishedAt = time.Now()
@@ -300,6 +305,15 @@ func (p *XLSXCashflowProcessor) buildCashflowDocumentRows(
 func isCashflowMYOBAction(actionType string) bool {
 	switch strings.TrimSpace(actionType) {
 	case cashflowMYOBActionType, cashflowSpendActionType, cashflowRecvActionType:
+		return true
+	default:
+		return false
+	}
+}
+
+func isCashflowBillActionType(actionType string) bool {
+	switch strings.TrimSpace(actionType) {
+	case cashflowPayBillsActionType, cashflowReceivePaymentsActionType:
 		return true
 	default:
 		return false

@@ -16,6 +16,7 @@ import (
 	appbukpot "github.com/sieryo/invoice-extractor/internal/app/bukpot"
 	appbuyer "github.com/sieryo/invoice-extractor/internal/app/buyer"
 	appcashflow "github.com/sieryo/invoice-extractor/internal/app/cashflow"
+	appcashflowbill "github.com/sieryo/invoice-extractor/internal/app/cashflowbill"
 	"github.com/sieryo/invoice-extractor/internal/app/document"
 	dcollection "github.com/sieryo/invoice-extractor/internal/domain/collection"
 	"github.com/sieryo/invoice-extractor/internal/domain/file"
@@ -34,6 +35,16 @@ type CashflowProfileConfigProvider interface {
 	Load(profileID string, key appcashflow.ProfileConfigKey) (appcashflow.ProfileConfig, error)
 }
 
+type CashflowBillCategoryStatusProvider interface {
+	Status(profileID string) appcashflowbill.CategoryAccountStatus
+	Load(profileID string) (map[string]appcashflowbill.CategoryAccount, error)
+}
+
+type CashflowBillProfileConfigProvider interface {
+	Status(profileID string, key appcashflowbill.ProfileConfigKey) appcashflowbill.ProfileConfigStatus
+	Load(profileID string, key appcashflowbill.ProfileConfigKey) (appcashflowbill.ProfileConfig, error)
+}
+
 type BukpotRequestConfigProvider interface {
 	Status(profileID string) appbukpot.RequestConfigStatus
 	Load(profileID string) (appbukpot.RequestConfig, error)
@@ -46,6 +57,8 @@ type Service struct {
 	buyerRegistry         BuyerRegistryStatusProvider
 	taxAccounts           CashflowTaxAccountStatusProvider
 	cashflowProfileConfig CashflowProfileConfigProvider
+	cashflowBillCategories CashflowBillCategoryStatusProvider
+	cashflowBillProfileConfig CashflowBillProfileConfigProvider
 	bukpotRequestConfig   BukpotRequestConfigProvider
 	fileStore             file.FileStore
 
@@ -71,6 +84,8 @@ func NewService(
 	buyerRegistry BuyerRegistryStatusProvider,
 	taxAccounts CashflowTaxAccountStatusProvider,
 	cashflowProfileConfig CashflowProfileConfigProvider,
+	cashflowBillCategories CashflowBillCategoryStatusProvider,
+	cashflowBillProfileConfig CashflowBillProfileConfigProvider,
 	bukpotRequestConfig BukpotRequestConfigProvider,
 	fileStore file.FileStore,
 	workers int,
@@ -86,6 +101,8 @@ func NewService(
 		buyerRegistry:         buyerRegistry,
 		taxAccounts:           taxAccounts,
 		cashflowProfileConfig: cashflowProfileConfig,
+		cashflowBillCategories: cashflowBillCategories,
+		cashflowBillProfileConfig: cashflowBillProfileConfig,
 		bukpotRequestConfig:   bukpotRequestConfig,
 		fileStore:             fileStore,
 		queue:                 make(chan string, 64),
@@ -157,7 +174,7 @@ func (s *Service) RunAction(ctx context.Context, req RunRequest) (*CollectionAct
 		return nil, err
 	}
 
-	inputJSON, err := normalizeAndValidateActionInput(req.Input, actionSpec.Form)
+	inputJSON, err := normalizeAndValidateActionInput(req.Input, actionSpec.Form, actionSpec.ArtifactInputs)
 	if err != nil {
 		return nil, err
 	}
@@ -384,6 +401,12 @@ func (s *Service) ResolveActionSpec(
 			return nil, err
 		}
 	}
+	if collectionKind == document.CollectionKindCashflowImport && isCashflowBillAction(actionSpec.ActionType) {
+		resolved, err = s.resolveCashflowBillActionSpec(ctx, coll.UserID, req.CollectionID, collectionKind, sourceFormat, actionSpec, req.DocumentIDs)
+		if err != nil {
+			return nil, err
+		}
+	}
 	if collectionKind == document.CollectionKindBukpotRequestGSTDeductionMT && strings.EqualFold(strings.TrimSpace(actionSpec.ActionType), "request_bukpot_gst_deduction_mt") {
 		resolved, err = s.resolveBukpotRequestActionSpec(ctx, coll.UserID, req.CollectionID, collectionKind, sourceFormat, actionSpec, req.DocumentIDs)
 		if err != nil {
@@ -521,6 +544,7 @@ func (s *Service) process(ctx context.Context, actionID string) error {
 	runInput := action.InputJSON
 	if action.CollectionKind == document.CollectionKindCashflowImport {
 		runInput = s.resolveCashflowRuntimeInput(action.UserID, action.ActionType, runInput)
+		runInput = s.resolveCashflowBillRuntimeInput(action.UserID, action.ActionType, runInput)
 	}
 
 	runReq := document.ActionRequest{
@@ -819,9 +843,10 @@ func normalizeSnapshotStatuses(input []string, allowed []string) ([]string, erro
 func normalizeAndValidateActionInput(
 	raw json.RawMessage,
 	form *document.FormSpec,
+	artifactInputs []document.ActionArtifactInputSpec,
 ) (json.RawMessage, error) {
 	fieldSpecs := flattenFormFields(form)
-	if len(fieldSpecs) == 0 {
+	if len(fieldSpecs) == 0 && len(artifactInputs) == 0 {
 		trimmed := bytes.TrimSpace(raw)
 		if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
 			return nil, nil
@@ -846,6 +871,15 @@ func normalizeAndValidateActionInput(
 		specByKey[key] = spec
 	}
 
+	artifactByKey := make(map[string]document.ActionArtifactInputSpec, len(artifactInputs))
+	for _, artifactInput := range artifactInputs {
+		key := strings.TrimSpace(artifactInput.Key)
+		if key == "" {
+			return nil, fmt.Errorf("%w: artifact input key cannot be empty", ErrInvalidActionSpec)
+		}
+		artifactByKey[key] = artifactInput
+	}
+
 	trimmed := bytes.TrimSpace(raw)
 	payload := map[string]any{}
 	if !(len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null"))) {
@@ -858,6 +892,12 @@ func normalizeAndValidateActionInput(
 	}
 
 	for key := range payload {
+		if _, ok := specByKey[key]; ok {
+			continue
+		}
+		if _, ok := artifactByKey[key]; ok {
+			continue
+		}
 		if _, ok := specByKey[key]; !ok {
 			return nil, fmt.Errorf("%w: unknown input %q", ErrInvalidActionParams, key)
 		}
@@ -892,6 +932,29 @@ func normalizeAndValidateActionInput(
 		}
 
 		normalized[spec.Key] = normalizedValue
+	}
+
+	for _, artifactInput := range artifactInputs {
+		value, exists := payload[artifactInput.Key]
+		if !exists || value == nil {
+			if artifactInput.Required {
+				return nil, fmt.Errorf("%w: missing required input %q", ErrInvalidActionParams, artifactInput.Key)
+			}
+			continue
+		}
+
+		s, ok := value.(string)
+		if !ok {
+			return nil, fmt.Errorf("%w: input %q must be string", ErrInvalidActionParams, artifactInput.Key)
+		}
+		s = strings.TrimSpace(s)
+		if artifactInput.Required && s == "" {
+			return nil, fmt.Errorf("%w: input %q cannot be empty", ErrInvalidActionParams, artifactInput.Key)
+		}
+		if s == "" {
+			continue
+		}
+		normalized[artifactInput.Key] = s
 	}
 
 	if ruleErr := validateActionInputRules(normalized, fieldSpecs); ruleErr != nil {
@@ -1276,6 +1339,9 @@ func (s *Service) resolveCashflowRuntimeInput(
 	actionType string,
 	input json.RawMessage,
 ) json.RawMessage {
+	if !isCashflowExportAction(actionType) {
+		return input
+	}
 	if s.cashflowProfileConfig == nil {
 		return input
 	}
@@ -1327,12 +1393,172 @@ func (s *Service) resolveCashflowRuntimeInput(
 	return b
 }
 
+func (s *Service) resolveCashflowBillActionSpec(
+	ctx context.Context,
+	profileID string,
+	collectionID string,
+	collectionKind document.CollectionKind,
+	sourceFormat document.SourceFormat,
+	actionSpec document.ActionSpec,
+	documentIDs []string,
+) (document.ActionSpec, error) {
+	if s.cashflowBillProfileConfig != nil {
+		configKey := cashflowBillProfileKeyFromAction(actionSpec.ActionType)
+		cfg, err := s.cashflowBillProfileConfig.Load(profileID, configKey)
+		if err == nil {
+			for key, value := range appcashflowbill.ResolveProfileConfigValues(cfg) {
+				field, ok := findFormField(actionSpec.Form, key)
+				if !ok {
+					continue
+				}
+				field.DefaultValue = strings.TrimSpace(value)
+				updateFormField(actionSpec.Form, field)
+			}
+		}
+	}
+
+	field, ok := findFormField(actionSpec.Form, "sheetName")
+	if !ok {
+		return actionSpec, nil
+	}
+
+	normalizedIDs, err := normalizeDocumentIDs(documentIDs)
+	if err != nil {
+		return actionSpec, err
+	}
+	if len(normalizedIDs) == 0 {
+		field.Options = nil
+		field.HelpText = "Pilih minimal satu dokumen cashflow untuk melihat sheet yang tersedia."
+		field.State.Disabled = true
+		field.State.Message = "Sheet akan tersedia setelah Anda memilih dokumen cashflow."
+		updateFormField(actionSpec.Form, field)
+		return actionSpec, nil
+	}
+
+	snapshotDocs, err := s.repo.ListSnapshotDocumentsByIDs(ctx, collectionID, collectionKind, sourceFormat, normalizedIDs)
+	if err != nil {
+		return actionSpec, err
+	}
+	if len(snapshotDocs) != len(normalizedIDs) {
+		return actionSpec, ErrSnapshotDocNotFound
+	}
+	if allowed, allowedErr := normalizeAllowedStatuses(actionSpec.Selection.AllowedStatus); allowedErr == nil {
+		if err := validateSnapshotStatuses(snapshotDocs, allowed); err != nil {
+			return actionSpec, err
+		}
+	}
+
+	commonSheetNames, defaultSheet, defaultHeaderRow, resolveErr := s.resolveCommonSpreadsheetSheets(ctx, collectionID, snapshotDocs)
+	if resolveErr != nil {
+		return actionSpec, resolveErr
+	}
+	if len(commonSheetNames) == 0 {
+		actionSpec.State.Enabled = false
+		actionSpec.State.Code = "CASHFLOW_BILLS_COMMON_SHEET_NOT_FOUND"
+		actionSpec.State.Message = "Dokumen terpilih tidak memiliki nama sheet yang sama untuk diproses bersama."
+		field.Options = nil
+		field.HelpText = actionSpec.State.Message
+		field.State.Disabled = true
+		field.State.Message = actionSpec.State.Message
+		field.DefaultValue = ""
+		updateFormField(actionSpec.Form, field)
+		return actionSpec, nil
+	}
+
+	field.Options = make([]document.FormFieldOption, 0, len(commonSheetNames))
+	for _, sheetName := range commonSheetNames {
+		field.Options = append(field.Options, document.FormFieldOption{
+			Label: sheetName,
+			Value: sheetName,
+		})
+	}
+	field.HelpText = "Sheet yang tersedia pada semua dokumen terpilih."
+	field.State.Disabled = false
+	field.State.Message = ""
+	field.DefaultValue = pickPreferredSheetName(commonSheetNames, formFieldDefaultString(field.DefaultValue), defaultSheet)
+	updateFormField(actionSpec.Form, field)
+
+	if headerField, ok := findFormField(actionSpec.Form, "headerRowNumber"); ok && defaultHeaderRow > 0 {
+		if formFieldDefaultString(headerField.DefaultValue) == "" {
+			headerField.DefaultValue = strconv.Itoa(defaultHeaderRow)
+		}
+		updateFormField(actionSpec.Form, headerField)
+	}
+
+	return actionSpec, nil
+}
+
+func (s *Service) resolveCashflowBillRuntimeInput(
+	profileID string,
+	actionType string,
+	input json.RawMessage,
+) json.RawMessage {
+	if !isCashflowBillAction(actionType) || s.cashflowBillProfileConfig == nil {
+		return input
+	}
+
+	cfg, err := s.cashflowBillProfileConfig.Load(profileID, cashflowBillProfileKeyFromAction(actionType))
+	if err != nil {
+		return input
+	}
+
+	values := appcashflowbill.ResolveProfileConfigValues(cfg)
+	if len(values) == 0 {
+		return input
+	}
+
+	payload := map[string]any{}
+	trimmed := bytes.TrimSpace(input)
+	if len(trimmed) > 0 && !bytes.Equal(trimmed, []byte("null")) {
+		if err := json.Unmarshal(trimmed, &payload); err != nil {
+			return input
+		}
+	}
+
+	for key, value := range values {
+		if strings.TrimSpace(value) == "" {
+			continue
+		}
+		if _, exists := payload[key]; exists && strings.TrimSpace(fmt.Sprint(payload[key])) != "" {
+			continue
+		}
+		payload[key] = value
+	}
+	if len(payload) == 0 {
+		return input
+	}
+
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return input
+	}
+	return b
+}
+
 func isCashflowExportAction(actionType string) bool {
 	switch strings.TrimSpace(actionType) {
 	case "export_cashflow_myob", "export_cashflow_spend_money", "export_cashflow_receive_money":
 		return true
 	default:
 		return false
+	}
+}
+
+func isCashflowBillAction(actionType string) bool {
+	switch strings.TrimSpace(actionType) {
+	case "cashflow_to_pay_bills", "cashflow_to_receive_payments":
+		return true
+	default:
+		return false
+	}
+}
+
+func cashflowBillProfileKeyFromAction(actionType string) appcashflowbill.ProfileConfigKey {
+	switch strings.TrimSpace(actionType) {
+	case "cashflow_to_receive_payments":
+		return appcashflowbill.ProfileConfigReceivePayments
+	default:
+		return appcashflowbill.ProfileConfigPayBills
 	}
 }
 
@@ -1763,6 +1989,11 @@ func (s *Service) applyRuntimeRequirements(spec document.CollectionSpec, profile
 			actionSpec = s.applyCashflowTaxAccountRequirement(actionSpec, profileID)
 			actionSpec = s.applyCashflowProfileRequirement(actionSpec, profileID)
 		}
+		if spec.CollectionKind == document.CollectionKindCashflowImport &&
+			isCashflowBillAction(actionSpec.ActionType) {
+			actionSpec = s.applyCashflowBillCategoryRequirement(actionSpec, profileID)
+			actionSpec = s.applyCashflowBillProfileRequirement(actionSpec, profileID)
+		}
 		if spec.CollectionKind == document.CollectionKindBukpotRequestGSTDeductionMT &&
 			strings.EqualFold(strings.TrimSpace(actionSpec.ActionType), "request_bukpot_gst_deduction_mt") {
 			actionSpec = s.applyBukpotRequestConfigRequirement(actionSpec, profileID)
@@ -1947,6 +2178,108 @@ func (s *Service) applyCashflowProfileRequirement(actionSpec document.ActionSpec
 	if !updated {
 		actionSpec.Requirements = append(actionSpec.Requirements, document.ActionRequirementSpec{
 			Key:       "cashflowDefaultProfile",
+			Label:     label,
+			Required:  true,
+			Satisfied: status.Configured,
+			Code:      strings.TrimSpace(status.Code),
+			Message:   strings.TrimSpace(status.Message),
+		})
+	}
+
+	if !status.Configured {
+		actionSpec.State.Enabled = false
+		actionSpec.State.Code = strings.TrimSpace(status.Code)
+		if strings.TrimSpace(actionSpec.State.Message) == "" {
+			actionSpec.State.Message = strings.TrimSpace(status.Message)
+		}
+	}
+
+	return actionSpec
+}
+
+func (s *Service) applyCashflowBillCategoryRequirement(actionSpec document.ActionSpec, profileID string) document.ActionSpec {
+	status := appcashflowbill.CategoryAccountStatus{
+		Loaded:  false,
+		Code:    "CASHFLOW_CATEGORY_ACCOUNTS_UNAVAILABLE",
+		Message: "Master data category accounts belum tersedia.",
+	}
+	if s.cashflowBillCategories != nil {
+		status = s.cashflowBillCategories.Status(profileID)
+	}
+
+	updated := false
+	for idx, requirement := range actionSpec.Requirements {
+		if !strings.EqualFold(strings.TrimSpace(requirement.Key), "cashflowCategoryAccounts") {
+			continue
+		}
+		requirement.Satisfied = status.Loaded
+		requirement.Code = strings.TrimSpace(status.Code)
+		requirement.Message = strings.TrimSpace(status.Message)
+		actionSpec.Requirements[idx] = requirement
+		updated = true
+	}
+
+	if !updated {
+		actionSpec.Requirements = append(actionSpec.Requirements, document.ActionRequirementSpec{
+			Key:       "cashflowCategoryAccounts",
+			Label:     "Category Accounts",
+			Required:  true,
+			Satisfied: status.Loaded,
+			Code:      strings.TrimSpace(status.Code),
+			Message:   strings.TrimSpace(status.Message),
+		})
+	}
+
+	if !status.Loaded {
+		actionSpec.State.Enabled = false
+		actionSpec.State.Code = strings.TrimSpace(status.Code)
+		actionSpec.State.Message = strings.TrimSpace(status.Message)
+		if actionSpec.State.Message == "" {
+			actionSpec.State.Message = "Master data category accounts belum siap."
+		}
+	}
+
+	return actionSpec
+}
+
+func (s *Service) applyCashflowBillProfileRequirement(actionSpec document.ActionSpec, profileID string) document.ActionSpec {
+	configKey := cashflowBillProfileKeyFromAction(actionSpec.ActionType)
+	label := "Default Profil Cashflow Pay Bills"
+	defaultCode := "CASHFLOW_PAY_BILLS_PROFILE_UNAVAILABLE"
+	defaultMessage := "Default profil cashflow pay bills belum tersedia."
+
+	if configKey == appcashflowbill.ProfileConfigReceivePayments {
+		label = "Default Profil Cashflow Receive Payments"
+		defaultCode = "CASHFLOW_RECEIVE_PAYMENTS_PROFILE_UNAVAILABLE"
+		defaultMessage = "Default profil cashflow receive payments belum tersedia."
+	}
+
+	status := appcashflowbill.ProfileConfigStatus{
+		Configured:    false,
+		Code:          defaultCode,
+		Message:       defaultMessage,
+		SchemaVersion: "1",
+	}
+	if s.cashflowBillProfileConfig != nil {
+		status = s.cashflowBillProfileConfig.Status(profileID, configKey)
+	}
+
+	updated := false
+	for idx, requirement := range actionSpec.Requirements {
+		if !strings.EqualFold(strings.TrimSpace(requirement.Key), "cashflowBillDefaultProfile") {
+			continue
+		}
+		requirement.Label = label
+		requirement.Satisfied = status.Configured
+		requirement.Code = strings.TrimSpace(status.Code)
+		requirement.Message = strings.TrimSpace(status.Message)
+		actionSpec.Requirements[idx] = requirement
+		updated = true
+	}
+
+	if !updated {
+		actionSpec.Requirements = append(actionSpec.Requirements, document.ActionRequirementSpec{
+			Key:       "cashflowBillDefaultProfile",
 			Label:     label,
 			Required:  true,
 			Satisfied: status.Configured,

@@ -12,6 +12,7 @@ import (
 	"github.com/sieryo/invoice-extractor/internal/app/bukpot/parsers"
 	"github.com/sieryo/invoice-extractor/internal/app/buyer"
 	appcashflow "github.com/sieryo/invoice-extractor/internal/app/cashflow"
+	appcashflowbill "github.com/sieryo/invoice-extractor/internal/app/cashflowbill"
 	"github.com/sieryo/invoice-extractor/internal/app/collection"
 	"github.com/sieryo/invoice-extractor/internal/app/document"
 	appfile "github.com/sieryo/invoice-extractor/internal/app/file"
@@ -52,6 +53,8 @@ type App struct {
 	BuyerRegistryService         *buyer.BuyerRegistryService
 	TaxAccountService            *appcashflow.TaxAccountService
 	CashflowProfileConfigService *appcashflow.ProfileConfigService
+	CashflowBillCategoryService  *appcashflowbill.CategoryAccountService
+	CashflowBillProfileService   *appcashflowbill.ProfileConfigService
 	BukpotRequestConfigService   *appbukpot.RequestConfigService
 	SettingsService              *config.SettingsService
 
@@ -109,6 +112,8 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string, cfg config.Config) *Ap
 
 	taxAccountService := appcashflow.NewTaxAccountService(rootDir)
 	cashflowProfileConfigService := appcashflow.NewProfileConfigService(rootDir)
+	cashflowBillCategoryService := appcashflowbill.NewCategoryAccountService(rootDir)
+	cashflowBillProfileService := appcashflowbill.NewProfileConfigService(rootDir)
 	templateRegistryService := template.NewTemplateRegistryService(templateRegistry)
 	documentRegistry := document.NewRegistry()
 	documentRegistry.MustRegister(document.NewPDFInvoiceProcessor(invoiceExtractService, invoiceService, fs))
@@ -117,7 +122,7 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string, cfg config.Config) *Ap
 	documentRegistry.MustRegister(document.NewPDFBukpotProcessor(document.CollectionKindBukpotBP21, bukpotService, fs))
 	documentRegistry.MustRegister(document.NewPDFBukpotProcessor(document.CollectionKindBukpotBPA1, bukpotService, fs))
 	documentRegistry.MustRegister(document.NewXLSXBukpotRequestProcessor(fs, rootDir, bukpotRequestConfigService))
-	documentRegistry.MustRegister(document.NewXLSXCashflowProcessor(fs, taxAccountService))
+	documentRegistry.MustRegister(document.NewXLSXCashflowProcessor(fs, taxAccountService, cashflowBillCategoryService))
 	ingestService := ingest.NewIngestService(
 		uploadSessionRepo,
 		uploadChunkRepo,
@@ -136,6 +141,8 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string, cfg config.Config) *Ap
 		buyerRegistryService,
 		taxAccountService,
 		cashflowProfileConfigService,
+		cashflowBillCategoryService,
+		cashflowBillProfileService,
 		bukpotRequestConfigService,
 		fs,
 		1,
@@ -170,6 +177,8 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string, cfg config.Config) *Ap
 		BuyerRegistryService:         buyerRegistryService,
 		TaxAccountService:            taxAccountService,
 		CashflowProfileConfigService: cashflowProfileConfigService,
+		CashflowBillCategoryService:  cashflowBillCategoryService,
+		CashflowBillProfileService:   cashflowBillProfileService,
 		BukpotRequestConfigService:   bukpotRequestConfigService,
 		SettingsService:              settingsService,
 		TemplateRegistryService:      templateRegistryService,

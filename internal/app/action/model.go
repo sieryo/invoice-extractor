@@ -99,6 +99,21 @@ type CollectionActionOutput struct {
 	CreatedAt time.Time  `json:"createdAt"`
 }
 
+type CollectionActionArtifact struct {
+	ID           string          `json:"id"`
+	UserID       string          `json:"userId"`
+	CollectionID string          `json:"collectionId"`
+	ActionType   string          `json:"actionType"`
+	ArtifactKey  string          `json:"artifactKey"`
+	ObjectRef    string          `json:"objectRef"`
+	OriginalName string          `json:"originalName"`
+	MimeType     string          `json:"mimeType,omitempty"`
+	SizeBytes    int64           `json:"sizeBytes"`
+	PreviewJSON  json.RawMessage `json:"preview,omitempty"`
+	CreatedAt    time.Time       `json:"createdAt"`
+	UpdatedAt    time.Time       `json:"updatedAt"`
+}
+
 type ActionDetail struct {
 	Action  *CollectionAction         `json:"action"`
 	Items   []*CollectionActionItem   `json:"items"`

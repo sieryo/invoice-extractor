@@ -26,6 +26,11 @@ type Repository interface {
 	ListPendingActions(ctx context.Context) ([]*CollectionAction, error)
 	ListActionItems(ctx context.Context, actionID string) ([]*CollectionActionItem, error)
 	ListActionOutputs(ctx context.Context, actionID string) ([]*CollectionActionOutput, error)
+	ListActionArtifacts(
+		ctx context.Context,
+		collectionID string,
+		actionType string,
+	) ([]*CollectionActionArtifact, error)
 	SetActionRunning(ctx context.Context, actionID string, startedAt time.Time) error
 	SetActionFinished(
 		ctx context.Context,
@@ -41,6 +46,7 @@ type Repository interface {
 	) error
 	AddActionItems(ctx context.Context, items []*CollectionActionItem) error
 	AddActionOutputs(ctx context.Context, outputs []*CollectionActionOutput) error
+	CreateActionArtifact(ctx context.Context, artifact *CollectionActionArtifact) error
 	ListSnapshotDocuments(
 		ctx context.Context,
 		collectionID string,

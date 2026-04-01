@@ -10,6 +10,8 @@ func (s *Server) registerActionRoutes(protected fiber.Router) {
 
 	protected.Post("/collection/:id/actions", actionHandler.RunAction)
 	protected.Post("/collection/:id/actions/artifacts", actionHandler.UploadActionArtifact)
+	protected.Get("/collection/:id/actions/artifacts/latest", actionHandler.ListLatestActionArtifacts)
+	protected.Get("/collection/:id/actions/artifacts/download", actionHandler.DownloadActionArtifact)
 	protected.Get("/collection/:id/action-specs", actionHandler.GetActionSpec)
 	protected.Post("/collection/:id/action-specs/resolve", actionHandler.ResolveActionSpec)
 	protected.Get("/collection/:id/actions", actionHandler.ListActions)
@@ -18,6 +20,8 @@ func (s *Server) registerActionRoutes(protected fiber.Router) {
 
 	protected.Post("/collections/:id/actions", actionHandler.RunAction)
 	protected.Post("/collections/:id/actions/artifacts", actionHandler.UploadActionArtifact)
+	protected.Get("/collections/:id/actions/artifacts/latest", actionHandler.ListLatestActionArtifacts)
+	protected.Get("/collections/:id/actions/artifacts/download", actionHandler.DownloadActionArtifact)
 	protected.Get("/collections/:id/action-specs", actionHandler.GetActionSpec)
 	protected.Post("/collections/:id/action-specs/resolve", actionHandler.ResolveActionSpec)
 	protected.Get("/collections/:id/actions", actionHandler.ListActions)

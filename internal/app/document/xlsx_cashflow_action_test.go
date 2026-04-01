@@ -37,7 +37,7 @@ func TestXLSXCashflowProcessor_RunActionSpendMoney(t *testing.T) {
 	}, "\n")), 0644))
 
 	taxService := appcashflow.NewTaxAccountService(tempDir)
-	processor := NewXLSXCashflowProcessor(fileStore, taxService)
+	processor := NewXLSXCashflowProcessor(fileStore, taxService, nil)
 
 	workbookPath := filepath.Join(tempDir, "cashflow.xlsx")
 	createSpendMoneyWorkbook(t, workbookPath)
@@ -157,7 +157,7 @@ func TestXLSXCashflowProcessor_RunActionReceiveMoney(t *testing.T) {
 	}, "\n")), 0644))
 
 	taxService := appcashflow.NewTaxAccountService(tempDir)
-	processor := NewXLSXCashflowProcessor(fileStore, taxService)
+	processor := NewXLSXCashflowProcessor(fileStore, taxService, nil)
 
 	workbookPath := filepath.Join(tempDir, "cashflow-receive.xlsx")
 	createReceiveMoneyWorkbook(t, workbookPath)
@@ -258,7 +258,7 @@ func TestXLSXCashflowProcessor_RunActionSpendMoney_SkipsMissingChartOfAccounts(t
 	}, "\n")), 0644))
 
 	taxService := appcashflow.NewTaxAccountService(tempDir)
-	processor := NewXLSXCashflowProcessor(fileStore, taxService)
+	processor := NewXLSXCashflowProcessor(fileStore, taxService, nil)
 
 	workbookPath := filepath.Join(tempDir, "cashflow-missing-coa.xlsx")
 	createSpendMoneyWorkbookWithMissingCOA(t, workbookPath)
@@ -349,7 +349,7 @@ func TestXLSXCashflowProcessor_RunActionSpendMoney_InfluencerSkipsFilteredRows(t
 	}, "\n")), 0o644))
 
 	taxService := appcashflow.NewTaxAccountService(tempDir)
-	processor := NewXLSXCashflowProcessor(fileStore, taxService)
+	processor := NewXLSXCashflowProcessor(fileStore, taxService, nil)
 
 	workbookPath := filepath.Join(tempDir, "cashflow-influencer-spend.xlsx")
 	createInfluencerSpendMoneyWorkbook(t, workbookPath)
@@ -448,7 +448,7 @@ func TestXLSXCashflowProcessor_RunActionReceiveMoney_InfluencerSkipsFilteredRows
 	}, "\n")), 0o644))
 
 	taxService := appcashflow.NewTaxAccountService(tempDir)
-	processor := NewXLSXCashflowProcessor(fileStore, taxService)
+	processor := NewXLSXCashflowProcessor(fileStore, taxService, nil)
 
 	workbookPath := filepath.Join(tempDir, "cashflow-influencer-receive.xlsx")
 	createInfluencerReceiveMoneyWorkbook(t, workbookPath)

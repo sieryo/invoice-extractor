@@ -10,6 +10,7 @@ import (
 	"time"
 
 	appcashflow "github.com/sieryo/invoice-extractor/internal/app/cashflow"
+	appcashflowbill "github.com/sieryo/invoice-extractor/internal/app/cashflowbill"
 	dfile "github.com/sieryo/invoice-extractor/internal/domain/file"
 )
 
@@ -26,8 +27,9 @@ type cashflowNormalizedPayload struct {
 }
 
 type XLSXCashflowProcessor struct {
-	fileStore   dfile.FileStore
-	taxAccounts CashflowTaxAccountProvider
+	fileStore        dfile.FileStore
+	taxAccounts      CashflowTaxAccountProvider
+	categoryAccounts CashflowCategoryAccountProvider
 }
 
 type CashflowTaxAccountProvider interface {
@@ -35,13 +37,20 @@ type CashflowTaxAccountProvider interface {
 	Load(profileID string) (map[string]appcashflow.TaxAccount, error)
 }
 
+type CashflowCategoryAccountProvider interface {
+	Status(profileID string) appcashflowbill.CategoryAccountStatus
+	Load(profileID string) (map[string]appcashflowbill.CategoryAccount, error)
+}
+
 func NewXLSXCashflowProcessor(
 	fileStore dfile.FileStore,
 	taxAccounts CashflowTaxAccountProvider,
+	categoryAccounts CashflowCategoryAccountProvider,
 ) *XLSXCashflowProcessor {
 	return &XLSXCashflowProcessor{
-		fileStore:   fileStore,
-		taxAccounts: taxAccounts,
+		fileStore:        fileStore,
+		taxAccounts:      taxAccounts,
+		categoryAccounts: categoryAccounts,
 	}
 }
 

@@ -481,6 +481,78 @@ func buildCashflowMappingFields() []FormFieldSpec {
 	}
 }
 
+func buildCashflowBillSections(isReceive bool) []FormSectionSpec {
+	accountLabel := "Payment Account"
+	accountHelpText := "Akun payment utama untuk file MYOB."
+	outputDefault := "pay_bills"
+	if isReceive {
+		accountLabel = "Deposit Account"
+		accountHelpText = "Akun deposit utama untuk file MYOB."
+		outputDefault = "receive_payments"
+	}
+
+	return []FormSectionSpec{
+		{
+			Key:     "source",
+			Title:   "Sumber Data",
+			Columns: 2,
+			Fields: []FormFieldSpec{
+				{
+					Key:          "sheetName",
+					Kind:         FormFieldKindSelect,
+					Label:        "Sheet",
+					Required:     true,
+					DefaultValue: "",
+					HelpText:     "Pilih dokumen cashflow terlebih dahulu untuk melihat sheet yang tersedia.",
+					State: FormFieldStateSpec{
+						Visible:  true,
+						Disabled: true,
+					},
+				},
+				buildHeaderRowField("Baris Header", "Nomor baris header pada sheet yang dipilih."),
+			},
+		},
+		{
+			Key:     "output",
+			Title:   "Output",
+			Columns: 2,
+			Fields: []FormFieldSpec{
+				{
+					Key:          "outputFilename",
+					Kind:         FormFieldKindText,
+					Label:        "Nama Output",
+					Required:     true,
+					DefaultValue: outputDefault,
+					Placeholder:  outputDefault,
+					HelpText:     "Tanpa ekstensi file.",
+					State:        FormFieldStateSpec{Visible: true},
+				},
+				{
+					Key:          "chequeAccount",
+					Kind:         FormFieldKindText,
+					Label:        accountLabel,
+					Required:     true,
+					DefaultValue: "12021",
+					HelpText:     accountHelpText,
+					State:        FormFieldStateSpec{Visible: true},
+				},
+			},
+		},
+		{
+			Key:     "mapping",
+			Title:   "Mapping Header",
+			Columns: 2,
+			Fields: []FormFieldSpec{
+				{Key: "date", Kind: FormFieldKindText, Label: "Tanggal", Required: true, DefaultValue: "date", State: FormFieldStateSpec{Visible: true}},
+				{Key: "category", Kind: FormFieldKindText, Label: "Category", Required: true, DefaultValue: "Category", State: FormFieldStateSpec{Visible: true}},
+				{Key: "information", Kind: FormFieldKindText, Label: "Keterangan", Required: true, DefaultValue: "Note", State: FormFieldStateSpec{Visible: true}},
+				{Key: "partyName", Kind: FormFieldKindText, Label: "Nama Customer / Supplier", Required: true, DefaultValue: "nama customer / supplier", State: FormFieldStateSpec{Visible: true}},
+				{Key: "total", Kind: FormFieldKindText, Label: "Total", Required: true, DefaultValue: "idr", State: FormFieldStateSpec{Visible: true}},
+			},
+		},
+	}
+}
+
 func buildCashflowVariantValues(isReceive bool, variant string) map[string]any {
 	values := map[string]any{
 		"sheetName":             "",
@@ -573,10 +645,9 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 					},
 					Selection: ActionSelectionSpec{
 						Mode:           "manual",
-						AllowCheckAll:  false,
+						AllowCheckAll:  true,
 						AllowedStatus:  []string{"ready", "warning"},
 						MinDocumentCnt: 1,
-						MaxDocumentCnt: 1,
 					},
 					Form: &FormSpec{
 						Title: "Pengaturan Export",
@@ -656,10 +727,9 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 					},
 					Selection: ActionSelectionSpec{
 						Mode:           "manual",
-						AllowCheckAll:  false,
+						AllowCheckAll:  true,
 						AllowedStatus:  []string{"ready", "warning"},
 						MinDocumentCnt: 1,
-						MaxDocumentCnt: 1,
 					},
 					Form: &FormSpec{
 						Title: "Pengaturan Rename",
@@ -890,6 +960,136 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 					MasterData: map[string]ActionMasterDataSpec{
 						"tax": {
 							Relative:     "tax_accounts.csv",
+							LookupKey:    "name",
+							RequiredCols: []string{"name", "account"},
+						},
+					},
+					Outputs: []ActionOutputSpec{
+						{
+							Kind:       "file",
+							MimeType:   "text/plain",
+							Ext:        "txt",
+							DownloadOK: true,
+						},
+					},
+				},
+				{
+					CollectionKind: string(collectionKind),
+					ActionType:     "cashflow_to_pay_bills",
+					Label:          "Pay Bills",
+					Description:    "Konversi cashflow ke format MYOB Pay Bills.",
+					State:          ActionStateSpec{Enabled: true},
+					Presentation:   ActionPresentationSpec{Mode: "inline", Width: "xl"},
+					Selection: ActionSelectionSpec{
+						Mode:           "manual",
+						AllowCheckAll:  true,
+						AllowedStatus:  []string{"ready", "warning"},
+						MinDocumentCnt: 1,
+					},
+					Form: &FormSpec{
+						Title:       "Pengaturan Pay Bills",
+						Description: "Atur workbook cashflow, upload snapshot ledger, lalu sesuaikan mapping yang dibutuhkan.",
+						Sections:    buildCashflowBillSections(false),
+					},
+					ArtifactInputs: []ActionArtifactInputSpec{
+						{
+							Key:              "ledgerSnapshotRef",
+							ValueType:        "ledger_snapshot_txt",
+							Label:            "Purchase / Supplier Detail",
+							Required:         true,
+							Description:      "Upload export Purchase / Supplier Detail (.txt) dari MYOB untuk mencocokkan supplier dan bill outstanding.",
+							AcceptExtensions: []string{".txt"},
+							AcceptMIMETypes:  []string{"text/plain"},
+						},
+					},
+					Detail: &ActionDetailSpec{
+						Summary: "Mengubah sheet cashflow menjadi file MYOB Pay Bills (.txt).",
+						Bullets: []string{
+							"Hanya row dengan total negatif yang akan diproses.",
+							"Category harus tersedia di registry Category Accounts.",
+							"Snapshot ledger .txt wajib di-upload di action ini untuk mencocokkan supplier dan bill outstanding.",
+						},
+					},
+					Requirements: []ActionRequirementSpec{
+						{
+							Key:      "cashflowBillDefaultProfile",
+							Label:    "Default Profil Cashflow Pay Bills",
+							Required: true,
+						},
+						{
+							Key:      "cashflowCategoryAccounts",
+							Label:    "Category Accounts",
+							Required: true,
+						},
+					},
+					MasterData: map[string]ActionMasterDataSpec{
+						"category": {
+							Relative:     "category_accounts.csv",
+							LookupKey:    "name",
+							RequiredCols: []string{"name", "account"},
+						},
+					},
+					Outputs: []ActionOutputSpec{
+						{
+							Kind:       "file",
+							MimeType:   "text/plain",
+							Ext:        "txt",
+							DownloadOK: true,
+						},
+					},
+				},
+				{
+					CollectionKind: string(collectionKind),
+					ActionType:     "cashflow_to_receive_payments",
+					Label:          "Receive Payments",
+					Description:    "Konversi cashflow ke format MYOB Receive Payments.",
+					State:          ActionStateSpec{Enabled: true},
+					Presentation:   ActionPresentationSpec{Mode: "inline", Width: "xl"},
+					Selection: ActionSelectionSpec{
+						Mode:           "manual",
+						AllowCheckAll:  true,
+						AllowedStatus:  []string{"ready", "warning"},
+						MinDocumentCnt: 1,
+					},
+					Form: &FormSpec{
+						Title:       "Pengaturan Receive Payments",
+						Description: "Atur workbook cashflow, upload snapshot ledger, lalu sesuaikan mapping yang dibutuhkan.",
+						Sections:    buildCashflowBillSections(true),
+					},
+					ArtifactInputs: []ActionArtifactInputSpec{
+						{
+							Key:              "ledgerSnapshotRef",
+							ValueType:        "ledger_snapshot_txt",
+							Label:            "Sales / Customer Detail",
+							Required:         true,
+							Description:      "Upload export Sales / Customer Detail (.txt) dari MYOB untuk mencocokkan customer dan invoice outstanding.",
+							AcceptExtensions: []string{".txt"},
+							AcceptMIMETypes:  []string{"text/plain"},
+						},
+					},
+					Detail: &ActionDetailSpec{
+						Summary: "Mengubah sheet cashflow menjadi file MYOB Receive Payments (.txt).",
+						Bullets: []string{
+							"Hanya row dengan total positif yang akan diproses.",
+							"Category harus tersedia di registry Category Accounts.",
+							"Snapshot ledger .txt wajib di-upload di action ini untuk mencocokkan customer dan invoice outstanding.",
+						},
+					},
+					Requirements: []ActionRequirementSpec{
+						{
+							Key:      "cashflowBillDefaultProfile",
+							Label:    "Default Profil Cashflow Receive Payments",
+							Required: true,
+						},
+						{
+							Key:      "cashflowCategoryAccounts",
+							Label:    "Category Accounts",
+							Required: true,
+						},
+					},
+					MasterData: map[string]ActionMasterDataSpec{
+						"category": {
+							Relative:     "category_accounts.csv",
 							LookupKey:    "name",
 							RequiredCols: []string{"name", "account"},
 						},

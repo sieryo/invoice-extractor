@@ -56,3 +56,23 @@ func CashflowSpendMoneyConfigJSON(rootDir string, profileID string) string {
 func CashflowReceiveMoneyConfigJSON(rootDir string, profileID string) string {
 	return filepath.Join(CashflowConfigDir(rootDir, profileID), "receive_money.json")
 }
+
+func CashflowBillsConfigDir(rootDir string, profileID string) string {
+	return filepath.Join(ProfileDir(rootDir, profileID), "cashflow_bills")
+}
+
+func CashflowPayBillsConfigJSON(rootDir string, profileID string) string {
+	return filepath.Join(CashflowBillsConfigDir(rootDir, profileID), "pay_bills.json")
+}
+
+func CashflowReceivePaymentsConfigJSON(rootDir string, profileID string) string {
+	return filepath.Join(CashflowBillsConfigDir(rootDir, profileID), "receive_payments.json")
+}
+
+func CashflowCategoryAccountsCSV(rootDir string, profileID string) string {
+	return filepath.Join(ProfileDir(rootDir, profileID), "category_accounts.csv")
+}
+
+func CashflowCategoryAccountsUploadTempXLSX(rootDir string, profileID string) string {
+	return filepath.Join(ProfileDir(rootDir, profileID), "category_accounts_upload.xlsx")
+}

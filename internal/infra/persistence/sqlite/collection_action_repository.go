@@ -236,6 +236,37 @@ func (r *CollectionActionRepository) ListActionOutputs(
 	return out, rows.Err()
 }
 
+func (r *CollectionActionRepository) ListActionArtifacts(
+	ctx context.Context,
+	collectionID string,
+	actionType string,
+) ([]*action.CollectionActionArtifact, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT
+			id, user_id, collection_id, action_type, artifact_key,
+			object_ref, original_name, mime_type, size_bytes, preview_json,
+			created_at, updated_at
+		FROM collection_action_artifacts
+		WHERE collection_id = ?
+		  AND action_type = ?
+		ORDER BY created_at DESC, id DESC
+	`, collectionID, actionType)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make([]*action.CollectionActionArtifact, 0)
+	for rows.Next() {
+		item, scanErr := scanCollectionActionArtifact(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		out = append(out, item)
+	}
+	return out, rows.Err()
+}
+
 func (r *CollectionActionRepository) SetActionRunning(
 	ctx context.Context,
 	actionID string,
@@ -363,6 +394,33 @@ func (r *CollectionActionRepository) AddActionOutputs(
 	}
 
 	return tx.Commit()
+}
+
+func (r *CollectionActionRepository) CreateActionArtifact(
+	ctx context.Context,
+	artifact *action.CollectionActionArtifact,
+) error {
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO collection_action_artifacts (
+			id, user_id, collection_id, action_type, artifact_key,
+			object_ref, original_name, mime_type, size_bytes, preview_json,
+			created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		artifact.ID,
+		artifact.UserID,
+		artifact.CollectionID,
+		artifact.ActionType,
+		artifact.ArtifactKey,
+		artifact.ObjectRef,
+		artifact.OriginalName,
+		artifact.MimeType,
+		artifact.SizeBytes,
+		artifact.PreviewJSON,
+		artifact.CreatedAt,
+		artifact.UpdatedAt,
+	)
+	return err
 }
 
 func (r *CollectionActionRepository) ListSnapshotDocuments(
@@ -686,4 +744,38 @@ func scanCollectionActionOutput(row rowScanner) (*action.CollectionActionOutput,
 	}
 
 	return &output, nil
+}
+
+func scanCollectionActionArtifact(row rowScanner) (*action.CollectionActionArtifact, error) {
+	var (
+		artifact   action.CollectionActionArtifact
+		mimeRaw    sql.NullString
+		previewRaw []byte
+	)
+
+	if err := row.Scan(
+		&artifact.ID,
+		&artifact.UserID,
+		&artifact.CollectionID,
+		&artifact.ActionType,
+		&artifact.ArtifactKey,
+		&artifact.ObjectRef,
+		&artifact.OriginalName,
+		&mimeRaw,
+		&artifact.SizeBytes,
+		&previewRaw,
+		&artifact.CreatedAt,
+		&artifact.UpdatedAt,
+	); err != nil {
+		return nil, err
+	}
+
+	if mimeRaw.Valid {
+		artifact.MimeType = mimeRaw.String
+	}
+	if len(previewRaw) > 0 && json.Valid(previewRaw) {
+		artifact.PreviewJSON = previewRaw
+	}
+
+	return &artifact, nil
 }

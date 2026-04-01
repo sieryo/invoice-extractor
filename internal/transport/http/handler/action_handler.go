@@ -321,6 +321,48 @@ func (h *ActionHandler) DownloadActionOutput(c *fiber.Ctx) error {
 	return c.Send(data)
 }
 
+func (h *ActionHandler) DownloadActionArtifact(c *fiber.Ctx) error {
+	ctx := c.Context()
+	userID, ok := c.Locals("userId").(string)
+	if !ok {
+		return fiber.ErrUnauthorized
+	}
+
+	collectionID := strings.TrimSpace(c.Params("id"))
+	ref := strings.TrimSpace(c.Query("ref"))
+	if collectionID == "" || ref == "" {
+		return SendError(c, fiber.StatusBadRequest, "collection id and ref are required")
+	}
+	if strings.Contains(ref, "..") || strings.HasPrefix(ref, "/") || strings.HasPrefix(ref, "\\") {
+		return SendError(c, fiber.StatusBadRequest, "invalid artifact ref")
+	}
+
+	if _, err := h.actionService.GetActionSpec(ctx, userID, collectionID); err != nil {
+		switch {
+		case errors.Is(err, dcollection.ErrCollectionNotFound):
+			return SendError(c, fiber.StatusNotFound, "collection not found")
+		case errors.Is(err, dcollection.ErrInvalidNodeType):
+			return SendError(c, fiber.StatusBadRequest, "target must be a typed collection")
+		default:
+			return SendError(c, fiber.StatusInternalServerError, err.Error())
+		}
+	}
+
+	data, err := h.fileStore.ReadArchive(ctx, collectionID, ref)
+	if err != nil {
+		return SendError(c, fiber.StatusNotFound, "artifact file not found")
+	}
+
+	filename := filepath.Base(ref)
+	if underscore := strings.Index(filename, "_"); underscore >= 0 && underscore < len(filename)-1 {
+		filename = filename[underscore+1:]
+	}
+	contentType := http.DetectContentType(data)
+	c.Set("Content-Type", contentType)
+	c.Set("Content-Disposition", "attachment; filename=\""+filename+"\"")
+	return c.Send(data)
+}
+
 type UploadActionArtifactResponse struct {
 	ActionType   string `json:"actionType"`
 	ArtifactKey  string `json:"artifactKey"`
@@ -328,6 +370,7 @@ type UploadActionArtifactResponse struct {
 	OriginalName string `json:"originalName"`
 	MimeType     string `json:"mimeType"`
 	SizeBytes    int64  `json:"sizeBytes"`
+	Preview      any    `json:"preview,omitempty"`
 }
 
 func (h *ActionHandler) UploadActionArtifact(c *fiber.Ctx) error {
@@ -431,6 +474,27 @@ func (h *ActionHandler) UploadActionArtifact(c *fiber.Ctx) error {
 		return SendError(c, fiber.StatusInternalServerError, "failed to save artifact file")
 	}
 
+	artifact, saveErr := h.actionService.SaveActionArtifact(
+		ctx,
+		userID,
+		collectionID,
+		actionType,
+		artifactSpec,
+		originalName,
+		mimeType,
+		int64(len(data)),
+		ref,
+		data,
+	)
+	if saveErr != nil {
+		return SendError(c, fiber.StatusInternalServerError, saveErr.Error())
+	}
+
+	var preview any
+	if len(artifact.PreviewJSON) > 0 {
+		_ = json.Unmarshal(artifact.PreviewJSON, &preview)
+	}
+
 	return SendSuccess(c, fiber.StatusOK, UploadActionArtifactResponse{
 		ActionType:   actionType,
 		ArtifactKey:  artifactKey,
@@ -438,7 +502,58 @@ func (h *ActionHandler) UploadActionArtifact(c *fiber.Ctx) error {
 		OriginalName: originalName,
 		MimeType:     mimeType,
 		SizeBytes:    int64(len(data)),
+		Preview:      preview,
 	}, "artifact uploaded")
+}
+
+func (h *ActionHandler) ListLatestActionArtifacts(c *fiber.Ctx) error {
+	ctx := c.Context()
+	userID, ok := c.Locals("userId").(string)
+	if !ok {
+		return fiber.ErrUnauthorized
+	}
+
+	collectionID := strings.TrimSpace(c.Params("id"))
+	actionType := strings.TrimSpace(c.Query("actionType"))
+	if collectionID == "" || actionType == "" {
+		return SendError(c, fiber.StatusBadRequest, "collection id and actionType are required")
+	}
+
+	items, err := h.actionService.GetLatestActionArtifacts(ctx, userID, collectionID, actionType)
+	if err != nil {
+		switch {
+		case errors.Is(err, dcollection.ErrCollectionNotFound):
+			return SendError(c, fiber.StatusNotFound, "collection not found")
+		case errors.Is(err, dcollection.ErrInvalidNodeType):
+			return SendError(c, fiber.StatusBadRequest, "target must be a typed collection")
+		default:
+			return SendError(c, fiber.StatusInternalServerError, err.Error())
+		}
+	}
+
+	payload := make([]fiber.Map, 0, len(items))
+	for _, item := range items {
+		var preview any
+		if len(item.PreviewJSON) > 0 {
+			_ = json.Unmarshal(item.PreviewJSON, &preview)
+		}
+		payload = append(payload, fiber.Map{
+			"id":           item.ID,
+			"userId":       item.UserID,
+			"collectionId": item.CollectionID,
+			"actionType":   item.ActionType,
+			"artifactKey":  item.ArtifactKey,
+			"objectRef":    item.ObjectRef,
+			"originalName": item.OriginalName,
+			"mimeType":     item.MimeType,
+			"sizeBytes":    item.SizeBytes,
+			"preview":      preview,
+			"createdAt":    item.CreatedAt,
+			"updatedAt":    item.UpdatedAt,
+		})
+	}
+
+	return SendSuccess(c, fiber.StatusOK, payload, "latest action artifacts retrieved")
 }
 
 func findArtifactInputSpec(
