@@ -86,3 +86,11 @@ func (r *ProfileRepository) List() ([]profile.Profile, error) {
 	return profiles, nil
 }
 
+func (r *ProfileRepository) Update(p *profile.Profile) error {
+	_, err := r.db.Exec(`
+		UPDATE users
+		SET name = ?, alias = ?, cutoff_date = ?, npwp = ?, tku_id = ?
+		WHERE id = ?
+	`, p.Name, p.Alias, p.CutoffDate, p.NPWP, p.TKUID, p.ID)
+	return err
+}

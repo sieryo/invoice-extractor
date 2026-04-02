@@ -230,9 +230,18 @@ type CollectionSpec struct {
 	SourceFormat   SourceFormat   `json:"sourceFormat"`
 	Label          string         `json:"label"`
 	Description    string         `json:"description,omitempty"`
+	Availability   *CollectionAvailabilitySpec `json:"availability,omitempty"`
 	Upload         UploadRuleSpec `json:"upload"`
 	Ingest         IngestRuleSpec `json:"ingest"`
 	Actions        []ActionSpec   `json:"actions"`
+}
+
+type CollectionAvailabilitySpec struct {
+	Enabled   bool   `json:"enabled"`
+	ModuleKey string `json:"moduleKey,omitempty"`
+	Label     string `json:"label,omitempty"`
+	Code      string `json:"code,omitempty"`
+	Message   string `json:"message,omitempty"`
 }
 
 type CreateCollectionSourceFormatSpec struct {
@@ -335,7 +344,7 @@ func buildCashflowSections(isReceive bool) []FormSectionSpec {
 		{
 			Key:     "source",
 			Title:   "Sumber Data",
-			Columns: 3,
+			Columns: 2,
 			Fields: []FormFieldSpec{
 				{
 					Key:          "sheetName",
@@ -350,17 +359,6 @@ func buildCashflowSections(isReceive bool) []FormSectionSpec {
 					},
 				},
 				buildHeaderRowField("Baris Header", "Nomor baris header pada sheet yang dipilih."),
-				{
-					Key:         "startingChequeNumber",
-					Kind:        FormFieldKindNumber,
-					Label:       map[bool]string{true: "Nomor Awal ID", false: "Nomor Awal Cheque"}[isReceive],
-					Required:    false,
-					HelpText:    map[bool]string{true: "Opsional. Kosongkan jika nomor ID ingin diisi otomatis nanti.", false: "Opsional. Kosongkan jika nomor cheque ingin dibuat otomatis oleh MYOB."}[isReceive],
-					Placeholder: "17500",
-					State: FormFieldStateSpec{
-						Visible: true,
-					},
-				},
 			},
 		},
 		{
@@ -404,7 +402,7 @@ func buildCashflowSections(isReceive bool) []FormSectionSpec {
 func buildCashflowParameterSection() FormSectionSpec {
 	return FormSectionSpec{
 		Key:     "parameters",
-		Title:   "Default Sumber & Parameter",
+		Title:   specutil.ParameterActionSectionTitle,
 		Columns: 2,
 		Fields: []FormFieldSpec{
 			{
@@ -557,7 +555,6 @@ func buildCashflowVariantValues(isReceive bool, variant string) map[string]any {
 	values := map[string]any{
 		"sheetName":             "",
 		"headerRowNumber":       "1",
-		"startingChequeNumber":  "",
 		"outputFilename":        map[bool]string{true: "receive_money", false: "spend_money"}[isReceive],
 		"chequeAccount":         "12021",
 		"remarkDelimiter":       "*",
@@ -736,7 +733,7 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 						Sections: []FormSectionSpec{
 							{
 								Key:     "main",
-								Title:   "Template Nama File",
+								Title:   specutil.ParameterActionSectionTitle,
 								Columns: 1,
 								Fields: []FormFieldSpec{
 									{
@@ -1312,7 +1309,7 @@ func buildBukpotCollectionSpec(
 			Sections: []FormSectionSpec{
 				{
 					Key:     "main",
-					Title:   "Template Nama File",
+					Title:   specutil.ParameterActionSectionTitle,
 					Columns: 1,
 					Fields: []FormFieldSpec{
 						{

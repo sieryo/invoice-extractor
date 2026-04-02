@@ -6,4 +6,5 @@ type Session struct {
 	ID        string
 	ProfileID string
 	ExpiresAt time.Time
+	CreatedAt time.Time
 }

@@ -28,6 +28,7 @@ import (
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/template/seamakeup"
 	"github.com/sieryo/invoice-extractor/internal/app/job"
 	jobapp "github.com/sieryo/invoice-extractor/internal/app/job"
+	"github.com/sieryo/invoice-extractor/internal/app/moduleactivation"
 	"github.com/sieryo/invoice-extractor/internal/config"
 	"github.com/sieryo/invoice-extractor/internal/domain/file"
 	jobdomain "github.com/sieryo/invoice-extractor/internal/domain/job"
@@ -58,6 +59,7 @@ type App struct {
 	BukpotRequestConfigService   *appbukpot.RequestConfigService
 	BukpotActionProfileService   *appbukpot.ActionProfileService
 	SettingsService              *config.SettingsService
+	ModuleActivationService      *moduleactivation.Service
 
 	TemplateRegistryService *template.TemplateRegistryService
 	DocumentProcessors      *document.Registry
@@ -92,6 +94,9 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string, cfg config.Config) *Ap
 
 	authService := auth.NewService(profileRepo, sessionRepo, logger, rootDir)
 	settingsService := config.NewSettingsService(rootDir, cfg.Features)
+	moduleActivationService := moduleactivation.NewService(rootDir, moduleactivation.RuntimeFeatures{
+		EnableCashflowXLSX: cfg.Features.EnableCashflowXLSX,
+	})
 	buyerRegistryService := buyer.NewBuyerRegistryService(rootDir)
 	bukpotRequestConfigService := appbukpot.NewRequestConfigService(rootDir)
 	bukpotActionProfileService := appbukpot.NewActionProfileService(rootDir)
@@ -185,6 +190,7 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string, cfg config.Config) *Ap
 		BukpotRequestConfigService:   bukpotRequestConfigService,
 		BukpotActionProfileService:   bukpotActionProfileService,
 		SettingsService:              settingsService,
+		ModuleActivationService:      moduleActivationService,
 		TemplateRegistryService:      templateRegistryService,
 		DocumentProcessors:           documentRegistry,
 		Features:                     cfg.Features,

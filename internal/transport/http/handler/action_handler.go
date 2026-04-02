@@ -14,18 +14,21 @@ import (
 	"github.com/google/uuid"
 	"github.com/sieryo/invoice-extractor/internal/app/action"
 	"github.com/sieryo/invoice-extractor/internal/app/document"
+	"github.com/sieryo/invoice-extractor/internal/app/moduleactivation"
 	dcollection "github.com/sieryo/invoice-extractor/internal/domain/collection"
 	"github.com/sieryo/invoice-extractor/internal/domain/file"
 )
 
 type ActionHandler struct {
 	actionService *action.Service
+	modules       *moduleactivation.Service
 	fileStore     file.FileStore
 }
 
-func NewActionHandler(actionService *action.Service, fileStore file.FileStore) *ActionHandler {
+func NewActionHandler(actionService *action.Service, modules *moduleactivation.Service, fileStore file.FileStore) *ActionHandler {
 	return &ActionHandler{
 		actionService: actionService,
+		modules:       modules,
 		fileStore:     fileStore,
 	}
 }
@@ -206,6 +209,7 @@ func (h *ActionHandler) GetActionSpec(c *fiber.Ctx) error {
 			return SendError(c, fiber.StatusInternalServerError, err.Error())
 		}
 	}
+	h.decorateCollectionAvailability(userID, spec)
 
 	return SendSuccess(c, fiber.StatusOK, spec, "action spec retrieved")
 }
@@ -635,4 +639,23 @@ func sanitizeArtifactFilename(raw string) string {
 		buf.WriteByte(ch)
 	}
 	return buf.String()
+}
+
+func (h *ActionHandler) decorateCollectionAvailability(profileID string, spec *document.CollectionSpec) {
+	if h.modules == nil || spec == nil {
+		return
+	}
+
+	enabled, moduleSpec, err := h.modules.IsEnabledForCollectionKind(profileID, string(spec.CollectionKind))
+	if err != nil || enabled {
+		return
+	}
+
+	spec.Availability = &document.CollectionAvailabilitySpec{
+		Enabled:   false,
+		ModuleKey: moduleSpec.Key,
+		Label:     moduleSpec.Label,
+		Code:      "MODULE_DISABLED",
+		Message:   "Modul ini sedang dinonaktifkan untuk profil aktif. Collection lama tetap bisa dibuka, tetapi modul tidak lagi muncul di create collection dan halaman konfigurasi.",
+	}
 }

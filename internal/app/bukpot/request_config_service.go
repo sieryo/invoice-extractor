@@ -5,9 +5,9 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
+	"github.com/sieryo/invoice-extractor/internal/app/configlayout"
 	"github.com/sieryo/invoice-extractor/internal/app/specutil"
 	"github.com/sieryo/invoice-extractor/internal/profilepath"
 )
@@ -15,11 +15,12 @@ import (
 const bukpotRequestConfigSchemaVersion = "1"
 
 type RequestConfigSpec struct {
-	SchemaVersion    string                   `json:"schemaVersion"`
-	Defaults         RequestConfigDefaults    `json:"defaults"`
-	HeaderRowOptions []int                    `json:"headerRowOptions,omitempty"`
-	DefaultFields    []RequestConfigFieldSpec `json:"defaultFields,omitempty"`
-	Fields           []RequestConfigFieldSpec `json:"fields"`
+	SchemaVersion    string                     `json:"schemaVersion"`
+	Defaults         RequestConfigDefaults      `json:"defaults"`
+	HeaderRowOptions []int                      `json:"headerRowOptions,omitempty"`
+	Sections         []configlayout.SectionSpec `json:"sections,omitempty"`
+	DefaultFields    []RequestConfigFieldSpec   `json:"defaultFields,omitempty"`
+	Fields           []RequestConfigFieldSpec   `json:"fields"`
 }
 
 type RequestConfigDefaults struct {
@@ -28,13 +29,13 @@ type RequestConfigDefaults struct {
 }
 
 type RequestConfigFieldSpec struct {
-	Key          string `json:"key"`
-	Label        string `json:"label"`
-	Required     bool   `json:"required"`
-	DefaultValue string `json:"defaultValue,omitempty"`
-	Description  string `json:"description,omitempty"`
-	Kind         string `json:"kind,omitempty"`
-	Group        string `json:"group,omitempty"`
+	Key          string                     `json:"key"`
+	Label        string                     `json:"label"`
+	Required     bool                       `json:"required"`
+	DefaultValue string                     `json:"defaultValue,omitempty"`
+	Description  string                     `json:"description,omitempty"`
+	Kind         string                     `json:"kind,omitempty"`
+	Group        string                     `json:"group,omitempty"`
 	Options      []RequestConfigFieldOption `json:"options,omitempty"`
 }
 
@@ -83,22 +84,45 @@ func (s *RequestConfigService) Spec() RequestConfigSpec {
 			HeaderRowNumber: 1,
 		},
 		HeaderRowOptions: specutil.HeaderRowNumbers(10),
+		Sections: []configlayout.SectionSpec{
+			specutil.ParameterActionSection(
+				"Parameter default yang akan dipakai saat action dibuka.",
+				2,
+				"sheetName",
+				"headerRowNumber",
+			),
+			specutil.MappingHeaderSection(
+				"Nama header source yang akan dipakai sebagai nilai awal action.",
+				2,
+				"entity",
+				"settlementDate",
+				"npwp",
+				"nitku",
+				"facility",
+				"taxObjectCode",
+				"taxBase",
+				"withholdingRate",
+				"taxInvoiceNumber",
+				"referenceNumber",
+				"referenceDate",
+			),
+		},
 		DefaultFields: []RequestConfigFieldSpec{
-			{Key: "sheetName", Label: "Sheet Default", Required: false, DefaultValue: "", Description: "Nilai awal sheet saat action dibuka.", Kind: "text", Group: "source"},
-			{Key: "headerRowNumber", Label: "Baris Header Default", Required: true, DefaultValue: "1", Description: "Baris header default untuk source Excel.", Kind: "select", Group: "source", Options: buildHeaderRowRequestOptions(10)},
+			requestTextField("sheetName", "Sheet Default", false, "", "Nilai awal sheet saat action dibuka.", "source"),
+			requestSelectField("headerRowNumber", "Baris Header Default", true, "1", "Baris header default untuk source Excel.", "source", buildHeaderRowRequestOptions(10)),
 		},
 		Fields: []RequestConfigFieldSpec{
-			{Key: "entity", Label: "Entity", Required: true, DefaultValue: "Entity", Description: "Dipakai untuk filter alias profile.", Kind: "text", Group: "mapping"},
-			{Key: "settlementDate", Label: "Settlement Date", Required: true, DefaultValue: "Settlemet Date", Description: "Dipakai untuk masa pajak, tahun pajak, dan tanggal pemotongan.", Kind: "text", Group: "mapping"},
-			{Key: "npwp", Label: "NPWP", Required: true, DefaultValue: "NPWP", Description: "NPWP penerima penghasilan dari source Excel.", Kind: "text", Group: "mapping"},
-			{Key: "nitku", Label: "NITKU", Required: true, DefaultValue: "NITKU", Description: "ID TKU penerima penghasilan.", Kind: "text", Group: "mapping"},
-			{Key: "facility", Label: "Fasilitas", Required: false, DefaultValue: "Fasilitas", Description: "Dipakai jika logic fasilitas dan tarif aktif.", Kind: "text", Group: "mapping"},
-			{Key: "taxObjectCode", Label: "Kode Objek Pajak", Required: true, DefaultValue: "Kode Objek Pajak", Description: "Kode objek pajak untuk output Coretax.", Kind: "text", Group: "mapping"},
-			{Key: "taxBase", Label: "DPP", Required: true, DefaultValue: "(Rp)Total Invoice (Exc VAT)", Description: "Nilai dasar pengenaan pajak.", Kind: "text", Group: "mapping"},
-			{Key: "withholdingRate", Label: "Tarif / WHT", Required: true, DefaultValue: "WHT", Description: "Tarif pemotongan dari source Excel.", Kind: "text", Group: "mapping"},
-			{Key: "taxInvoiceNumber", Label: "Faktur Pajak No", Required: false, DefaultValue: "Faktur Pajak No", Description: "Dipakai untuk jenis dan nomor dokumen referensi.", Kind: "text", Group: "mapping"},
-			{Key: "referenceNumber", Label: "Invoice / Kwitansi No", Required: true, DefaultValue: "Invoice / Kwitansi No", Description: "Fallback nomor dokumen referensi jika faktur pajak kosong.", Kind: "text", Group: "mapping"},
-			{Key: "referenceDate", Label: "FP DATE", Required: true, DefaultValue: "FP DATE", Description: "Tanggal dokumen referensi.", Kind: "text", Group: "mapping"},
+			requestTextField("entity", "Entity", true, "Entity", "Dipakai untuk filter alias profile.", "mapping"),
+			requestTextField("settlementDate", "Settlement Date", true, "Settlemet Date", "Dipakai untuk masa pajak, tahun pajak, dan tanggal pemotongan.", "mapping"),
+			requestTextField("npwp", "NPWP", true, "NPWP", "NPWP penerima penghasilan dari source Excel.", "mapping"),
+			requestTextField("nitku", "NITKU", true, "NITKU", "ID TKU penerima penghasilan.", "mapping"),
+			requestTextField("facility", "Fasilitas", false, "Fasilitas", "Dipakai jika logic fasilitas dan tarif aktif.", "mapping"),
+			requestTextField("taxObjectCode", "Kode Objek Pajak", true, "Kode Objek Pajak", "Kode objek pajak untuk output Coretax.", "mapping"),
+			requestTextField("taxBase", "DPP", true, "(Rp)Total Invoice (Exc VAT)", "Nilai dasar pengenaan pajak.", "mapping"),
+			requestTextField("withholdingRate", "Tarif / WHT", true, "WHT", "Tarif pemotongan dari source Excel.", "mapping"),
+			requestTextField("taxInvoiceNumber", "Faktur Pajak No", false, "Faktur Pajak No", "Dipakai untuk jenis dan nomor dokumen referensi.", "mapping"),
+			requestTextField("referenceNumber", "Invoice / Kwitansi No", true, "Invoice / Kwitansi No", "Fallback nomor dokumen referensi jika faktur pajak kosong.", "mapping"),
+			requestTextField("referenceDate", "FP DATE", true, "FP DATE", "Tanggal dokumen referensi.", "mapping"),
 		},
 	}
 }
@@ -244,13 +268,47 @@ func (s *RequestConfigService) normalizeConfig(cfg RequestConfig) RequestConfig 
 }
 
 func buildHeaderRowRequestOptions(max int) []RequestConfigFieldOption {
-	options := make([]RequestConfigFieldOption, 0, max)
-	for _, value := range specutil.HeaderRowNumbers(max) {
-		label := strings.TrimSpace(strconv.Itoa(value))
-		options = append(options, RequestConfigFieldOption{
-			Label: label,
-			Value: label,
-		})
+	return specutil.IntOptions(max, func(label string, value string) RequestConfigFieldOption {
+		return RequestConfigFieldOption{Label: label, Value: value}
+	})
+}
+
+func requestTextField(
+	key string,
+	label string,
+	required bool,
+	defaultValue string,
+	description string,
+	group string,
+) RequestConfigFieldSpec {
+	return RequestConfigFieldSpec{
+		Key:          key,
+		Label:        label,
+		Required:     required,
+		DefaultValue: defaultValue,
+		Description:  description,
+		Kind:         "text",
+		Group:        group,
 	}
-	return options
+}
+
+func requestSelectField(
+	key string,
+	label string,
+	required bool,
+	defaultValue string,
+	description string,
+	group string,
+	options []RequestConfigFieldOption,
+) RequestConfigFieldSpec {
+	return RequestConfigFieldSpec{
+		Key:          key,
+		Label:        label,
+		Required:     required,
+		DefaultValue: defaultValue,
+		Description:  description,
+		Kind:         "select",
+		Group:        group,
+		Options:      options,
+	}
 }

@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/sieryo/invoice-extractor/internal/app/configlayout"
 	"github.com/sieryo/invoice-extractor/internal/app/specutil"
 	"github.com/sieryo/invoice-extractor/internal/profilepath"
 )
@@ -29,6 +30,7 @@ type ProfileConfigSpec struct {
 	Defaults         ProfileConfigDefaults      `json:"defaults"`
 	HeaderRowOptions []int                      `json:"headerRowOptions,omitempty"`
 	FormatOptions    []ProfileConfigFormatSpec  `json:"formatOptions,omitempty"`
+	Sections         []configlayout.SectionSpec `json:"sections,omitempty"`
 	Fields           []ProfileConfigFieldSpec   `json:"fields"`
 	Variants         []ProfileConfigVariantSpec `json:"variants"`
 }
@@ -195,16 +197,20 @@ func buildProfileConfigSpec(key ProfileConfigKey) ProfileConfigSpec {
 			CashflowFormat: "default",
 		},
 		HeaderRowOptions: specutil.HeaderRowNumbers(10),
+		Sections: []configlayout.SectionSpec{
+			specutil.ParameterActionSection("Parameter default yang akan dipakai saat action dibuka.", 2, "sheetName", "headerRowNumber", "outputFilename", "chequeAccount"),
+			specutil.MappingHeaderSection("Nama header source untuk membaca kolom cashflow.", 2, "date", "category", "information", "partyName", "total"),
+		},
 		Fields: []ProfileConfigFieldSpec{
-			{Key: "sheetName", Label: "Sheet Default", Required: false, DefaultValue: "", Description: "Nilai awal sheet untuk action ini.", Group: "source"},
-			{Key: "headerRowNumber", Label: "Baris Header Default", Required: true, DefaultValue: "1", Description: "Baris header default workbook.", Kind: "select", Group: "source", Options: buildHeaderRowProfileOptions(10)},
-			{Key: "outputFilename", Label: "Nama Output", Required: true, DefaultValue: outputDefault, Description: "Tanpa ekstensi file.", Kind: "text", Group: "parameter"},
-			{Key: "chequeAccount", Label: accountLabel, Required: true, DefaultValue: "12021", Description: accountDescription, Kind: "text", Group: "parameter"},
-			{Key: "date", Label: "Tanggal", Required: true, DefaultValue: "date", Description: "Header source untuk tanggal transaksi.", Kind: "text", Group: "mapping"},
-			{Key: "category", Label: "Category", Required: true, DefaultValue: "Category", Description: "Header source category.", Kind: "text", Group: "mapping"},
-			{Key: "information", Label: "Keterangan", Required: true, DefaultValue: "Note", Description: "Header source memo transaksi.", Kind: "text", Group: "mapping"},
-			{Key: "partyName", Label: "Nama Customer / Supplier", Required: true, DefaultValue: "nama customer / supplier", Description: "Header source nama pihak.", Kind: "text", Group: "mapping"},
-			{Key: "total", Label: "Total", Required: true, DefaultValue: "idr", Description: "Header source nominal pembayaran.", Kind: "text", Group: "mapping"},
+			cashflowBillTextField("sheetName", "Sheet Default", false, "", "Nilai awal sheet untuk action ini.", "source"),
+			cashflowBillSelectField("headerRowNumber", "Baris Header Default", true, "1", "Baris header default workbook.", "source", buildHeaderRowProfileOptions(10)),
+			cashflowBillTextField("outputFilename", "Nama Output", true, outputDefault, "Tanpa ekstensi file.", "parameter"),
+			cashflowBillTextField("chequeAccount", accountLabel, true, "12021", accountDescription, "parameter"),
+			cashflowBillTextField("date", "Tanggal", true, "date", "Header source untuk tanggal transaksi.", "mapping"),
+			cashflowBillTextField("category", "Category", true, "Category", "Header source category.", "mapping"),
+			cashflowBillTextField("information", "Keterangan", true, "Note", "Header source memo transaksi.", "mapping"),
+			cashflowBillTextField("partyName", "Nama Customer / Supplier", true, "nama customer / supplier", "Header source nama pihak.", "mapping"),
+			cashflowBillTextField("total", "Total", true, "idr", "Header source nominal pembayaran.", "mapping"),
 		},
 		Variants: []ProfileConfigVariantSpec{
 			{
@@ -330,13 +336,32 @@ func (s *ProfileConfigService) configPath(profileID string, key ProfileConfigKey
 }
 
 func buildHeaderRowProfileOptions(max int) []ProfileConfigFieldOption {
-	options := make([]ProfileConfigFieldOption, 0, max)
-	for _, value := range specutil.HeaderRowNumbers(max) {
-		label := strings.TrimSpace(strconv.Itoa(value))
-		options = append(options, ProfileConfigFieldOption{
-			Label: label,
-			Value: label,
-		})
+	return specutil.IntOptions(max, func(label string, value string) ProfileConfigFieldOption {
+		return ProfileConfigFieldOption{Label: label, Value: value}
+	})
+}
+
+func cashflowBillTextField(key string, label string, required bool, defaultValue string, description string, group string) ProfileConfigFieldSpec {
+	return ProfileConfigFieldSpec{
+		Key:          key,
+		Label:        label,
+		Required:     required,
+		DefaultValue: defaultValue,
+		Description:  description,
+		Kind:         "text",
+		Group:        group,
 	}
-	return options
+}
+
+func cashflowBillSelectField(key string, label string, required bool, defaultValue string, description string, group string, options []ProfileConfigFieldOption) ProfileConfigFieldSpec {
+	return ProfileConfigFieldSpec{
+		Key:          key,
+		Label:        label,
+		Required:     required,
+		DefaultValue: defaultValue,
+		Description:  description,
+		Kind:         "select",
+		Group:        group,
+		Options:      options,
+	}
 }

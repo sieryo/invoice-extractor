@@ -25,6 +25,10 @@ func ProfileMetadataJSON(rootDir string, profileID string) string {
 	return filepath.Join(ProfileDir(rootDir, profileID), "profile.json")
 }
 
+func ProfileModulesJSON(rootDir string, profileID string) string {
+	return filepath.Join(ProfileDir(rootDir, profileID), "modules.json")
+}
+
 func BuyersCSV(rootDir string, profileID string) string {
 	return filepath.Join(ProfileDir(rootDir, profileID), "buyers.csv")
 }

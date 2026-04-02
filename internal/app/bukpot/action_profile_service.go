@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/sieryo/invoice-extractor/internal/app/configlayout"
+	"github.com/sieryo/invoice-extractor/internal/app/specutil"
 	"github.com/sieryo/invoice-extractor/internal/profilepath"
 )
 
@@ -24,13 +26,14 @@ const (
 )
 
 type ActionProfileSpec struct {
-	SchemaVersion  string                   `json:"schemaVersion"`
-	ConfigKey      string                   `json:"configKey"`
-	Label          string                   `json:"label"`
-	Description    string                   `json:"description,omitempty"`
-	CollectionKind string                   `json:"collectionKind"`
-	ActionType     string                   `json:"actionType"`
-	Fields         []ActionProfileFieldSpec `json:"fields"`
+	SchemaVersion  string                     `json:"schemaVersion"`
+	ConfigKey      string                     `json:"configKey"`
+	Label          string                     `json:"label"`
+	Description    string                     `json:"description,omitempty"`
+	CollectionKind string                     `json:"collectionKind"`
+	ActionType     string                     `json:"actionType"`
+	Sections       []configlayout.SectionSpec `json:"sections,omitempty"`
+	Fields         []ActionProfileFieldSpec   `json:"fields"`
 }
 
 type ActionProfileFieldSpec struct {
@@ -201,6 +204,7 @@ func buildActionProfileSpec(key ActionProfileKey) ActionProfileSpec {
 	spec := ActionProfileSpec{
 		SchemaVersion: bukpotActionProfileSchemaVersion,
 		ConfigKey:     string(key),
+		Sections:      []configlayout.SectionSpec{},
 		Fields:        []ActionProfileFieldSpec{},
 	}
 
@@ -210,87 +214,67 @@ func buildActionProfileSpec(key ActionProfileKey) ActionProfileSpec {
 		spec.Description = "Nilai default parameter untuk action Rename Bukpot pada collection BPPU."
 		spec.CollectionKind = "bukpot_bppu"
 		spec.ActionType = "rename_bukpot"
+		spec.Sections = []configlayout.SectionSpec{
+			bukpotActionSection("rename", "Pengaturan nama file default untuk action Rename Bukpot.", "filenameTemplate", "onlyNormalStatus"),
+		}
 		spec.Fields = []ActionProfileFieldSpec{
 			buildFilenameTemplateFieldSpec(
 				"Template default untuk rename bukpot BPPU.",
 				spec.CollectionKind,
 			),
-			{
-				Key:          "onlyNormalStatus",
-				Label:        "Hanya Include Status Normal",
-				Required:     false,
-				DefaultValue: "true",
-				Description:  "Jika aktif, bukpot DIBATALKAN atau PEMBETULAN tidak diproses.",
-				Kind:         "checkbox",
-			},
+			buildOnlyNormalStatusFieldSpec(),
 		}
 	case ActionProfileBP21RenameBukpot:
 		spec.Label = "BP21 Rename Bukpot"
 		spec.Description = "Nilai default parameter untuk action Rename Bukpot pada collection BP21."
 		spec.CollectionKind = "bukpot_bp21"
 		spec.ActionType = "rename_bukpot"
+		spec.Sections = []configlayout.SectionSpec{
+			bukpotActionSection("rename", "Pengaturan nama file default untuk action Rename Bukpot.", "filenameTemplate", "onlyNormalStatus"),
+		}
 		spec.Fields = []ActionProfileFieldSpec{
 			buildFilenameTemplateFieldSpec(
 				"Template default untuk rename bukpot BP21.",
 				spec.CollectionKind,
 			),
-			{
-				Key:          "onlyNormalStatus",
-				Label:        "Hanya Include Status Normal",
-				Required:     false,
-				DefaultValue: "true",
-				Description:  "Jika aktif, bukpot DIBATALKAN atau PEMBETULAN tidak diproses.",
-				Kind:         "checkbox",
-			},
+			buildOnlyNormalStatusFieldSpec(),
 		}
 	case ActionProfileBPA1RenameBukpot:
 		spec.Label = "BPA1 Rename Bukpot"
 		spec.Description = "Nilai default parameter untuk action Rename Bukpot pada collection BPA1."
 		spec.CollectionKind = "bukpot_bpa1"
 		spec.ActionType = "rename_bukpot"
+		spec.Sections = []configlayout.SectionSpec{
+			bukpotActionSection("rename", "Pengaturan nama file default untuk action Rename Bukpot.", "filenameTemplate", "onlyNormalStatus"),
+		}
 		spec.Fields = []ActionProfileFieldSpec{
 			buildFilenameTemplateFieldSpec(
 				"Template default untuk rename bukpot BPA1.",
 				spec.CollectionKind,
 			),
-			{
-				Key:          "onlyNormalStatus",
-				Label:        "Hanya Include Status Normal",
-				Required:     false,
-				DefaultValue: "true",
-				Description:  "Jika aktif, bukpot DIBATALKAN atau PEMBETULAN tidak diproses.",
-				Kind:         "checkbox",
-			},
+			buildOnlyNormalStatusFieldSpec(),
 		}
 	case ActionProfileBPPURenameByCategory:
 		spec.Label = "BPPU Rename by Category"
 		spec.Description = "Nilai default parameter untuk action Rename by Category pada collection BPPU."
 		spec.CollectionKind = "bukpot_bppu"
 		spec.ActionType = "rename_by_category"
+		spec.Sections = []configlayout.SectionSpec{
+			bukpotActionSection("filter", "Pengaturan default filter dokumen untuk action Rename by Category.", "onlyNormalStatus"),
+		}
 		spec.Fields = []ActionProfileFieldSpec{
-			{
-				Key:          "onlyNormalStatus",
-				Label:        "Hanya Include Status Normal",
-				Required:     false,
-				DefaultValue: "true",
-				Description:  "Jika aktif, bukpot DIBATALKAN atau PEMBETULAN tidak diproses.",
-				Kind:         "checkbox",
-			},
+			buildOnlyNormalStatusFieldSpec(),
 		}
 	case ActionProfileBP21RenameByCategory:
 		spec.Label = "BP21 Rename by Category"
 		spec.Description = "Nilai default parameter untuk action Rename by Category pada collection BP21."
 		spec.CollectionKind = "bukpot_bp21"
 		spec.ActionType = "rename_by_category"
+		spec.Sections = []configlayout.SectionSpec{
+			bukpotActionSection("filter", "Pengaturan default filter dokumen untuk action Rename by Category.", "onlyNormalStatus"),
+		}
 		spec.Fields = []ActionProfileFieldSpec{
-			{
-				Key:          "onlyNormalStatus",
-				Label:        "Hanya Include Status Normal",
-				Required:     false,
-				DefaultValue: "true",
-				Description:  "Jika aktif, bukpot DIBATALKAN atau PEMBETULAN tidak diproses.",
-				Kind:         "checkbox",
-			},
+			buildOnlyNormalStatusFieldSpec(),
 		}
 	}
 
@@ -332,6 +316,31 @@ func buildFilenameTemplateFieldSpec(
 		Suggestions:  buildBukpotTemplateSuggestions(collectionKind),
 		HelpText:     "Gunakan placeholder yang tersedia. Ekstensi .pdf akan ditambahkan otomatis.",
 		Placeholder:  "{{nomorBuktiPotong}} - {{namaPenerima}}",
+	}
+}
+
+func buildOnlyNormalStatusFieldSpec() ActionProfileFieldSpec {
+	return ActionProfileFieldSpec{
+		Key:          "onlyNormalStatus",
+		Label:        "Hanya Include Status Normal",
+		Required:     false,
+		DefaultValue: "true",
+		Description:  "Jika aktif, bukpot DIBATALKAN atau PEMBETULAN tidak diproses.",
+		Kind:         "checkbox",
+	}
+}
+
+func bukpotActionSection(
+	key string,
+	description string,
+	fieldKeys ...string,
+) configlayout.SectionSpec {
+	return configlayout.SectionSpec{
+		Key:         key,
+		Title:       specutil.ParameterActionSectionTitle,
+		Description: description,
+		Columns:     1,
+		FieldKeys:   append([]string(nil), fieldKeys...),
 	}
 }
 

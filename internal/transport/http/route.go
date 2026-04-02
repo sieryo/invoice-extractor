@@ -14,6 +14,7 @@ func (s *Server) registerRoutes() {
 	s.registerJobRoutes(protected)
 	s.registerBuyerRoutes(protected)
 	s.registerConfigModuleRoutes(protected)
+	s.registerSettingsRoutes(protected)
 	s.registerAppSettingsRoutes(protected)
 	s.registerTaxAccountRoutes(protected)
 	s.registerCategoryAccountRoutes(protected)

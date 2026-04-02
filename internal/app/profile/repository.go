@@ -6,5 +6,5 @@ type Repository interface {
 	GetByAlias(alias string) (*Profile, error)
 	GetByID(id string) (*Profile, error)
 	List() ([]Profile, error)
+	Update(p *Profile) error
 }
-

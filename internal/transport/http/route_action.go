@@ -6,7 +6,7 @@ import (
 )
 
 func (s *Server) registerActionRoutes(protected fiber.Router) {
-	actionHandler := handler.NewActionHandler(s.appCtx.ActionService, s.appCtx.FileStore)
+	actionHandler := handler.NewActionHandler(s.appCtx.ActionService, s.appCtx.ModuleActivationService, s.appCtx.FileStore)
 
 	protected.Post("/collection/:id/actions", actionHandler.RunAction)
 	protected.Post("/collection/:id/actions/artifacts", actionHandler.UploadActionArtifact)

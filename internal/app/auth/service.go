@@ -23,6 +23,14 @@ type RegisterProfileInput struct {
 	TKUID      string
 }
 
+type UpdateProfileInput struct {
+	Name       string
+	Alias      string
+	CutoffDate int
+	NPWP       string
+	TKUID      string
+}
+
 type AuthService struct {
 	profileRepo profile.Repository
 	sessionRepo session.SessionRepository
@@ -144,6 +152,59 @@ func (s *AuthService) GetProfileBySessionID(sessionID string) (*profile.Profile,
 	}
 
 	return s.profileRepo.GetByID(sess.ProfileID)
+}
+
+func (s *AuthService) UpdateProfile(profileID string, input UpdateProfileInput) (*profile.Profile, error) {
+	current, err := s.profileRepo.GetByID(strings.TrimSpace(profileID))
+	if err != nil || current == nil {
+		return nil, errors.New("profile not found")
+	}
+
+	name := strings.TrimSpace(input.Name)
+	alias := strings.TrimSpace(strings.ToUpper(input.Alias))
+	if name == "" {
+		return nil, errors.New("profile name is required")
+	}
+	if alias == "" {
+		return nil, errors.New("profile alias is required")
+	}
+	if input.CutoffDate <= 0 || input.CutoffDate > 31 {
+		return nil, errors.New("cutoff date must be between 1 and 31")
+	}
+
+	existingByName, err := s.profileRepo.GetByName(name)
+	if err == nil && existingByName != nil && existingByName.ID != current.ID {
+		return nil, errors.New("profile name already taken")
+	}
+	if err != nil && err.Error() != "sql: no rows in result set" && err.Error() != "record not found" {
+		return nil, err
+	}
+
+	existingByAlias, err := s.profileRepo.GetByAlias(alias)
+	if err == nil && existingByAlias != nil && existingByAlias.ID != current.ID {
+		return nil, errors.New("profile alias already taken")
+	}
+	if err != nil && err.Error() != "sql: no rows in result set" && err.Error() != "record not found" {
+		return nil, err
+	}
+
+	current.Name = name
+	current.Alias = alias
+	current.CutoffDate = input.CutoffDate
+	current.NPWP = strings.TrimSpace(input.NPWP)
+	current.TKUID = strings.TrimSpace(input.TKUID)
+
+	if err := s.profileRepo.Update(current); err != nil {
+		return nil, err
+	}
+	if err := s.writeProfileMetadata(current); err != nil {
+		s.logger.Error("update profile warning: failed to write profile metadata", "error", err, "profileId", current.ID)
+	}
+	return current, nil
+}
+
+func (s *AuthService) GetLatestSessionByProfileID(profileID string) (*session.Session, error) {
+	return s.sessionRepo.GetLatestByProfileID(strings.TrimSpace(profileID))
 }
 
 func (s *AuthService) createSession(profileID string) (string, error) {

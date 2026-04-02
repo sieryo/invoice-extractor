@@ -25,13 +25,29 @@ func (r *SessionRepository) Create(s *session.Session) error {
 
 func (r *SessionRepository) GetByID(id string) (*session.Session, error) {
 	row := r.db.QueryRow(`
-		SELECT id, user_id, expires_at
+		SELECT id, user_id, expires_at, created_at
 		FROM sessions
 		WHERE id = ?
 	`, id)
 
 	var s session.Session
-	if err := row.Scan(&s.ID, &s.ProfileID, &s.ExpiresAt); err != nil {
+	if err := row.Scan(&s.ID, &s.ProfileID, &s.ExpiresAt, &s.CreatedAt); err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
+func (r *SessionRepository) GetLatestByProfileID(profileID string) (*session.Session, error) {
+	row := r.db.QueryRow(`
+		SELECT id, user_id, expires_at, created_at
+		FROM sessions
+		WHERE user_id = ?
+		ORDER BY created_at DESC
+		LIMIT 1
+	`, profileID)
+
+	var s session.Session
+	if err := row.Scan(&s.ID, &s.ProfileID, &s.ExpiresAt, &s.CreatedAt); err != nil {
 		return nil, err
 	}
 	return &s, nil

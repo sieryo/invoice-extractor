@@ -6,7 +6,7 @@ import (
 )
 
 func (s *Server) registerCollectionRoutes(protected fiber.Router) {
-	collectionHandler := handler.NewCollectionHandler(s.appCtx.CollectionService)
+	collectionHandler := handler.NewCollectionHandler(s.appCtx.CollectionService, s.appCtx.ModuleActivationService)
 	fileHandler := handler.NewFileHandler(s.appCtx.FileService)
 
 	protected.Get("/collections/create-spec", collectionHandler.GetCreateSpec)

@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/sieryo/invoice-extractor/internal/app/configlayout"
 	"github.com/sieryo/invoice-extractor/internal/app/specutil"
 	"github.com/sieryo/invoice-extractor/internal/profilepath"
 )
@@ -29,15 +30,15 @@ type ProfileConfigSpec struct {
 	Defaults         ProfileConfigDefaults      `json:"defaults"`
 	HeaderRowOptions []int                      `json:"headerRowOptions,omitempty"`
 	FormatOptions    []ProfileConfigFormatSpec  `json:"formatOptions,omitempty"`
+	Sections         []configlayout.SectionSpec `json:"sections,omitempty"`
 	Fields           []ProfileConfigFieldSpec   `json:"fields"`
 	Variants         []ProfileConfigVariantSpec `json:"variants"`
 }
 
 type ProfileConfigDefaults struct {
-	CashflowFormat       string `json:"cashflowFormat"`
-	SheetName            string `json:"sheetName,omitempty"`
-	HeaderRowNumber      int    `json:"headerRowNumber,omitempty"`
-	StartingChequeNumber *int   `json:"startingChequeNumber,omitempty"`
+	CashflowFormat  string `json:"cashflowFormat"`
+	SheetName       string `json:"sheetName,omitempty"`
+	HeaderRowNumber int    `json:"headerRowNumber,omitempty"`
 }
 
 type ProfileConfigFormatSpec struct {
@@ -264,6 +265,10 @@ func buildProfileConfigSpec(key ProfileConfigKey) ProfileConfigSpec {
 			{Value: string(StandardFormat), Label: "Standard"},
 			{Value: string(InfluencerFormat), Label: "Influencer"},
 		},
+		Sections: []configlayout.SectionSpec{
+			specutil.ParameterActionSection("Parameter default yang akan dipakai saat action dibuka.", 2, "sheetName", "headerRowNumber", "outputFilename", "chequeAccount", "remarkDelimiter", "otherCostsAccountCode", "defaultIAccountCode", "defaultBAccountCode", "informationFilterKeywords"),
+			specutil.MappingHeaderSection("Nama header source untuk membaca kolom cashflow.", 2, "date", "information", "coa", "otherCost", "pp23", "pph15", "pph21", "pph23", "pph42", "ppn", "remark", "total"),
+		},
 		Fields: buildProfileFieldSpecs(key),
 		Variants: []ProfileConfigVariantSpec{
 			{
@@ -311,28 +316,27 @@ func profileFieldBlueprints(key ProfileConfigKey) []ProfileConfigFieldSpec {
 	}
 
 	fields := []ProfileConfigFieldSpec{
-		{Key: "sheetName", Label: "Sheet Default", Required: false, DefaultValue: "", Description: "Nilai awal sheet untuk format ini.", Group: "source"},
-		{Key: "headerRowNumber", Label: "Baris Header Default", Required: true, DefaultValue: "1", Description: "Baris header default untuk format ini.", Kind: "select", Group: "source", Options: buildHeaderRowProfileOptions(10)},
-		{Key: "startingChequeNumber", Label: sourceStartNumberLabel(key), Required: false, DefaultValue: "", Description: sourceStartNumberDescription(key), Kind: "number", Group: "source"},
-		{Key: "outputFilename", Label: "Nama Output", Required: true, DefaultValue: outputDefault, Description: "Tanpa ekstensi file.", Kind: "text", Group: "parameter"},
-		{Key: "chequeAccount", Label: accountLabel, Required: true, DefaultValue: "12021", Description: accountDescription, Kind: "text", Group: "parameter"},
-		{Key: "remarkDelimiter", Label: "Remark Delimiter", Required: false, DefaultValue: "*", Description: "Dipakai untuk memecah catatan biaya lainnya.", Kind: "text", Group: "parameter"},
-		{Key: "otherCostsAccountCode", Label: "Kode Akun Biaya Lain", Required: false, DefaultValue: "62099", Description: "Dipakai saat format default memiliki komponen biaya lain.", Kind: "text", Group: "parameter"},
-		{Key: "defaultIAccountCode", Label: "Default Influencer Account Code", Required: false, DefaultValue: "", Description: "Dipakai saat format influencer memilih account influencer.", Kind: "text", Group: "parameter"},
-		{Key: "defaultBAccountCode", Label: "Default Bank Account Code", Required: false, DefaultValue: "", Description: "Dipakai saat format influencer mendeteksi transaksi bank.", Kind: "text", Group: "parameter"},
-		{Key: "informationFilterKeywords", Label: "Keyword Filter Information", Required: false, DefaultValue: "", Description: "Satu baris satu keyword. Row akan di-skip bila kolom Information mengandung keyword ini.", Kind: "textarea", Group: "runtime"},
-		{Key: "date", Label: "Tanggal", Required: true, DefaultValue: "Tanggal", Description: "Header source untuk tanggal transaksi.", Kind: "text", Group: "mapping"},
-		{Key: "information", Label: "Keterangan", Required: true, DefaultValue: "note", Description: "Header source untuk memo utama.", Kind: "text", Group: "mapping"},
-		{Key: "coa", Label: "Chart of Account", Required: false, DefaultValue: "coa", Description: "Wajib untuk format standard. Pada format influencer, header ini tidak dipakai untuk menentukan akun utama.", Kind: "text", Group: "mapping"},
-		{Key: "otherCost", Label: "Biaya Lainnya", Required: false, DefaultValue: "By Lainnya", Description: "Header source untuk biaya tambahan.", Kind: "text", Group: "mapping"},
-		{Key: "pp23", Label: "PP 23", Required: false, DefaultValue: "PP 23", Description: "Header source komponen pajak PP 23.", Kind: "text", Group: "mapping"},
-		{Key: "pph15", Label: "PPh 15%", Required: false, DefaultValue: "PPh 15%", Description: "Header source komponen pajak PPh 15%.", Kind: "text", Group: "mapping"},
-		{Key: "pph21", Label: "PPH 21", Required: false, DefaultValue: "PPH 21", Description: "Header source komponen pajak PPH 21.", Kind: "text", Group: "mapping"},
-		{Key: "pph23", Label: "PPH 23", Required: false, DefaultValue: "PPH 23", Description: "Header source komponen pajak PPH 23.", Kind: "text", Group: "mapping"},
-		{Key: "pph42", Label: "PPH 4 (2)", Required: false, DefaultValue: "PPH 4(2)", Description: "Header source komponen pajak PPH 4 (2).", Kind: "text", Group: "mapping"},
-		{Key: "ppn", Label: "PPN", Required: false, DefaultValue: "PPN", Description: "Header source komponen pajak PPN.", Kind: "text", Group: "mapping"},
-		{Key: "remark", Label: "Catatan", Required: false, DefaultValue: "catatan", Description: "Header source catatan atau allocation memo.", Kind: "text", Group: "mapping"},
-		{Key: "total", Label: "Total", Required: true, DefaultValue: "idr", Description: "Header source total transaksi.", Kind: "text", Group: "mapping"},
+		cashflowTextField("sheetName", "Sheet Default", false, "", "Nilai awal sheet untuk format ini.", "source"),
+		cashflowSelectField("headerRowNumber", "Baris Header Default", true, "1", "Baris header default untuk format ini.", "source", buildHeaderRowProfileOptions(10)),
+		cashflowTextField("outputFilename", "Nama Output", true, outputDefault, "Tanpa ekstensi file.", "parameter"),
+		cashflowTextField("chequeAccount", accountLabel, true, "12021", accountDescription, "parameter"),
+		cashflowTextField("remarkDelimiter", "Remark Delimiter", false, "*", "Dipakai untuk memecah catatan biaya lainnya.", "parameter"),
+		cashflowTextField("otherCostsAccountCode", "Kode Akun Biaya Lain", false, "62099", "Dipakai saat format default memiliki komponen biaya lain.", "parameter"),
+		cashflowTextField("defaultIAccountCode", "Default Influencer Account Code", false, "", "Dipakai saat format influencer memilih account influencer.", "parameter"),
+		cashflowTextField("defaultBAccountCode", "Default Bank Account Code", false, "", "Dipakai saat format influencer mendeteksi transaksi bank.", "parameter"),
+		cashflowTextareaField("informationFilterKeywords", "Keyword Filter Information", false, "", "Satu baris satu keyword. Row akan di-skip bila kolom Information mengandung keyword ini.", "runtime"),
+		cashflowTextField("date", "Tanggal", true, "Tanggal", "Header source untuk tanggal transaksi.", "mapping"),
+		cashflowTextField("information", "Keterangan", true, "note", "Header source untuk memo utama.", "mapping"),
+		cashflowTextField("coa", "Chart of Account", false, "coa", "Wajib untuk format standard. Pada format influencer, header ini tidak dipakai untuk menentukan akun utama.", "mapping"),
+		cashflowTextField("otherCost", "Biaya Lainnya", false, "By Lainnya", "Header source untuk biaya tambahan.", "mapping"),
+		cashflowTextField("pp23", "PP 23", false, "PP 23", "Header source komponen pajak PP 23.", "mapping"),
+		cashflowTextField("pph15", "PPh 15%", false, "PPh 15%", "Header source komponen pajak PPh 15%.", "mapping"),
+		cashflowTextField("pph21", "PPH 21", false, "PPH 21", "Header source komponen pajak PPH 21.", "mapping"),
+		cashflowTextField("pph23", "PPH 23", false, "PPH 23", "Header source komponen pajak PPH 23.", "mapping"),
+		cashflowTextField("pph42", "PPH 4 (2)", false, "PPH 4(2)", "Header source komponen pajak PPH 4 (2).", "mapping"),
+		cashflowTextField("ppn", "PPN", false, "PPN", "Header source komponen pajak PPN.", "mapping"),
+		cashflowTextField("remark", "Catatan", false, "catatan", "Header source catatan atau allocation memo.", "mapping"),
+		cashflowTextField("total", "Total", true, "idr", "Header source total transaksi.", "mapping"),
 	}
 
 	return fields
@@ -355,20 +359,6 @@ func defaultVariantFieldValues(key ProfileConfigKey, format Format) map[string]s
 		values["otherCost"] = "Biaya Lainnya"
 	}
 	return values
-}
-
-func sourceStartNumberLabel(key ProfileConfigKey) string {
-	if key == ProfileConfigReceiveMoney {
-		return "Nomor Awal ID"
-	}
-	return "Nomor Awal Cheque"
-}
-
-func sourceStartNumberDescription(key ProfileConfigKey) string {
-	if key == ProfileConfigReceiveMoney {
-		return "Opsional. Kosongkan jika nomor ID ingin diisi otomatis nanti."
-	}
-	return "Opsional. Kosongkan jika nomor cheque ingin dibuat otomatis oleh MYOB."
 }
 
 func variantFieldMap(variants []ProfileConfigVariant, variantKey string) map[string]string {
@@ -517,9 +507,6 @@ func (s *ProfileConfigService) normalizeConfig(cfg ProfileConfig, key ProfileCon
 			if item.Key == "headerRowNumber" && value == "" && cfg.Defaults.HeaderRowNumber > 0 {
 				value = strconv.Itoa(cfg.Defaults.HeaderRowNumber)
 			}
-			if item.Key == "startingChequeNumber" && value == "" && cfg.Defaults.StartingChequeNumber != nil && *cfg.Defaults.StartingChequeNumber > 0 {
-				value = strconv.Itoa(*cfg.Defaults.StartingChequeNumber)
-			}
 			values[item.Key] = value
 		}
 
@@ -563,13 +550,44 @@ func (s *ProfileConfigService) configPath(profileID string, key ProfileConfigKey
 }
 
 func buildHeaderRowProfileOptions(max int) []ProfileConfigFieldOption {
-	options := make([]ProfileConfigFieldOption, 0, max)
-	for _, value := range specutil.HeaderRowNumbers(max) {
-		label := strings.TrimSpace(strconv.Itoa(value))
-		options = append(options, ProfileConfigFieldOption{
-			Label: label,
-			Value: label,
-		})
+	return specutil.IntOptions(max, func(label string, value string) ProfileConfigFieldOption {
+		return ProfileConfigFieldOption{Label: label, Value: value}
+	})
+}
+
+func cashflowTextField(key string, label string, required bool, defaultValue string, description string, group string) ProfileConfigFieldSpec {
+	return ProfileConfigFieldSpec{
+		Key:          key,
+		Label:        label,
+		Required:     required,
+		DefaultValue: defaultValue,
+		Description:  description,
+		Kind:         "text",
+		Group:        group,
 	}
-	return options
+}
+
+func cashflowSelectField(key string, label string, required bool, defaultValue string, description string, group string, options []ProfileConfigFieldOption) ProfileConfigFieldSpec {
+	return ProfileConfigFieldSpec{
+		Key:          key,
+		Label:        label,
+		Required:     required,
+		DefaultValue: defaultValue,
+		Description:  description,
+		Kind:         "select",
+		Group:        group,
+		Options:      options,
+	}
+}
+
+func cashflowTextareaField(key string, label string, required bool, defaultValue string, description string, group string) ProfileConfigFieldSpec {
+	return ProfileConfigFieldSpec{
+		Key:          key,
+		Label:        label,
+		Required:     required,
+		DefaultValue: defaultValue,
+		Description:  description,
+		Kind:         "textarea",
+		Group:        group,
+	}
 }

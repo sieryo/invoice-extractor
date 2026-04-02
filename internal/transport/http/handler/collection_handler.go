@@ -8,11 +8,13 @@ import (
 	"github.com/google/uuid"
 	"github.com/sieryo/invoice-extractor/internal/app/collection"
 	"github.com/sieryo/invoice-extractor/internal/app/document"
+	"github.com/sieryo/invoice-extractor/internal/app/moduleactivation"
 	dcollection "github.com/sieryo/invoice-extractor/internal/domain/collection"
 )
 
 type CollectionHandler struct {
 	collectionService *collection.CollectionService
+	modules           *moduleactivation.Service
 }
 
 type CollectionPathNode struct {
@@ -22,9 +24,10 @@ type CollectionPathNode struct {
 	ParentID *string `json:"parentId,omitempty"`
 }
 
-func NewCollectionHandler(collectionService *collection.CollectionService) *CollectionHandler {
+func NewCollectionHandler(collectionService *collection.CollectionService, modules *moduleactivation.Service) *CollectionHandler {
 	return &CollectionHandler{
 		collectionService: collectionService,
+		modules:           modules,
 	}
 }
 
@@ -52,7 +55,37 @@ func (h *CollectionHandler) CreateNode(c *fiber.Ctx) error {
 }
 
 func (h *CollectionHandler) GetCreateSpec(c *fiber.Ctx) error {
+	profileID, _ := c.Locals("profileId").(string)
 	spec := document.BuildCreateCollectionSpec()
+	if h.modules != nil && profileID != "" {
+		filteredKinds := make([]document.CreateCollectionKindSpec, 0, len(spec.CollectionKinds))
+		usedFormats := map[document.SourceFormat]struct{}{}
+		for _, item := range spec.CollectionKinds {
+			enabled, _, err := h.modules.IsEnabledForCollectionKind(profileID, string(item.CollectionKind))
+			if err != nil {
+				return SendError(c, fiber.StatusInternalServerError, "gagal memuat create spec collection")
+			}
+			if !enabled {
+				continue
+			}
+			filteredKinds = append(filteredKinds, item)
+			for _, format := range item.SourceFormats {
+				usedFormats[format] = struct{}{}
+			}
+		}
+		filteredFormats := make([]document.CreateCollectionSourceFormatSpec, 0, len(spec.SourceFormats))
+		for _, item := range spec.SourceFormats {
+			if _, ok := usedFormats[item.Value]; !ok {
+				continue
+			}
+			filteredFormats = append(filteredFormats, item)
+		}
+		spec.CollectionKinds = filteredKinds
+		spec.SourceFormats = filteredFormats
+		if len(filteredFormats) > 0 {
+			spec.DefaultSourceFormat = filteredFormats[0].Value
+		}
+	}
 	return SendSuccess(c, fiber.StatusOK, spec, "collection create spec retrieved successfully")
 }
 
@@ -105,6 +138,19 @@ func (h *CollectionHandler) createNode(c *fiber.Ctx, legacyDefault bool) error {
 		kind := dcollection.CollectionKindInvoiceCompany
 		if req.CollectionKind != nil && strings.TrimSpace(*req.CollectionKind) != "" {
 			kind = dcollection.CollectionKind(strings.ToLower(strings.TrimSpace(*req.CollectionKind)))
+		}
+		if h.modules != nil {
+			enabled, moduleSpec, moduleErr := h.modules.IsEnabledForCollectionKind(userID, string(kind))
+			if moduleErr != nil {
+				return SendError(c, fiber.StatusInternalServerError, "failed to create collection")
+			}
+			if !enabled {
+				message := "collection kind ini sedang dinonaktifkan untuk profil aktif"
+				if strings.TrimSpace(moduleSpec.Label) != "" {
+					message = "modul " + moduleSpec.Label + " sedang dinonaktifkan untuk profil aktif"
+				}
+				return SendError(c, fiber.StatusBadRequest, message)
+			}
 		}
 		coll, err = h.collectionService.CreateTypedCollection(ctx, newID, name, userID, parentID, kind)
 	default:
