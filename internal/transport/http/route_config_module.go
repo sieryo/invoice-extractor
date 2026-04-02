@@ -18,6 +18,8 @@ func (s *Server) registerConfigModuleRoutes(protected fiber.Router) {
 		s.appCtx.CashflowBillProfileService,
 		s.appCtx.TaxAccountService,
 		s.appCtx.CashflowBillCategoryService,
+		s.appCtx.FPCoretaxProfileService,
+		s.appCtx.FPCoretaxRelationService,
 	)
 	h := handler.NewConfigModuleHandler(s.appCtx.SettingsService, s.appCtx.ModuleActivationService, pageService)
 	config.Get("/modules", h.List)

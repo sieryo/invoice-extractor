@@ -408,21 +408,31 @@ func normalizeSpreadsheetNumericString(raw string) (string, bool) {
 
 func parseSpreadsheetDateValue(rawValue string, displayValue string) (time.Time, bool) {
 	for _, candidate := range []string{rawValue, displayValue} {
-		candidate = strings.TrimSpace(candidate)
+		candidate = normalizeSpreadsheetDateCandidate(candidate)
 		if candidate == "" {
 			continue
 		}
 		if n, err := strconv.ParseFloat(strings.ReplaceAll(candidate, ",", "."), 64); err == nil && n > 0 {
 			if t, err := spreadsheetExcelSerialToTime(n); err == nil {
-				return t, true
+				return spreadsheetDateOnly(t), true
 			}
 		}
 		for _, layout := range []string{
 			"2006-01-02",
+			"2006-01-02 15:04",
+			"2006-01-02 15:04:05",
 			"02/01/2006",
 			"2/1/2006",
+			"02/01/2006 15:04",
+			"2/1/2006 15:04",
+			"02/01/2006 15:04:05",
+			"2/1/2006 15:04:05",
 			"02-01-2006",
 			"2-1-2006",
+			"02-01-2006 15:04",
+			"2-1-2006 15:04",
+			"02-01-2006 15:04:05",
+			"2-1-2006 15:04:05",
 			"02-Jan-2006",
 			"2-Jan-2006",
 			"02-Jan-06",
@@ -432,13 +442,47 @@ func parseSpreadsheetDateValue(rawValue string, displayValue string) (time.Time,
 			"02 January 2006",
 			"2 January 2006",
 			time.RFC3339,
+			"2006-01-02T15:04:05",
+			"2006-01-02T15:04",
 		} {
-			if t, err := time.Parse(layout, candidate); err == nil {
-				return t, true
+			if t, err := time.ParseInLocation(layout, candidate, time.Local); err == nil {
+				return spreadsheetDateOnly(t), true
 			}
 		}
 	}
 	return time.Time{}, false
+}
+
+func normalizeSpreadsheetDateCandidate(raw string) string {
+	candidate := strings.TrimSpace(raw)
+	if candidate == "" {
+		return ""
+	}
+
+	// Excel exports may serialize date-only values as full timestamps.
+	if idx := strings.Index(candidate, "T"); idx > 0 {
+		datePart := strings.TrimSpace(candidate[:idx])
+		timePart := strings.TrimSpace(candidate[idx+1:])
+		if strings.Count(datePart, "-") == 2 {
+			if timePart == "" {
+				return datePart
+			}
+			if zoneIdx := strings.IndexAny(timePart, "Zz+-"); zoneIdx >= 0 {
+				return strings.TrimSpace(candidate)
+			}
+			return datePart
+		}
+	}
+
+	return candidate
+}
+
+func spreadsheetDateOnly(t time.Time) time.Time {
+	location := t.Location()
+	if location == nil {
+		location = time.Local
+	}
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, location)
 }
 
 func parseSpreadsheetBool(rawValue string, displayValue string) (bool, bool) {
@@ -666,8 +710,8 @@ func containsString(values []string, target string) bool {
 
 func SpreadsheetCellDate(cell SpreadsheetCell) (time.Time, bool) {
 	if strings.TrimSpace(cell.DateValue) != "" {
-		if t, err := time.Parse(time.RFC3339, cell.DateValue); err == nil {
-			return t, true
+		if t, err := time.Parse(time.RFC3339, strings.TrimSpace(cell.DateValue)); err == nil {
+			return spreadsheetDateOnly(t), true
 		}
 	}
 	return parseSpreadsheetDateValue(cell.Raw, cell.Display)

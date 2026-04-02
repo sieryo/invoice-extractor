@@ -72,8 +72,9 @@ func Specs() []ModuleSpec {
 		{
 			Key:             ModuleTaxInvoice,
 			Label:           "Tax Invoice Coretax",
-			Description:     "Menampilkan collection tax invoice Coretax dan action rename yang terkait.",
-			CollectionKinds: []string{"tax_invoice_coretax"},
+			Description:     "Menampilkan collection tax invoice Coretax, FP keluaran/masukan Coretax, dan konfigurasi MYOB yang terkait.",
+			CollectionKinds: []string{"tax_invoice_coretax", "fp_keluaran_coretax", "fp_masukan_coretax"},
+			ConfigGroups:    []string{"tax_invoice"},
 		},
 		{
 			Key:             ModuleBukpot,

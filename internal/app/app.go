@@ -15,6 +15,7 @@ import (
 	appcashflowbill "github.com/sieryo/invoice-extractor/internal/app/cashflowbill"
 	"github.com/sieryo/invoice-extractor/internal/app/collection"
 	"github.com/sieryo/invoice-extractor/internal/app/document"
+	appfpcoretax "github.com/sieryo/invoice-extractor/internal/app/fpcoretax"
 	appfile "github.com/sieryo/invoice-extractor/internal/app/file"
 	"github.com/sieryo/invoice-extractor/internal/app/ingest"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice"
@@ -56,6 +57,8 @@ type App struct {
 	CashflowProfileConfigService *appcashflow.ProfileConfigService
 	CashflowBillCategoryService  *appcashflowbill.CategoryAccountService
 	CashflowBillProfileService   *appcashflowbill.ProfileConfigService
+	FPCoretaxProfileService      *appfpcoretax.ProfileConfigService
+	FPCoretaxRelationService     *appfpcoretax.RelationRegistryService
 	BukpotRequestConfigService   *appbukpot.RequestConfigService
 	BukpotActionProfileService   *appbukpot.ActionProfileService
 	SettingsService              *config.SettingsService
@@ -121,6 +124,8 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string, cfg config.Config) *Ap
 	cashflowProfileConfigService := appcashflow.NewProfileConfigService(rootDir)
 	cashflowBillCategoryService := appcashflowbill.NewCategoryAccountService(rootDir)
 	cashflowBillProfileService := appcashflowbill.NewProfileConfigService(rootDir)
+	fpCoretaxProfileService := appfpcoretax.NewProfileConfigService(rootDir)
+	fpCoretaxRelationService := appfpcoretax.NewRelationRegistryService(rootDir)
 	templateRegistryService := template.NewTemplateRegistryService(templateRegistry)
 	documentRegistry := document.NewRegistry()
 	documentRegistry.MustRegister(document.NewPDFInvoiceProcessor(invoiceExtractService, invoiceService, fs))
@@ -130,6 +135,8 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string, cfg config.Config) *Ap
 	documentRegistry.MustRegister(document.NewPDFBukpotProcessor(document.CollectionKindBukpotBPA1, bukpotService, fs))
 	documentRegistry.MustRegister(document.NewXLSXBukpotRequestProcessor(fs, rootDir, bukpotRequestConfigService))
 	documentRegistry.MustRegister(document.NewXLSXCashflowProcessor(fs, taxAccountService, cashflowBillCategoryService))
+	documentRegistry.MustRegister(document.NewXLSXFPCoretaxProcessor(document.CollectionKindFPKeluaranCoretax, fs, fpCoretaxRelationService))
+	documentRegistry.MustRegister(document.NewXLSXFPCoretaxProcessor(document.CollectionKindFPMasukanCoretax, fs, fpCoretaxRelationService))
 	ingestService := ingest.NewIngestService(
 		uploadSessionRepo,
 		uploadChunkRepo,
@@ -152,6 +159,8 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string, cfg config.Config) *Ap
 		cashflowBillProfileService,
 		bukpotRequestConfigService,
 		bukpotActionProfileService,
+		fpCoretaxProfileService,
+		fpCoretaxRelationService,
 		fs,
 		1,
 	)
@@ -187,6 +196,8 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string, cfg config.Config) *Ap
 		CashflowProfileConfigService: cashflowProfileConfigService,
 		CashflowBillCategoryService:  cashflowBillCategoryService,
 		CashflowBillProfileService:   cashflowBillProfileService,
+		FPCoretaxProfileService:      fpCoretaxProfileService,
+		FPCoretaxRelationService:     fpCoretaxRelationService,
 		BukpotRequestConfigService:   bukpotRequestConfigService,
 		BukpotActionProfileService:   bukpotActionProfileService,
 		SettingsService:              settingsService,

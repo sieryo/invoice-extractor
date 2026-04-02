@@ -23,6 +23,8 @@ type CollectionKind string
 const (
 	CollectionKindInvoiceCompany              CollectionKind = "invoice_company"
 	CollectionKindTaxInvoiceCoretax           CollectionKind = "tax_invoice_coretax"
+	CollectionKindFPKeluaranCoretax           CollectionKind = "fp_keluaran_coretax"
+	CollectionKindFPMasukanCoretax            CollectionKind = "fp_masukan_coretax"
 	CollectionKindBukpotBPPU                  CollectionKind = "bukpot_bppu"
 	CollectionKindBukpotBP21                  CollectionKind = "bukpot_bp21"
 	CollectionKindBukpotBPA1                  CollectionKind = "bukpot_bpa1"
@@ -34,6 +36,8 @@ func (k CollectionKind) IsValid() bool {
 	switch k {
 	case CollectionKindInvoiceCompany,
 		CollectionKindTaxInvoiceCoretax,
+		CollectionKindFPKeluaranCoretax,
+		CollectionKindFPMasukanCoretax,
 		CollectionKindBukpotBPPU,
 		CollectionKindBukpotBP21,
 		CollectionKindBukpotBPA1,

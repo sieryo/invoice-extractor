@@ -14,6 +14,8 @@ type SourceFormat = dcollection.SourceFormat
 const (
 	CollectionKindInvoiceCompany              = dcollection.CollectionKindInvoiceCompany
 	CollectionKindTaxInvoiceCoretax           = dcollection.CollectionKindTaxInvoiceCoretax
+	CollectionKindFPKeluaranCoretax           = dcollection.CollectionKindFPKeluaranCoretax
+	CollectionKindFPMasukanCoretax            = dcollection.CollectionKindFPMasukanCoretax
 	CollectionKindBukpotBPPU                  = dcollection.CollectionKindBukpotBPPU
 	CollectionKindBukpotBP21                  = dcollection.CollectionKindBukpotBP21
 	CollectionKindBukpotBPA1                  = dcollection.CollectionKindBukpotBPA1

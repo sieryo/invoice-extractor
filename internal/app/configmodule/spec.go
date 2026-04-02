@@ -5,6 +5,7 @@ import (
 
 	appbukpot "github.com/sieryo/invoice-extractor/internal/app/bukpot"
 	"github.com/sieryo/invoice-extractor/internal/app/document"
+	appfpcoretax "github.com/sieryo/invoice-extractor/internal/app/fpcoretax"
 )
 
 type ModuleKind string
@@ -65,6 +66,50 @@ func ListModules(enableCashflowXLSX bool) []ModuleSpec {
 			GroupLabel:      "Invoice",
 			IconKey:         "file-code",
 			CollectionKinds: []string{string(document.CollectionKindInvoiceCompany)},
+		},
+		{
+			Key:             string(appfpcoretax.ProfileConfigFPKeluaranMiscSales),
+			RouteKey:        string(appfpcoretax.ProfileConfigFPKeluaranMiscSales),
+			Label:           "FP Keluaran",
+			Description:     "Default parameter action Misc Sales.",
+			Kind:            string(ModuleKindDefaultProfile),
+			Group:           "tax_invoice",
+			GroupLabel:      "Faktur Pajak",
+			IconKey:         "receipt-text",
+			CollectionKinds: []string{string(document.CollectionKindFPKeluaranCoretax)},
+		},
+		{
+			Key:             "fp_keluaran_customer_registry",
+			RouteKey:        "fp_keluaran_customer_registry",
+			Label:           "Customer Registry",
+			Description:     "Lookup customer MYOB.",
+			Kind:            string(ModuleKindRegistry),
+			Group:           "tax_invoice",
+			GroupLabel:      "Faktur Pajak",
+			IconKey:         "users",
+			CollectionKinds: []string{string(document.CollectionKindFPKeluaranCoretax)},
+		},
+		{
+			Key:             string(appfpcoretax.ProfileConfigFPMasukanMiscPurchases),
+			RouteKey:        string(appfpcoretax.ProfileConfigFPMasukanMiscPurchases),
+			Label:           "FP Masukan",
+			Description:     "Default parameter action Misc Purchases.",
+			Kind:            string(ModuleKindDefaultProfile),
+			Group:           "tax_invoice",
+			GroupLabel:      "Faktur Pajak",
+			IconKey:         "receipt-text",
+			CollectionKinds: []string{string(document.CollectionKindFPMasukanCoretax)},
+		},
+		{
+			Key:             "fp_masukan_supplier_registry",
+			RouteKey:        "fp_masukan_supplier_registry",
+			Label:           "Supplier Registry",
+			Description:     "Lookup supplier MYOB.",
+			Kind:            string(ModuleKindRegistry),
+			Group:           "tax_invoice",
+			GroupLabel:      "Faktur Pajak",
+			IconKey:         "users",
+			CollectionKinds: []string{string(document.CollectionKindFPMasukanCoretax)},
 		},
 		{
 			Key:             "bukpot_request_gst_deduction_mt",

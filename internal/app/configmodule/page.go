@@ -13,6 +13,7 @@ import (
 	appcashflow "github.com/sieryo/invoice-extractor/internal/app/cashflow"
 	appcashflowbill "github.com/sieryo/invoice-extractor/internal/app/cashflowbill"
 	"github.com/sieryo/invoice-extractor/internal/app/configlayout"
+	appfpcoretax "github.com/sieryo/invoice-extractor/internal/app/fpcoretax"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/template"
 	"github.com/sieryo/invoice-extractor/internal/app/specutil"
 	appconfig "github.com/sieryo/invoice-extractor/internal/config"
@@ -186,6 +187,8 @@ type PageService struct {
 	cashflowBillProfiles *appcashflowbill.ProfileConfigService
 	taxAccounts          *appcashflow.TaxAccountService
 	categoryAccounts     *appcashflowbill.CategoryAccountService
+	fpCoretaxProfiles    *appfpcoretax.ProfileConfigService
+	fpCoretaxRelations   *appfpcoretax.RelationRegistryService
 }
 
 func NewPageService(
@@ -198,6 +201,8 @@ func NewPageService(
 	cashflowBillProfiles *appcashflowbill.ProfileConfigService,
 	taxAccounts *appcashflow.TaxAccountService,
 	categoryAccounts *appcashflowbill.CategoryAccountService,
+	fpCoretaxProfiles *appfpcoretax.ProfileConfigService,
+	fpCoretaxRelations *appfpcoretax.RelationRegistryService,
 ) *PageService {
 	return &PageService{
 		settings:             settings,
@@ -209,6 +214,8 @@ func NewPageService(
 		cashflowBillProfiles: cashflowBillProfiles,
 		taxAccounts:          taxAccounts,
 		categoryAccounts:     categoryAccounts,
+		fpCoretaxProfiles:    fpCoretaxProfiles,
+		fpCoretaxRelations:   fpCoretaxRelations,
 	}
 }
 
@@ -253,6 +260,10 @@ func (s *PageService) UpdateFormBlock(profileID string, moduleKey string, blockK
 		return s.updateCashflowBillProfile(profileID, appcashflowbill.ProfileConfigPayBills, input)
 	case "cashflow_receive_payments":
 		return s.updateCashflowBillProfile(profileID, appcashflowbill.ProfileConfigReceivePayments, input)
+	case string(appfpcoretax.ProfileConfigFPKeluaranMiscSales):
+		return s.updateFPCoretaxProfile(profileID, appfpcoretax.ProfileConfigFPKeluaranMiscSales, input)
+	case string(appfpcoretax.ProfileConfigFPMasukanMiscPurchases):
+		return s.updateFPCoretaxProfile(profileID, appfpcoretax.ProfileConfigFPMasukanMiscPurchases, input)
 	default:
 		return os.ErrNotExist
 	}
@@ -270,6 +281,10 @@ func (s *PageService) UploadRegistryBlock(profileID string, moduleKey string, bl
 		return s.uploadTaxAccounts(profileID, filename, fileSize, tempPath)
 	case "cashflow_category_accounts":
 		return s.uploadCategoryAccounts(profileID, filename, fileSize, tempPath)
+	case "fp_keluaran_customer_registry":
+		return s.uploadFPCoretaxRegistry(profileID, appfpcoretax.RelationRegistryCustomer, filename, fileSize, tempPath)
+	case "fp_masukan_supplier_registry":
+		return s.uploadFPCoretaxRegistry(profileID, appfpcoretax.RelationRegistrySupplier, filename, fileSize, tempPath)
 	default:
 		return 0, nil, os.ErrNotExist
 	}
@@ -303,6 +318,14 @@ func (s *PageService) buildBlock(profileID string, moduleKey string) (any, error
 		return s.buildTaxAccountBlock(profileID)
 	case "cashflow_category_accounts":
 		return s.buildCategoryAccountBlock(profileID)
+	case string(appfpcoretax.ProfileConfigFPKeluaranMiscSales):
+		return s.buildFPCoretaxProfileBlock(profileID, appfpcoretax.ProfileConfigFPKeluaranMiscSales)
+	case "fp_keluaran_customer_registry":
+		return s.buildFPCoretaxRegistryBlock(profileID, appfpcoretax.RelationRegistryCustomer)
+	case string(appfpcoretax.ProfileConfigFPMasukanMiscPurchases):
+		return s.buildFPCoretaxProfileBlock(profileID, appfpcoretax.ProfileConfigFPMasukanMiscPurchases)
+	case "fp_masukan_supplier_registry":
+		return s.buildFPCoretaxRegistryBlock(profileID, appfpcoretax.RelationRegistrySupplier)
 	default:
 		return nil, os.ErrNotExist
 	}
@@ -588,6 +611,130 @@ func (s *PageService) buildCashflowBillProfileBlock(profileID string, key appcas
 		},
 		SaveLabel:    "Simpan Default Profil",
 		EmptyMessage: "Belum ada field konfigurasi cashflow bills.",
+	}, nil
+}
+
+func (s *PageService) buildFPCoretaxProfileBlock(profileID string, key appfpcoretax.ProfileConfigKey) (FormBlockSpec, error) {
+	spec := s.fpCoretaxProfiles.Spec(key)
+	cfg, err := s.fpCoretaxProfiles.Load(profileID, key)
+	if err != nil {
+		return FormBlockSpec{}, err
+	}
+
+	fields := make([]FormFieldSpec, 0, len(spec.Fields))
+	for _, item := range spec.Fields {
+		fields = append(fields, FormFieldSpec{
+			Key:         item.Key,
+			Label:       item.Label,
+			Required:    item.Required,
+			Kind:        item.Kind,
+			Description: item.Description,
+			Placeholder: item.Placeholder,
+			HelpText:    item.HelpText,
+			Options:     fpCoretaxOptionsToForm(item.Options),
+			Suggestions: fpCoretaxSuggestionsToAny(item.Suggestions),
+		})
+	}
+
+	values := make(map[string]string, len(cfg.Fields))
+	for _, item := range cfg.Fields {
+		values[item.Key] = strings.TrimSpace(item.Value)
+	}
+
+	return FormBlockSpec{
+		Type:        "form",
+		Key:         defaultBlockKey,
+		Title:       specutil.ParameterDefaultActionCardTitle,
+		Description: "Nilai awal saat action dibuka.",
+		Validation: &FormValidationSpec{
+			ReadyMessage:    "Default profil FP Coretax siap digunakan.",
+			NotReadyMessage: "Default profil FP Coretax belum lengkap.",
+			MissingLabel:    "Parameter wajib yang belum lengkap",
+		},
+		Sections: spec.Sections,
+		Fields:   fields,
+		Values:   values,
+		Submit: FormSubmitActionSpec{
+			Method:         "PUT",
+			URL:            fmt.Sprintf("/config/modules/%s/blocks/main", string(key)),
+			SuccessMessage: fmt.Sprintf("Default profil %s diperbarui", strings.ToLower(spec.Label)),
+		},
+		SaveLabel:    "Simpan Default Profil",
+		EmptyMessage: "Belum ada field konfigurasi FP Coretax.",
+	}, nil
+}
+
+func (s *PageService) buildFPCoretaxRegistryBlock(profileID string, key appfpcoretax.RelationRegistryKey) (RegistryBlockSpec, error) {
+	spec := s.fpCoretaxRelations.Spec(key)
+	status := s.fpCoretaxRelations.Status(profileID, key)
+	items, err := s.fpCoretaxRelations.List(profileID, key)
+	if err != nil {
+		var schemaErr *parser.FPCoretaxRelationSchemaMismatchError
+		if !errors.As(err, &schemaErr) && !os.IsNotExist(err) {
+			return RegistryBlockSpec{}, err
+		}
+		items = nil
+	}
+
+	previewItems := make([]RegistryPreviewItemSpec, 0, len(items))
+	for index, item := range items {
+		previewItems = append(previewItems, RegistryPreviewItemSpec{
+			Key:      fmt.Sprintf("%s-%d", strings.TrimSpace(item.Name), index),
+			Title:    strings.TrimSpace(item.Name),
+			Subtitle: strings.TrimSpace(item.Account),
+		})
+	}
+
+	moduleKey := "fp_keluaran_customer_registry"
+	title := "Customer Registry"
+	description := "Lookup customer MYOB."
+	countLabel := "customer"
+	if key == appfpcoretax.RelationRegistrySupplier {
+		moduleKey = "fp_masukan_supplier_registry"
+		title = "Supplier Registry"
+		description = "Lookup supplier MYOB."
+		countLabel = "supplier"
+	}
+
+	return RegistryBlockSpec{
+		Type:        "registry",
+		Key:         defaultBlockKey,
+		Title:       title,
+		Description: description,
+		Status: RegistryStatusSpec{
+			Loaded:  status.Loaded,
+			Count:   len(items),
+			Code:    status.Code,
+			Message: status.Message,
+		},
+		CountLabel: countLabel,
+		Schema: RegistrySchemaSpec{
+			SchemaVersion: spec.SchemaVersion,
+			Columns:       fpCoretaxRegistryColumnsToRegistry(spec.Columns),
+			Upload: RegistryUploadSpec{
+				AcceptedExtensions: spec.Upload.AcceptedExtensions,
+				AcceptedMimeTypes:  spec.Upload.AcceptedMIMETypes,
+				MaxFileSizeMB:      int(spec.Upload.MaxFileSizeMB),
+			},
+			Relative:  spec.Relative,
+			LookupKey: spec.LookupKey,
+		},
+		UploadAction: RegistryUploadActionSpec{
+			Method:         "POST",
+			URL:            fmt.Sprintf("/config/modules/%s/blocks/main/upload", moduleKey),
+			FieldName:      "file",
+			SuccessMessage: fmt.Sprintf("%s diperbarui", strings.ToLower(title)),
+		},
+		UploadTitle:      "Upload Registry",
+		PreviewTitle:     "Preview Registry",
+		PreviewItems:     previewItems,
+		PreviewEmptyText: "Belum ada data registry.",
+		MetadataRows: []RegistryMetaRowSpec{
+			{Label: "Ekstensi", Value: strings.Join(spec.Upload.AcceptedExtensions, ", ")},
+			{Label: "Maks. Ukuran", Value: fmt.Sprintf("%d MB", spec.Upload.MaxFileSizeMB)},
+			{Label: "Lookup Key", Value: spec.LookupKey},
+			{Label: "Output CSV", Value: spec.Relative},
+		},
 	}, nil
 }
 
@@ -925,6 +1072,29 @@ func (s *PageService) updateCashflowBillProfile(profileID string, key appcashflo
 	return err
 }
 
+func (s *PageService) updateFPCoretaxProfile(profileID string, key appfpcoretax.ProfileConfigKey, input FormBlockInput) error {
+	spec := s.fpCoretaxProfiles.Spec(key)
+	fields := make([]appfpcoretax.ProfileConfigField, 0, len(spec.Fields))
+	for _, item := range spec.Fields {
+		fields = append(fields, appfpcoretax.ProfileConfigField{
+			Key:         item.Key,
+			Label:       item.Label,
+			Required:    item.Required,
+			Value:       strings.TrimSpace(input.Values[item.Key]),
+			Description: item.Description,
+			Kind:        item.Kind,
+			Group:       item.Group,
+		})
+	}
+
+	_, err := s.fpCoretaxProfiles.Update(profileID, key, appfpcoretax.ProfileConfig{
+		SchemaVersion: spec.SchemaVersion,
+		ConfigKey:     spec.ConfigKey,
+		Fields:        fields,
+	})
+	return err
+}
+
 func (s *PageService) uploadBuyerRegistry(profileID string, filename string, fileSize int64, tempPath string) (int, []parser.ValidationIssue, error) {
 	if ok, reason := s.buyerRegistry.IsAcceptedUpload(filename, fileSize); !ok {
 		spec := s.buyerRegistry.Spec()
@@ -982,6 +1152,25 @@ func (s *PageService) uploadCategoryAccounts(profileID string, filename string, 
 	return count, sanitizeValidationIssues(issues), nil
 }
 
+func (s *PageService) uploadFPCoretaxRegistry(profileID string, key appfpcoretax.RelationRegistryKey, filename string, fileSize int64, tempPath string) (int, []parser.ValidationIssue, error) {
+	if ok, reason := s.fpCoretaxRelations.IsAcceptedUpload(key, filename, fileSize); !ok {
+		spec := s.fpCoretaxRelations.Spec(key)
+		return 0, nil, fmt.Errorf("%s (format: %s, maksimal: %dMB)", fallbackValue(strings.TrimSpace(reason), "file tidak memenuhi format upload registry"), strings.Join(spec.Upload.AcceptedExtensions, ", "), spec.Upload.MaxFileSizeMB)
+	}
+	count, issues, err := s.fpCoretaxRelations.Update(profileID, key, tempPath)
+	if err != nil {
+		var schemaErr *parser.FPCoretaxRelationSchemaMismatchError
+		if errors.As(err, &schemaErr) {
+			missing := append([]string(nil), schemaErr.MissingColumns...)
+			sort.Strings(missing)
+			required := requiredFPCoretaxRegistryColumns(s.fpCoretaxRelations.Spec(key).Columns)
+			return 0, nil, fmt.Errorf("schema registry tidak sesuai. Kolom wajib: %s. Kolom hilang: %s", strings.Join(required, ", "), strings.Join(missing, ", "))
+		}
+		return 0, nil, err
+	}
+	return count, sanitizeValidationIssues(issues), nil
+}
+
 func requestOptionsToForm(items []appbukpot.RequestConfigFieldOption) []FormFieldOptionSpec {
 	if len(items) == 0 {
 		return nil
@@ -1026,6 +1215,28 @@ func actionSuggestionsToAny(items []appbukpot.ActionProfileSuggestionSpec) []any
 	return out
 }
 
+func fpCoretaxSuggestionsToAny(items []appfpcoretax.ProfileConfigSuggestion) []any {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]any, 0, len(items))
+	for _, item := range items {
+		out = append(out, item)
+	}
+	return out
+}
+
+func fpCoretaxOptionsToForm(items []appfpcoretax.ProfileConfigFieldOption) []FormFieldOptionSpec {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]FormFieldOptionSpec, 0, len(items))
+	for _, item := range items {
+		out = append(out, FormFieldOptionSpec{Label: item.Label, Value: item.Value})
+	}
+	return out
+}
+
 func buyerColumnsToRegistry(items []parser.BuyerRegistryColumnSpec) []RegistryColumnSpec {
 	out := make([]RegistryColumnSpec, 0, len(items))
 	for _, item := range items {
@@ -1040,6 +1251,19 @@ func buyerColumnsToRegistry(items []parser.BuyerRegistryColumnSpec) []RegistryCo
 }
 
 func taxColumnsToRegistry(items []parser.TaxAccountColumnSpec) []RegistryColumnSpec {
+	out := make([]RegistryColumnSpec, 0, len(items))
+	for _, item := range items {
+		out = append(out, RegistryColumnSpec{
+			Key:         item.Key,
+			Header:      item.Header,
+			Required:    item.Required,
+			Description: item.Description,
+		})
+	}
+	return out
+}
+
+func fpCoretaxRegistryColumnsToRegistry(items []parser.FPCoretaxRelationColumnSpec) []RegistryColumnSpec {
 	out := make([]RegistryColumnSpec, 0, len(items))
 	for _, item := range items {
 		out = append(out, RegistryColumnSpec{
@@ -1084,6 +1308,22 @@ func requiredBuyerColumns(columns []parser.BuyerRegistryColumnSpec) []string {
 }
 
 func requiredTaxAccountColumns(columns []parser.TaxAccountColumnSpec) []string {
+	out := make([]string, 0, len(columns))
+	for _, item := range columns {
+		if !item.Required {
+			continue
+		}
+		label := strings.TrimSpace(item.Header)
+		if label == "" {
+			continue
+		}
+		out = append(out, label)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func requiredFPCoretaxRegistryColumns(columns []parser.FPCoretaxRelationColumnSpec) []string {
 	out := make([]string, 0, len(columns))
 	for _, item := range columns {
 		if !item.Required {

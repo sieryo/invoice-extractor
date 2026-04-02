@@ -1,6 +1,7 @@
 package document
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -795,6 +796,38 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 				},
 			},
 		}, true
+	case CollectionKindFPKeluaranCoretax:
+		return buildFPCoretaxCollectionSpec(
+			collectionKind,
+			"FP Keluaran Coretax",
+			"Workbook XLSX untuk export MYOB Misc Sales.",
+			fpKeluaranMiscSalesActionType,
+			"Misc Sales",
+			"Export ke MYOB Misc Sales.",
+			"Pengaturan Misc Sales",
+			"Atur parameter action dan mapping header.",
+			"Nama Pembeli",
+			[]ActionRequirementSpec{
+				{Key: "fpCoretaxDefaultProfile", Label: "Default Profil FP Keluaran", Required: true},
+				{Key: "fpCoretaxRegistry", Label: "Customer Registry", Required: true},
+			},
+		), true
+	case CollectionKindFPMasukanCoretax:
+		return buildFPCoretaxCollectionSpec(
+			collectionKind,
+			"FP Masukan Coretax",
+			"Workbook XLSX untuk export MYOB Misc Purchases.",
+			fpMasukanMiscPurchasesActionType,
+			"Misc Purchases",
+			"Export ke MYOB Misc Purchases.",
+			"Pengaturan Misc Purchases",
+			"Atur parameter action dan mapping header.",
+			"Nama Penjual",
+			[]ActionRequirementSpec{
+				{Key: "fpCoretaxDefaultProfile", Label: "Default Profil FP Masukan", Required: true},
+				{Key: "fpCoretaxRegistry", Label: "Supplier Registry", Required: true},
+			},
+		), true
 	case CollectionKindBukpotBPPU:
 		return buildBukpotCollectionSpec(
 			collectionKind,
@@ -1217,6 +1250,8 @@ func BuildCreateCollectionSpec() CreateCollectionSpec {
 	kinds := []CollectionKind{
 		CollectionKindInvoiceCompany,
 		CollectionKindTaxInvoiceCoretax,
+		CollectionKindFPKeluaranCoretax,
+		CollectionKindFPMasukanCoretax,
 		CollectionKindBukpotBPPU,
 		CollectionKindBukpotBP21,
 		CollectionKindBukpotBPA1,
@@ -1440,6 +1475,198 @@ func buildBukpotCollectionSpec(
 	}
 }
 
+func buildFPCoretaxCollectionSpec(
+	collectionKind CollectionKind,
+	label string,
+	description string,
+	actionType string,
+	actionLabel string,
+	actionDescription string,
+	formTitle string,
+	formDescription string,
+	partyFieldLabel string,
+	requirements []ActionRequirementSpec,
+) CollectionSpec {
+	outputDefault := "misc_sales"
+	accountLabel := "Account Number"
+	accountDefault := "41001"
+	if collectionKind == CollectionKindFPMasukanCoretax {
+		outputDefault = "misc_purchases"
+		accountLabel = "Default Account Number"
+		accountDefault = "51001"
+	}
+
+	return CollectionSpec{
+		CollectionKind: collectionKind,
+		SourceFormat:   SourceFormatXLSX,
+		Label:          label,
+		Description:    description,
+		Upload: UploadRuleSpec{
+			AcceptExtensions: []string{".xlsx"},
+			AcceptMIMETypes: []string{
+				"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+			},
+			MaxChunkMB:       20,
+			MaxFilesPerBatch: 200,
+		},
+		Ingest: IngestRuleSpec{
+			KeepRaw:            true,
+			DeleteTempAfterRun: true,
+			Artifacts: []ArtifactRuleSpec{
+				{Kind: "raw", Required: true},
+				{Kind: "normalized", Required: true},
+			},
+		},
+		Actions: []ActionSpec{
+			{
+				CollectionKind: string(collectionKind),
+				ActionType:     actionType,
+				Label:          actionLabel,
+				Description:    actionDescription,
+				State:          ActionStateSpec{Enabled: true},
+				Presentation:   ActionPresentationSpec{Mode: "inline", Width: "xl"},
+				Selection: ActionSelectionSpec{
+					Mode:           "manual",
+					AllowCheckAll:  false,
+					AllowedStatus:  []string{"ready", "warning"},
+					MinDocumentCnt: 1,
+					MaxDocumentCnt: 1,
+				},
+				Form: &FormSpec{
+					Title:       formTitle,
+					Description: formDescription,
+					Sections: []FormSectionSpec{
+						{
+							Key:         "source",
+							Title:       "Sumber Data",
+							Description: "Pilih sheet dan baris header dari workbook terpilih.",
+							Columns:     2,
+							Fields: []FormFieldSpec{
+								{
+									Key:          "sheetName",
+									Kind:         FormFieldKindSelect,
+									Label:        "Sheet",
+									Required:     true,
+									DefaultValue: "",
+									HelpText:     "Pilih dokumen terlebih dahulu untuk melihat sheet yang tersedia.",
+									State:        FormFieldStateSpec{Visible: true, Disabled: true},
+								},
+								buildHeaderRowField("Baris Header", "Baris header workbook untuk membaca data transaksi."),
+							},
+						},
+						{
+							Key:         "parameter",
+							Title:       specutil.ParameterActionSectionTitle,
+							Description: "Parameter default untuk export MYOB.",
+							Columns:     2,
+							Fields: []FormFieldSpec{
+								{
+									Key:          "outputFilename",
+									Kind:         FormFieldKindText,
+									Label:        "Nama Output",
+									Required:     true,
+									DefaultValue: outputDefault,
+									Placeholder:  outputDefault,
+									HelpText:     "Tanpa ekstensi file.",
+									State:        FormFieldStateSpec{Visible: true},
+								},
+								{
+									Key:          "accountNumber",
+									Kind:         FormFieldKindText,
+									Label:        accountLabel,
+									Required:     true,
+									DefaultValue: accountDefault,
+									HelpText:     "Dipakai saat registry tidak menyediakan account number.",
+									State:        FormFieldStateSpec{Visible: true},
+								},
+								{
+									Key:          "memoTemplate",
+									Kind:         FormFieldKindTemplate,
+									Label:        "Template Memo",
+									Required:     true,
+									DefaultValue: "{{nomorFakturPajak}}",
+									Placeholder:  "{{nomorFakturPajak}}",
+									Suggestions:  buildFPCoretaxTemplateSuggestions(collectionKind),
+									HelpText:     "Gunakan placeholder yang tersedia untuk membentuk memo output MYOB.",
+									State:        FormFieldStateSpec{Visible: true},
+								},
+								{
+									Key:          "descriptionTemplate",
+									Kind:         FormFieldKindTemplate,
+									Label:        "Template Description",
+									Required:     true,
+									DefaultValue: "{{nomorFakturPajak}}",
+									Placeholder:  "{{nomorFakturPajak}}",
+									Suggestions:  buildFPCoretaxTemplateSuggestions(collectionKind),
+									HelpText:     "Gunakan placeholder yang tersedia untuk membentuk description output MYOB.",
+									State:        FormFieldStateSpec{Visible: true},
+								},
+							},
+						},
+						{
+							Key:         "tax",
+							Title:       "Tax",
+							Description: "Parameter pajak default untuk output MYOB.",
+							Columns:     2,
+							Fields: []FormFieldSpec{
+								{
+									Key:          "taxCode",
+									Kind:         FormFieldKindText,
+									Label:        "Tax Code",
+									Required:     true,
+									DefaultValue: "PPN",
+									HelpText:     "Tax code MYOB untuk setiap baris transaksi.",
+									State:        FormFieldStateSpec{Visible: true},
+								},
+								{
+									Key:          "inclusive",
+									Kind:         FormFieldKindCheckbox,
+									Label:        "Inclusive Tax",
+									Required:     false,
+									DefaultValue: false,
+									HelpText:     "Aktifkan jika nilai total pada source sudah termasuk pajak.",
+									State:        FormFieldStateSpec{Visible: true},
+								},
+							},
+						},
+						{
+							Key:         "mapping",
+							Title:       specutil.MappingHeaderSectionTitle,
+							Description: "Nama header source untuk membaca kolom faktur pajak.",
+							Columns:     2,
+							Fields: []FormFieldSpec{
+								{Key: "partyName", Kind: FormFieldKindText, Label: partyFieldLabel, Required: true, DefaultValue: "nama", State: FormFieldStateSpec{Visible: true}},
+								{Key: "documentNumber", Kind: FormFieldKindText, Label: "Nomor Faktur Pajak", Required: true, DefaultValue: "nomor faktur pajak", State: FormFieldStateSpec{Visible: true}},
+								{Key: "date", Kind: FormFieldKindText, Label: "Tanggal Faktur Pajak", Required: true, DefaultValue: "tanggal faktur pajak", State: FormFieldStateSpec{Visible: true}},
+								{Key: "taxBase", Kind: FormFieldKindText, Label: "DPP", Required: true, DefaultValue: "harga jual/penggantian/dpp", State: FormFieldStateSpec{Visible: true}},
+								{Key: "tax", Kind: FormFieldKindText, Label: "PPN", Required: true, DefaultValue: "ppn", State: FormFieldStateSpec{Visible: true}},
+								{Key: "reference", Kind: FormFieldKindText, Label: "Referensi", Required: false, DefaultValue: "referensi", State: FormFieldStateSpec{Visible: true}},
+							},
+						},
+					},
+				},
+				Detail: &ActionDetailSpec{
+					Summary: fmt.Sprintf("Mengubah workbook %s menjadi file MYOB %s (.txt).", strings.ToLower(label), actionLabel),
+					Bullets: []string{
+						"Sheet dan baris header dipilih dari dokumen source yang Anda centang.",
+						"Memo dan Description dibentuk dari template placeholder yang tersedia.",
+						"Registry pihak dipakai untuk validasi nama MYOB, dan pada supplier dapat memberi override account number.",
+					},
+				},
+				Requirements: requirements,
+				Outputs: []ActionOutputSpec{
+					{
+						Kind:       "file",
+						MimeType:   "text/plain",
+						Ext:        "txt",
+						DownloadOK: true,
+					},
+				},
+			},
+		},
+	}
+}
+
 func ResolveCollectionSourceFormat(collectionKind CollectionKind) SourceFormat {
 	spec, ok := BuildCollectionSpec(collectionKind)
 	if !ok || !spec.SourceFormat.IsValid() {
@@ -1475,6 +1702,30 @@ func buildBukpotTemplateSuggestions(collectionKind CollectionKind) []FormSuggest
 			FormSuggestionSpec{Token: "posisi", Label: "Posisi", Example: "{{posisi}}"},
 			FormSuggestionSpec{Token: "statusPtkp", Label: "Status PTKP", Example: "{{statusPtkp}}"},
 		)
+	}
+
+	return suggestions
+}
+
+func buildFPCoretaxTemplateSuggestions(collectionKind CollectionKind) []FormSuggestionSpec {
+	suggestions := []FormSuggestionSpec{
+		{Token: "nomorFakturPajak", Label: "Nomor Faktur Pajak", Example: "{{nomorFakturPajak}}"},
+		{Token: "tanggalFakturPajak", Label: "Tanggal Faktur Pajak", Example: "{{tanggalFakturPajak}}"},
+		{Token: "referensi", Label: "Referensi", Example: "{{referensi}}"},
+		{Token: "dpp", Label: "DPP", Example: "{{dpp}}"},
+		{Token: "ppn", Label: "PPN", Example: "{{ppn}}"},
+		{Token: "total", Label: "Total", Example: "{{total}}"},
+		{Token: "sourceName", Label: "Nama File Asal", Example: "{{sourceName}}"},
+	}
+
+	if collectionKind == CollectionKindFPMasukanCoretax {
+		suggestions = append([]FormSuggestionSpec{
+			{Token: "namaPenjual", Label: "Nama Penjual", Example: "{{namaPenjual}}"},
+		}, suggestions...)
+	} else {
+		suggestions = append([]FormSuggestionSpec{
+			{Token: "namaPembeli", Label: "Nama Pembeli", Example: "{{namaPembeli}}"},
+		}, suggestions...)
 	}
 
 	return suggestions

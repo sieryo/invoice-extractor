@@ -17,6 +17,7 @@ import (
 	appbuyer "github.com/sieryo/invoice-extractor/internal/app/buyer"
 	appcashflow "github.com/sieryo/invoice-extractor/internal/app/cashflow"
 	appcashflowbill "github.com/sieryo/invoice-extractor/internal/app/cashflowbill"
+	appfpcoretax "github.com/sieryo/invoice-extractor/internal/app/fpcoretax"
 	"github.com/sieryo/invoice-extractor/internal/app/document"
 	dcollection "github.com/sieryo/invoice-extractor/internal/domain/collection"
 	"github.com/sieryo/invoice-extractor/internal/domain/file"
@@ -54,6 +55,16 @@ type BukpotActionProfileProvider interface {
 	Load(profileID string, key appbukpot.ActionProfileKey) (appbukpot.ActionProfile, error)
 }
 
+type FPCoretaxProfileConfigProvider interface {
+	Status(profileID string, key appfpcoretax.ProfileConfigKey) appfpcoretax.ProfileConfigStatus
+	Load(profileID string, key appfpcoretax.ProfileConfigKey) (appfpcoretax.ProfileConfig, error)
+}
+
+type FPCoretaxRelationRegistryProvider interface {
+	Status(profileID string, key appfpcoretax.RelationRegistryKey) appfpcoretax.RelationRegistryStatus
+	Load(profileID string, key appfpcoretax.RelationRegistryKey) (map[string]appfpcoretax.RelationRecord, error)
+}
+
 type Service struct {
 	repo                      Repository
 	collectionRepo            dcollection.Repository
@@ -65,6 +76,8 @@ type Service struct {
 	cashflowBillProfileConfig CashflowBillProfileConfigProvider
 	bukpotRequestConfig       BukpotRequestConfigProvider
 	bukpotActionProfiles      BukpotActionProfileProvider
+	fpCoretaxProfileConfig    FPCoretaxProfileConfigProvider
+	fpCoretaxRelations        FPCoretaxRelationRegistryProvider
 	fileStore                 file.FileStore
 
 	queue   chan string
@@ -93,6 +106,8 @@ func NewService(
 	cashflowBillProfileConfig CashflowBillProfileConfigProvider,
 	bukpotRequestConfig BukpotRequestConfigProvider,
 	bukpotActionProfiles BukpotActionProfileProvider,
+	fpCoretaxProfileConfig FPCoretaxProfileConfigProvider,
+	fpCoretaxRelations FPCoretaxRelationRegistryProvider,
 	fileStore file.FileStore,
 	workers int,
 ) *Service {
@@ -111,6 +126,8 @@ func NewService(
 		cashflowBillProfileConfig: cashflowBillProfileConfig,
 		bukpotRequestConfig:       bukpotRequestConfig,
 		bukpotActionProfiles:      bukpotActionProfiles,
+		fpCoretaxProfileConfig:    fpCoretaxProfileConfig,
+		fpCoretaxRelations:        fpCoretaxRelations,
 		fileStore:                 fileStore,
 		queue:                     make(chan string, 64),
 		workers:                   workers,
@@ -166,6 +183,7 @@ func (s *Service) RunAction(ctx context.Context, req RunRequest) (*CollectionAct
 		return nil, ErrActionNotSupported
 	}
 	actionSpec = s.applyBukpotActionProfileDefaults(actionSpec, coll.UserID, collectionKind)
+	actionSpec = s.applyFPCoretaxProfileDefaults(actionSpec, coll.UserID, collectionKind)
 	if !actionSpec.State.Enabled {
 		reason := strings.TrimSpace(actionSpec.State.Message)
 		if reason != "" {
@@ -370,6 +388,7 @@ func (s *Service) GetActionSpec(
 	}
 	spec = s.applyRuntimeRequirements(spec, coll.UserID)
 	spec = s.applyBukpotActionProfileCollectionSpec(spec, coll.UserID)
+	spec = s.applyFPCoretaxProfileCollectionSpec(spec, coll.UserID)
 	if coll.IsFrozen() {
 		spec = applyFrozenCollectionSpec(spec)
 	}
@@ -395,6 +414,7 @@ func (s *Service) ResolveActionSpec(
 	}
 	spec = s.applyRuntimeRequirements(spec, coll.UserID)
 	spec = s.applyBukpotActionProfileCollectionSpec(spec, coll.UserID)
+	spec = s.applyFPCoretaxProfileCollectionSpec(spec, coll.UserID)
 	if coll.IsFrozen() {
 		spec = applyFrozenCollectionSpec(spec)
 	}
@@ -419,6 +439,12 @@ func (s *Service) ResolveActionSpec(
 	}
 	if collectionKind == document.CollectionKindBukpotRequestGSTDeductionMT && strings.EqualFold(strings.TrimSpace(actionSpec.ActionType), "request_bukpot_gst_deduction_mt") {
 		resolved, err = s.resolveBukpotRequestActionSpec(ctx, coll.UserID, req.CollectionID, collectionKind, sourceFormat, actionSpec, req.DocumentIDs)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if isFPCoretaxCollection(collectionKind) {
+		resolved, err = s.resolveFPCoretaxActionSpec(ctx, coll.UserID, req.CollectionID, collectionKind, sourceFormat, actionSpec, req.DocumentIDs)
 		if err != nil {
 			return nil, err
 		}
@@ -555,6 +581,9 @@ func (s *Service) process(ctx context.Context, actionID string) error {
 	if action.CollectionKind == document.CollectionKindCashflowImport {
 		runInput = s.resolveCashflowRuntimeInput(action.UserID, action.ActionType, runInput)
 		runInput = s.resolveCashflowBillRuntimeInput(action.UserID, action.ActionType, runInput)
+	}
+	if isFPCoretaxCollection(action.CollectionKind) {
+		runInput = s.resolveFPCoretaxRuntimeInput(action.UserID, action.CollectionKind, runInput)
 	}
 
 	runReq := document.ActionRequest{
@@ -1545,6 +1574,168 @@ func (s *Service) resolveCashflowBillRuntimeInput(
 	return b
 }
 
+func (s *Service) resolveFPCoretaxActionSpec(
+	ctx context.Context,
+	profileID string,
+	collectionID string,
+	collectionKind document.CollectionKind,
+	sourceFormat document.SourceFormat,
+	actionSpec document.ActionSpec,
+	documentIDs []string,
+) (document.ActionSpec, error) {
+	if s.fpCoretaxProfileConfig != nil {
+		configKey, ok := fpCoretaxProfileKeyFromCollectionKind(collectionKind)
+		if ok {
+			cfg, err := s.fpCoretaxProfileConfig.Load(profileID, configKey)
+			if err == nil {
+				for key, value := range appfpcoretax.ResolveProfileConfigValues(cfg) {
+					field, ok := findFormField(actionSpec.Form, key)
+					if !ok {
+						continue
+					}
+					switch strings.ToLower(strings.TrimSpace(field.Kind)) {
+					case document.FormFieldKindCheckbox:
+						field.DefaultValue = strings.EqualFold(strings.TrimSpace(value), "true")
+					default:
+						field.DefaultValue = strings.TrimSpace(value)
+					}
+					updateFormField(actionSpec.Form, field)
+				}
+			}
+		}
+	}
+
+	field, ok := findFormField(actionSpec.Form, "sheetName")
+	if !ok {
+		return actionSpec, nil
+	}
+
+	normalizedIDs, err := normalizeDocumentIDs(documentIDs)
+	if err != nil {
+		return actionSpec, err
+	}
+	if len(normalizedIDs) == 0 {
+		field.Options = nil
+		field.HelpText = "Pilih minimal satu dokumen FP Coretax untuk melihat sheet yang tersedia."
+		field.State.Disabled = true
+		field.State.Message = "Sheet akan tersedia setelah Anda memilih dokumen."
+		updateFormField(actionSpec.Form, field)
+		return actionSpec, nil
+	}
+
+	snapshotDocs, err := s.repo.ListSnapshotDocumentsByIDs(ctx, collectionID, collectionKind, sourceFormat, normalizedIDs)
+	if err != nil {
+		return actionSpec, err
+	}
+	if len(snapshotDocs) != len(normalizedIDs) {
+		return actionSpec, ErrSnapshotDocNotFound
+	}
+	if allowed, allowedErr := normalizeAllowedStatuses(actionSpec.Selection.AllowedStatus); allowedErr == nil {
+		if err := validateSnapshotStatuses(snapshotDocs, allowed); err != nil {
+			return actionSpec, err
+		}
+	}
+
+	commonSheetNames, defaultSheet, defaultHeaderRow, resolveErr := s.resolveCommonSpreadsheetSheets(ctx, collectionID, snapshotDocs)
+	if resolveErr != nil {
+		return actionSpec, resolveErr
+	}
+	if len(commonSheetNames) == 0 {
+		actionSpec.State.Enabled = false
+		actionSpec.State.Code = "FP_CORETAX_COMMON_SHEET_NOT_FOUND"
+		actionSpec.State.Message = "Dokumen terpilih tidak memiliki nama sheet yang sama untuk diproses bersama."
+		field.Options = nil
+		field.HelpText = actionSpec.State.Message
+		field.State.Disabled = true
+		field.State.Message = actionSpec.State.Message
+		field.DefaultValue = ""
+		updateFormField(actionSpec.Form, field)
+		return actionSpec, nil
+	}
+
+	field.Options = make([]document.FormFieldOption, 0, len(commonSheetNames))
+	for _, sheetName := range commonSheetNames {
+		field.Options = append(field.Options, document.FormFieldOption{
+			Label: sheetName,
+			Value: sheetName,
+		})
+	}
+	field.HelpText = "Sheet yang tersedia pada semua dokumen terpilih."
+	field.State.Disabled = false
+	field.State.Message = ""
+	field.DefaultValue = pickPreferredSheetName(commonSheetNames, formFieldDefaultString(field.DefaultValue), defaultSheet)
+	updateFormField(actionSpec.Form, field)
+
+	if headerField, ok := findFormField(actionSpec.Form, "headerRowNumber"); ok && defaultHeaderRow > 0 {
+		if formFieldDefaultString(headerField.DefaultValue) == "" {
+			headerField.DefaultValue = strconv.Itoa(defaultHeaderRow)
+		}
+		updateFormField(actionSpec.Form, headerField)
+	}
+
+	return actionSpec, nil
+}
+
+func (s *Service) resolveFPCoretaxRuntimeInput(
+	profileID string,
+	collectionKind document.CollectionKind,
+	input json.RawMessage,
+) json.RawMessage {
+	if !isFPCoretaxCollection(collectionKind) || s.fpCoretaxProfileConfig == nil {
+		return input
+	}
+
+	configKey, ok := fpCoretaxProfileKeyFromCollectionKind(collectionKind)
+	if !ok {
+		return input
+	}
+	cfg, err := s.fpCoretaxProfileConfig.Load(profileID, configKey)
+	if err != nil {
+		return input
+	}
+
+	values := appfpcoretax.ResolveProfileConfigValues(cfg)
+	if len(values) == 0 {
+		return input
+	}
+
+	payload := map[string]any{}
+	trimmed := bytes.TrimSpace(input)
+	if len(trimmed) > 0 && !bytes.Equal(trimmed, []byte("null")) {
+		if err := json.Unmarshal(trimmed, &payload); err != nil {
+			return input
+		}
+	}
+
+	for key, value := range values {
+		if strings.TrimSpace(value) == "" {
+			continue
+		}
+		if _, exists := payload[key]; exists && strings.TrimSpace(fmt.Sprint(payload[key])) != "" {
+			continue
+		}
+		switch key {
+		case "inclusive":
+			payload[key] = strings.EqualFold(strings.TrimSpace(value), "true")
+		case "headerRowNumber":
+			if n, err := strconv.Atoi(strings.TrimSpace(value)); err == nil {
+				payload[key] = n
+			}
+		default:
+			payload[key] = value
+		}
+	}
+	if len(payload) == 0 {
+		return input
+	}
+
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return input
+	}
+	return b
+}
+
 func isCashflowExportAction(actionType string) bool {
 	switch strings.TrimSpace(actionType) {
 	case "export_cashflow_myob", "export_cashflow_spend_money", "export_cashflow_receive_money":
@@ -1560,6 +1751,41 @@ func isCashflowBillAction(actionType string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+func isFPCoretaxCollection(collectionKind document.CollectionKind) bool {
+	return collectionKind == document.CollectionKindFPKeluaranCoretax || collectionKind == document.CollectionKindFPMasukanCoretax
+}
+
+func fpCoretaxProfileKeyFromCollectionKind(collectionKind document.CollectionKind) (appfpcoretax.ProfileConfigKey, bool) {
+	switch collectionKind {
+	case document.CollectionKindFPMasukanCoretax:
+		return appfpcoretax.ProfileConfigFPMasukanMiscPurchases, true
+	case document.CollectionKindFPKeluaranCoretax:
+		return appfpcoretax.ProfileConfigFPKeluaranMiscSales, true
+	default:
+		return "", false
+	}
+}
+
+func fpCoretaxRelationKeyFromCollectionKind(collectionKind document.CollectionKind) (appfpcoretax.RelationRegistryKey, bool) {
+	switch collectionKind {
+	case document.CollectionKindFPMasukanCoretax:
+		return appfpcoretax.RelationRegistrySupplier, true
+	case document.CollectionKindFPKeluaranCoretax:
+		return appfpcoretax.RelationRegistryCustomer, true
+	default:
+		return "", false
+	}
+}
+
+func fpCoretaxActionTypeFromCollectionKind(collectionKind document.CollectionKind) string {
+	switch collectionKind {
+	case document.CollectionKindFPMasukanCoretax:
+		return "export_fp_masukan_misc_purchases"
+	default:
+		return "export_fp_keluaran_misc_sales"
 	}
 }
 
@@ -2008,6 +2234,10 @@ func (s *Service) applyRuntimeRequirements(spec document.CollectionSpec, profile
 			strings.EqualFold(strings.TrimSpace(actionSpec.ActionType), "request_bukpot_gst_deduction_mt") {
 			actionSpec = s.applyBukpotRequestConfigRequirement(actionSpec, profileID)
 		}
+		if isFPCoretaxCollection(spec.CollectionKind) {
+			actionSpec = s.applyFPCoretaxProfileRequirement(actionSpec, profileID, spec.CollectionKind)
+			actionSpec = s.applyFPCoretaxRegistryRequirement(actionSpec, profileID, spec.CollectionKind)
+		}
 
 		actions = append(actions, actionSpec)
 	}
@@ -2026,6 +2256,22 @@ func (s *Service) applyBukpotActionProfileCollectionSpec(
 	actions := make([]document.ActionSpec, 0, len(spec.Actions))
 	for _, item := range spec.Actions {
 		actions = append(actions, s.applyBukpotActionProfileDefaults(item, profileID, spec.CollectionKind))
+	}
+	spec.Actions = actions
+	return spec
+}
+
+func (s *Service) applyFPCoretaxProfileCollectionSpec(
+	spec document.CollectionSpec,
+	profileID string,
+) document.CollectionSpec {
+	if s.fpCoretaxProfileConfig == nil {
+		return spec
+	}
+
+	actions := make([]document.ActionSpec, 0, len(spec.Actions))
+	for _, item := range spec.Actions {
+		actions = append(actions, s.applyFPCoretaxProfileDefaults(item, profileID, spec.CollectionKind))
 	}
 	spec.Actions = actions
 	return spec
@@ -2064,6 +2310,46 @@ func (s *Service) applyBukpotActionProfileDefaults(
 			}
 		default:
 			field.DefaultValue = strings.TrimSpace(item.Value)
+		}
+		updateFormField(actionSpec.Form, field)
+	}
+
+	return actionSpec
+}
+
+func (s *Service) applyFPCoretaxProfileDefaults(
+	actionSpec document.ActionSpec,
+	profileID string,
+	collectionKind document.CollectionKind,
+) document.ActionSpec {
+	if s.fpCoretaxProfileConfig == nil || actionSpec.Form == nil {
+		return actionSpec
+	}
+
+	configKey, ok := fpCoretaxProfileKeyFromCollectionKind(collectionKind)
+	if !ok || strings.TrimSpace(actionSpec.ActionType) != fpCoretaxActionTypeFromCollectionKind(collectionKind) {
+		return actionSpec
+	}
+
+	cfg, err := s.fpCoretaxProfileConfig.Load(profileID, configKey)
+	if err != nil {
+		return actionSpec
+	}
+
+	for key, value := range appfpcoretax.ResolveProfileConfigValues(cfg) {
+		field, found := findFormField(actionSpec.Form, key)
+		if !found {
+			continue
+		}
+		switch strings.ToLower(strings.TrimSpace(field.Kind)) {
+		case document.FormFieldKindCheckbox:
+			field.DefaultValue = strings.EqualFold(strings.TrimSpace(value), "true")
+		case document.FormFieldKindNumber:
+			if n, convErr := strconv.Atoi(strings.TrimSpace(value)); convErr == nil {
+				field.DefaultValue = float64(n)
+			}
+		default:
+			field.DefaultValue = strings.TrimSpace(value)
 		}
 		updateFormField(actionSpec.Form, field)
 	}
@@ -2355,6 +2641,133 @@ func (s *Service) applyCashflowBillProfileRequirement(actionSpec document.Action
 	}
 
 	if !status.Configured {
+		actionSpec.State.Enabled = false
+		actionSpec.State.Code = strings.TrimSpace(status.Code)
+		if strings.TrimSpace(actionSpec.State.Message) == "" {
+			actionSpec.State.Message = strings.TrimSpace(status.Message)
+		}
+	}
+
+	return actionSpec
+}
+
+func (s *Service) applyFPCoretaxProfileRequirement(
+	actionSpec document.ActionSpec,
+	profileID string,
+	collectionKind document.CollectionKind,
+) document.ActionSpec {
+	configKey, ok := fpCoretaxProfileKeyFromCollectionKind(collectionKind)
+	if !ok {
+		return actionSpec
+	}
+
+	label := "Default Profil FP Keluaran"
+	defaultCode := "FP_KELUARAN_PROFILE_UNAVAILABLE"
+	defaultMessage := "Default profil FP Keluaran belum tersedia."
+	if collectionKind == document.CollectionKindFPMasukanCoretax {
+		label = "Default Profil FP Masukan"
+		defaultCode = "FP_MASUKAN_PROFILE_UNAVAILABLE"
+		defaultMessage = "Default profil FP Masukan belum tersedia."
+	}
+
+	status := appfpcoretax.ProfileConfigStatus{
+		Configured:    false,
+		Code:          defaultCode,
+		Message:       defaultMessage,
+		SchemaVersion: "1",
+	}
+	if s.fpCoretaxProfileConfig != nil {
+		status = s.fpCoretaxProfileConfig.Status(profileID, configKey)
+	}
+
+	updated := false
+	for idx, requirement := range actionSpec.Requirements {
+		if !strings.EqualFold(strings.TrimSpace(requirement.Key), "fpCoretaxDefaultProfile") {
+			continue
+		}
+		requirement.Label = label
+		requirement.Satisfied = status.Configured
+		requirement.Code = strings.TrimSpace(status.Code)
+		requirement.Message = strings.TrimSpace(status.Message)
+		actionSpec.Requirements[idx] = requirement
+		updated = true
+	}
+
+	if !updated {
+		actionSpec.Requirements = append(actionSpec.Requirements, document.ActionRequirementSpec{
+			Key:       "fpCoretaxDefaultProfile",
+			Label:     label,
+			Required:  true,
+			Satisfied: status.Configured,
+			Code:      strings.TrimSpace(status.Code),
+			Message:   strings.TrimSpace(status.Message),
+		})
+	}
+
+	if !status.Configured {
+		actionSpec.State.Enabled = false
+		actionSpec.State.Code = strings.TrimSpace(status.Code)
+		if strings.TrimSpace(actionSpec.State.Message) == "" {
+			actionSpec.State.Message = strings.TrimSpace(status.Message)
+		}
+	}
+
+	return actionSpec
+}
+
+func (s *Service) applyFPCoretaxRegistryRequirement(
+	actionSpec document.ActionSpec,
+	profileID string,
+	collectionKind document.CollectionKind,
+) document.ActionSpec {
+	registryKey, ok := fpCoretaxRelationKeyFromCollectionKind(collectionKind)
+	if !ok {
+		return actionSpec
+	}
+
+	label := "Customer Registry"
+	defaultCode := "FP_KELUARAN_REGISTRY_UNAVAILABLE"
+	defaultMessage := "Customer registry belum tersedia."
+	if collectionKind == document.CollectionKindFPMasukanCoretax {
+		label = "Supplier Registry"
+		defaultCode = "FP_MASUKAN_REGISTRY_UNAVAILABLE"
+		defaultMessage = "Supplier registry belum tersedia."
+	}
+
+	status := appfpcoretax.RelationRegistryStatus{
+		Loaded:  false,
+		Code:    defaultCode,
+		Message: defaultMessage,
+	}
+	if s.fpCoretaxRelations != nil {
+		status = s.fpCoretaxRelations.Status(profileID, registryKey)
+	}
+
+	updated := false
+	for idx, requirement := range actionSpec.Requirements {
+		if !strings.EqualFold(strings.TrimSpace(requirement.Key), "fpCoretaxRegistry") {
+			continue
+		}
+		requirement.Label = label
+		requirement.Satisfied = status.Loaded
+		requirement.Code = strings.TrimSpace(status.Code)
+		requirement.Message = strings.TrimSpace(status.Message)
+		actionSpec.Requirements[idx] = requirement
+		updated = true
+	}
+
+	if !updated {
+		actionSpec.Requirements = append(actionSpec.Requirements, document.ActionRequirementSpec{
+			Key:       "fpCoretaxRegistry",
+			Label:     label,
+			Required:  true,
+			Satisfied: status.Loaded,
+			Code:      strings.TrimSpace(status.Code),
+			Message:   strings.TrimSpace(status.Message),
+		})
+	}
+
+	if !status.Loaded {
 		actionSpec.State.Enabled = false
 		actionSpec.State.Code = strings.TrimSpace(status.Code)
 		if strings.TrimSpace(actionSpec.State.Message) == "" {

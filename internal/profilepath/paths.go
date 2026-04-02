@@ -61,6 +61,34 @@ func CashflowConfigDir(rootDir string, profileID string) string {
 	return filepath.Join(ProfileDir(rootDir, profileID), "cashflow")
 }
 
+func FPCoretaxConfigDir(rootDir string, profileID string) string {
+	return filepath.Join(ProfileDir(rootDir, profileID), "fp_coretax")
+}
+
+func FPKeluaranMiscSalesConfigJSON(rootDir string, profileID string) string {
+	return filepath.Join(FPCoretaxConfigDir(rootDir, profileID), "fp_keluaran_misc_sales.json")
+}
+
+func FPMasukanMiscPurchasesConfigJSON(rootDir string, profileID string) string {
+	return filepath.Join(FPCoretaxConfigDir(rootDir, profileID), "fp_masukan_misc_purchases.json")
+}
+
+func FPCoretaxCustomerCSV(rootDir string, profileID string) string {
+	return filepath.Join(ProfileDir(rootDir, profileID), "fp_keluaran_customers.csv")
+}
+
+func FPCoretaxSupplierCSV(rootDir string, profileID string) string {
+	return filepath.Join(ProfileDir(rootDir, profileID), "fp_masukan_suppliers.csv")
+}
+
+func FPCoretaxCustomerUploadTempXLSX(rootDir string, profileID string) string {
+	return filepath.Join(ProfileDir(rootDir, profileID), "fp_keluaran_customer_upload.xlsx")
+}
+
+func FPCoretaxSupplierUploadTempXLSX(rootDir string, profileID string) string {
+	return filepath.Join(ProfileDir(rootDir, profileID), "fp_masukan_supplier_upload.xlsx")
+}
+
 func CashflowSpendMoneyConfigJSON(rootDir string, profileID string) string {
 	return filepath.Join(CashflowConfigDir(rootDir, profileID), "spend_money.json")
 }
