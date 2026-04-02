@@ -106,24 +106,40 @@ type FormVariantSpec struct {
 }
 
 type FormFieldSpec struct {
-	Key          string                    `json:"key"`
-	Kind         string                    `json:"kind"`
-	Label        string                    `json:"label"`
-	Required     bool                      `json:"required"`
-	DefaultValue any                       `json:"defaultValue,omitempty"`
-	Options      []FormFieldOption         `json:"options,omitempty"`
-	Rules        []FormFieldRuleSpec       `json:"rules,omitempty"`
-	Interaction  *FormFieldInteractionSpec `json:"interaction,omitempty"`
-	State        FormFieldStateSpec        `json:"state"`
-	Suggestions  []FormSuggestionSpec      `json:"suggestions,omitempty"`
-	HelpText     string                    `json:"helpText,omitempty"`
-	Placeholder  string                    `json:"placeholder,omitempty"`
-	Span         int                       `json:"span,omitempty"`
+	Key          string                     `json:"key"`
+	Kind         string                     `json:"kind"`
+	Label        string                     `json:"label"`
+	Required     bool                       `json:"required"`
+	DefaultValue any                        `json:"defaultValue,omitempty"`
+	Options      []FormFieldOption          `json:"options,omitempty"`
+	Validation   *FormFieldValidationSpec   `json:"validation,omitempty"`
+	Presentation *FormFieldPresentationSpec `json:"presentation,omitempty"`
+	Rules        []FormFieldRuleSpec        `json:"rules,omitempty"`
+	Interaction  *FormFieldInteractionSpec  `json:"interaction,omitempty"`
+	State        FormFieldStateSpec         `json:"state"`
+	Suggestions  []FormSuggestionSpec       `json:"suggestions,omitempty"`
+	HelpText     string                     `json:"helpText,omitempty"`
+	Placeholder  string                     `json:"placeholder,omitempty"`
+	Span         int                        `json:"span,omitempty"`
 }
 
 type FormFieldOption struct {
 	Label string `json:"label"`
 	Value string `json:"value"`
+}
+
+type FormFieldValidationSpec struct {
+	Min            *float64 `json:"min,omitempty"`
+	Max            *float64 `json:"max,omitempty"`
+	MinLength      *int     `json:"minLength,omitempty"`
+	MaxLength      *int     `json:"maxLength,omitempty"`
+	Pattern        string   `json:"pattern,omitempty"`
+	PatternMessage string   `json:"patternMessage,omitempty"`
+}
+
+type FormFieldPresentationSpec struct {
+	Formatter    string `json:"formatter,omitempty"`
+	PreviewLabel string `json:"previewLabel,omitempty"`
 }
 
 type FormSuggestionSpec struct {
@@ -227,14 +243,14 @@ type ActionSpec struct {
 }
 
 type CollectionSpec struct {
-	CollectionKind CollectionKind `json:"collectionKind"`
-	SourceFormat   SourceFormat   `json:"sourceFormat"`
-	Label          string         `json:"label"`
-	Description    string         `json:"description,omitempty"`
+	CollectionKind CollectionKind              `json:"collectionKind"`
+	SourceFormat   SourceFormat                `json:"sourceFormat"`
+	Label          string                      `json:"label"`
+	Description    string                      `json:"description,omitempty"`
 	Availability   *CollectionAvailabilitySpec `json:"availability,omitempty"`
-	Upload         UploadRuleSpec `json:"upload"`
-	Ingest         IngestRuleSpec `json:"ingest"`
-	Actions        []ActionSpec   `json:"actions"`
+	Upload         UploadRuleSpec              `json:"upload"`
+	Ingest         IngestRuleSpec              `json:"ingest"`
+	Actions        []ActionSpec                `json:"actions"`
 }
 
 type CollectionAvailabilitySpec struct {
@@ -282,7 +298,37 @@ func buildHeaderRowField(label string, helpText string) FormFieldSpec {
 		Required:     true,
 		DefaultValue: "1",
 		Options:      options,
+		Validation: &FormFieldValidationSpec{
+			Min: ptrFloat64(1),
+			Max: ptrFloat64(10),
+		},
+		HelpText: helpText,
+		State: FormFieldStateSpec{
+			Visible: true,
+		},
+	}
+}
+
+func ptrFloat64(value float64) *float64 {
+	return &value
+}
+
+func buildMyobAccountField(key string, label string, required bool, defaultValue string, helpText string) FormFieldSpec {
+	return FormFieldSpec{
+		Key:          key,
+		Kind:         FormFieldKindText,
+		Label:        label,
+		Required:     required,
+		DefaultValue: defaultValue,
 		HelpText:     helpText,
+		Validation: &FormFieldValidationSpec{
+			Pattern:        specutil.MyobAccountNumberPattern,
+			PatternMessage: specutil.MyobAccountNumberPatternMessage,
+		},
+		Presentation: &FormFieldPresentationSpec{
+			Formatter:    specutil.MyobAccountNumberFormatter,
+			PreviewLabel: "Preview MYOB",
+		},
 		State: FormFieldStateSpec{
 			Visible: true,
 		},
@@ -379,15 +425,13 @@ func buildCashflowSections(isReceive bool) []FormSectionSpec {
 						Visible: true,
 					},
 				},
-				{
-					Key:          "chequeAccount",
-					Kind:         FormFieldKindText,
-					Label:        map[bool]string{true: "Deposit Account", false: "Cheque Account"}[isReceive],
-					Required:     true,
-					DefaultValue: "12021",
-					HelpText:     map[bool]string{true: "Akun bank/deposit utama untuk file MYOB.", false: "Akun cheque utama untuk file MYOB."}[isReceive],
-					State:        FormFieldStateSpec{Visible: true},
-				},
+				buildMyobAccountField(
+					"chequeAccount",
+					map[bool]string{true: "Deposit Account", false: "Cheque Account"}[isReceive],
+					true,
+					"12021",
+					map[bool]string{true: "Akun bank/deposit utama untuk file MYOB.", false: "Akun cheque utama untuk file MYOB."}[isReceive],
+				),
 			},
 		},
 		buildCashflowParameterSection(),
@@ -416,33 +460,27 @@ func buildCashflowParameterSection() FormSectionSpec {
 				HelpText:     "Dipakai untuk memecah catatan biaya lainnya.",
 				State:        FormFieldStateSpec{Visible: true},
 			},
-			{
-				Key:          "otherCostsAccountCode",
-				Kind:         FormFieldKindText,
-				Label:        "Kode Akun Biaya Lain",
-				Required:     false,
-				DefaultValue: "62099",
-				HelpText:     "Dipakai saat terdapat komponen biaya lainnya.",
-				State:        FormFieldStateSpec{Visible: true},
-			},
-			{
-				Key:          "defaultIAccountCode",
-				Kind:         FormFieldKindText,
-				Label:        "Default Influencer Account Code",
-				Required:     false,
-				DefaultValue: "",
-				HelpText:     "Dipakai saat format influencer memilih account influencer.",
-				State:        FormFieldStateSpec{Visible: true},
-			},
-			{
-				Key:          "defaultBAccountCode",
-				Kind:         FormFieldKindText,
-				Label:        "Default Bank Account Code",
-				Required:     false,
-				DefaultValue: "",
-				HelpText:     "Dipakai saat format influencer mendeteksi transaksi bank.",
-				State:        FormFieldStateSpec{Visible: true},
-			},
+			buildMyobAccountField(
+				"otherCostsAccountCode",
+				"Other Costs Account Code",
+				false,
+				"62099",
+				"Dipakai saat terdapat komponen biaya lainnya.",
+			),
+			buildMyobAccountField(
+				"defaultIAccountCode",
+				"Default Influencer Account Code",
+				false,
+				"",
+				"Dipakai saat format influencer memilih account influencer.",
+			),
+			buildMyobAccountField(
+				"defaultBAccountCode",
+				"Default Bank Account Code",
+				false,
+				"",
+				"Dipakai saat format influencer mendeteksi transaksi bank.",
+			),
 		},
 	}
 }
@@ -526,15 +564,7 @@ func buildCashflowBillSections(isReceive bool) []FormSectionSpec {
 					HelpText:     "Tanpa ekstensi file.",
 					State:        FormFieldStateSpec{Visible: true},
 				},
-				{
-					Key:          "chequeAccount",
-					Kind:         FormFieldKindText,
-					Label:        accountLabel,
-					Required:     true,
-					DefaultValue: "12021",
-					HelpText:     accountHelpText,
-					State:        FormFieldStateSpec{Visible: true},
-				},
+				buildMyobAccountField("chequeAccount", accountLabel, true, "12021", accountHelpText),
 			},
 		},
 		{
@@ -1570,15 +1600,13 @@ func buildFPCoretaxCollectionSpec(
 									HelpText:     "Tanpa ekstensi file.",
 									State:        FormFieldStateSpec{Visible: true},
 								},
-								{
-									Key:          "accountNumber",
-									Kind:         FormFieldKindText,
-									Label:        accountLabel,
-									Required:     true,
-									DefaultValue: accountDefault,
-									HelpText:     "Dipakai saat registry tidak menyediakan account number.",
-									State:        FormFieldStateSpec{Visible: true},
-								},
+								buildMyobAccountField(
+									"accountNumber",
+									accountLabel,
+									true,
+									accountDefault,
+									"Dipakai saat registry tidak menyediakan account number.",
+								),
 								{
 									Key:          "memoTemplate",
 									Kind:         FormFieldKindTemplate,

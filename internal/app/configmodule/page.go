@@ -43,16 +43,32 @@ type FormFieldOptionSpec struct {
 	Value string `json:"value"`
 }
 
+type FormFieldValidationSpec struct {
+	Min            *float64 `json:"min,omitempty"`
+	Max            *float64 `json:"max,omitempty"`
+	MinLength      *int     `json:"minLength,omitempty"`
+	MaxLength      *int     `json:"maxLength,omitempty"`
+	Pattern        string   `json:"pattern,omitempty"`
+	PatternMessage string   `json:"patternMessage,omitempty"`
+}
+
+type FormFieldPresentationSpec struct {
+	Formatter    string `json:"formatter,omitempty"`
+	PreviewLabel string `json:"previewLabel,omitempty"`
+}
+
 type FormFieldSpec struct {
-	Key         string                `json:"key"`
-	Label       string                `json:"label"`
-	Required    bool                  `json:"required"`
-	Kind        string                `json:"kind,omitempty"`
-	Description string                `json:"description,omitempty"`
-	Placeholder string                `json:"placeholder,omitempty"`
-	HelpText    string                `json:"helpText,omitempty"`
-	Options     []FormFieldOptionSpec `json:"options,omitempty"`
-	Suggestions []any                 `json:"suggestions,omitempty"`
+	Key          string                     `json:"key"`
+	Label        string                     `json:"label"`
+	Required     bool                       `json:"required"`
+	Kind         string                     `json:"kind,omitempty"`
+	Description  string                     `json:"description,omitempty"`
+	Placeholder  string                     `json:"placeholder,omitempty"`
+	HelpText     string                     `json:"helpText,omitempty"`
+	Options      []FormFieldOptionSpec      `json:"options,omitempty"`
+	Suggestions  []any                      `json:"suggestions,omitempty"`
+	Validation   *FormFieldValidationSpec   `json:"validation,omitempty"`
+	Presentation *FormFieldPresentationSpec `json:"presentation,omitempty"`
 }
 
 type FormVariantSpec struct {
@@ -189,6 +205,20 @@ type PageService struct {
 	categoryAccounts     *appcashflowbill.CategoryAccountService
 	fpCoretaxProfiles    *appfpcoretax.ProfileConfigService
 	fpCoretaxRelations   *appfpcoretax.RelationRegistryService
+}
+
+func myobAccountFieldPresentation(key string) (*FormFieldValidationSpec, *FormFieldPresentationSpec) {
+	if !specutil.IsMyobAccountFieldKey(key) {
+		return nil, nil
+	}
+
+	return &FormFieldValidationSpec{
+			Pattern:        specutil.MyobAccountNumberPattern,
+			PatternMessage: specutil.MyobAccountNumberPatternMessage,
+		}, &FormFieldPresentationSpec{
+			Formatter:    specutil.MyobAccountNumberFormatter,
+			PreviewLabel: "Preview MYOB",
+		}
 }
 
 func NewPageService(
@@ -386,23 +416,29 @@ func (s *PageService) buildBukpotRequestBlock(profileID string) (FormBlockSpec, 
 
 	fields := make([]FormFieldSpec, 0, len(spec.DefaultFields)+len(spec.Fields))
 	for _, item := range spec.DefaultFields {
+		validation, presentation := myobAccountFieldPresentation(item.Key)
 		fields = append(fields, FormFieldSpec{
-			Key:         item.Key,
-			Label:       item.Label,
-			Required:    item.Required,
-			Kind:        item.Kind,
-			Description: item.Description,
-			Options:     requestOptionsToForm(item.Options),
+			Key:          item.Key,
+			Label:        item.Label,
+			Required:     item.Required,
+			Kind:         item.Kind,
+			Description:  item.Description,
+			Options:      requestOptionsToForm(item.Options),
+			Validation:   validation,
+			Presentation: presentation,
 		})
 	}
 	for _, item := range spec.Fields {
+		validation, presentation := myobAccountFieldPresentation(item.Key)
 		fields = append(fields, FormFieldSpec{
-			Key:         item.Key,
-			Label:       item.Label,
-			Required:    item.Required,
-			Kind:        item.Kind,
-			Description: item.Description,
-			Options:     requestOptionsToForm(item.Options),
+			Key:          item.Key,
+			Label:        item.Label,
+			Required:     item.Required,
+			Kind:         item.Kind,
+			Description:  item.Description,
+			Options:      requestOptionsToForm(item.Options),
+			Validation:   validation,
+			Presentation: presentation,
 		})
 	}
 
@@ -446,15 +482,18 @@ func (s *PageService) buildBukpotActionProfileBlock(profileID string, key appbuk
 
 	fields := make([]FormFieldSpec, 0, len(spec.Fields))
 	for _, item := range spec.Fields {
+		validation, presentation := myobAccountFieldPresentation(item.Key)
 		fields = append(fields, FormFieldSpec{
-			Key:         item.Key,
-			Label:       item.Label,
-			Required:    item.Required,
-			Kind:        item.Kind,
-			Description: item.Description,
-			Placeholder: item.Placeholder,
-			HelpText:    item.HelpText,
-			Suggestions: actionSuggestionsToAny(item.Suggestions),
+			Key:          item.Key,
+			Label:        item.Label,
+			Required:     item.Required,
+			Kind:         item.Kind,
+			Description:  item.Description,
+			Placeholder:  item.Placeholder,
+			HelpText:     item.HelpText,
+			Suggestions:  actionSuggestionsToAny(item.Suggestions),
+			Validation:   validation,
+			Presentation: presentation,
 		})
 	}
 
@@ -495,13 +534,16 @@ func (s *PageService) buildCashflowProfileBlock(profileID string, key appcashflo
 
 	fields := make([]FormFieldSpec, 0, len(spec.Fields))
 	for _, item := range spec.Fields {
+		validation, presentation := myobAccountFieldPresentation(item.Key)
 		fields = append(fields, FormFieldSpec{
-			Key:         item.Key,
-			Label:       item.Label,
-			Required:    item.Required,
-			Kind:        item.Kind,
-			Description: item.Description,
-			Options:     cashflowOptionsToForm(item.Options),
+			Key:          item.Key,
+			Label:        item.Label,
+			Required:     item.Required,
+			Kind:         item.Kind,
+			Description:  item.Description,
+			Options:      cashflowOptionsToForm(item.Options),
+			Validation:   validation,
+			Presentation: presentation,
 		})
 	}
 
@@ -559,13 +601,16 @@ func (s *PageService) buildCashflowBillProfileBlock(profileID string, key appcas
 
 	fields := make([]FormFieldSpec, 0, len(spec.Fields))
 	for _, item := range spec.Fields {
+		validation, presentation := myobAccountFieldPresentation(item.Key)
 		fields = append(fields, FormFieldSpec{
-			Key:         item.Key,
-			Label:       item.Label,
-			Required:    item.Required,
-			Kind:        item.Kind,
-			Description: item.Description,
-			Options:     cashflowBillOptionsToForm(item.Options),
+			Key:          item.Key,
+			Label:        item.Label,
+			Required:     item.Required,
+			Kind:         item.Kind,
+			Description:  item.Description,
+			Options:      cashflowBillOptionsToForm(item.Options),
+			Validation:   validation,
+			Presentation: presentation,
 		})
 	}
 
@@ -623,16 +668,19 @@ func (s *PageService) buildFPCoretaxProfileBlock(profileID string, key appfpcore
 
 	fields := make([]FormFieldSpec, 0, len(spec.Fields))
 	for _, item := range spec.Fields {
+		validation, presentation := myobAccountFieldPresentation(item.Key)
 		fields = append(fields, FormFieldSpec{
-			Key:         item.Key,
-			Label:       item.Label,
-			Required:    item.Required,
-			Kind:        item.Kind,
-			Description: item.Description,
-			Placeholder: item.Placeholder,
-			HelpText:    item.HelpText,
-			Options:     fpCoretaxOptionsToForm(item.Options),
-			Suggestions: fpCoretaxSuggestionsToAny(item.Suggestions),
+			Key:          item.Key,
+			Label:        item.Label,
+			Required:     item.Required,
+			Kind:         item.Kind,
+			Description:  item.Description,
+			Placeholder:  item.Placeholder,
+			HelpText:     item.HelpText,
+			Options:      fpCoretaxOptionsToForm(item.Options),
+			Suggestions:  fpCoretaxSuggestionsToAny(item.Suggestions),
+			Validation:   validation,
+			Presentation: presentation,
 		})
 	}
 

@@ -321,7 +321,7 @@ func profileFieldBlueprints(key ProfileConfigKey) []ProfileConfigFieldSpec {
 		cashflowTextField("outputFilename", "Nama Output", true, outputDefault, "Tanpa ekstensi file.", "parameter"),
 		cashflowTextField("chequeAccount", accountLabel, true, "12021", accountDescription, "parameter"),
 		cashflowTextField("remarkDelimiter", "Remark Delimiter", false, "*", "Dipakai untuk memecah catatan biaya lainnya.", "parameter"),
-		cashflowTextField("otherCostsAccountCode", "Kode Akun Biaya Lain", false, "62099", "Dipakai saat format default memiliki komponen biaya lain.", "parameter"),
+		cashflowTextField("otherCostsAccountCode", "Other Costs Account Code", false, "62099", "Dipakai saat format default memiliki komponen biaya lain.", "parameter"),
 		cashflowTextField("defaultIAccountCode", "Default Influencer Account Code", false, "", "Dipakai saat format influencer memilih account influencer.", "parameter"),
 		cashflowTextField("defaultBAccountCode", "Default Bank Account Code", false, "", "Dipakai saat format influencer mendeteksi transaksi bank.", "parameter"),
 		cashflowTextareaField("informationFilterKeywords", "Keyword Filter Information", false, "", "Satu baris satu keyword. Row akan di-skip bila kolom Information mengandung keyword ini.", "runtime"),
@@ -407,7 +407,7 @@ func profileVariantMissingFields(cfg ProfileConfig, format Format) []string {
 	} else {
 		require("coa", "Chart of Account")
 		require("remarkDelimiter", "Remark Delimiter")
-		require("otherCostsAccountCode", "Kode Akun Biaya Lain")
+		require("otherCostsAccountCode", "Other Costs Account Code")
 	}
 
 	return missing
