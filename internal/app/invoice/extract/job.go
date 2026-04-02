@@ -45,7 +45,7 @@ func (h *InvoiceExtractJob) Handle(ctx context.Context, j *job.Job) (*job.Output
 		})
 	}
 
-	result, err := h.extractor.ExtractBatch(ctx, resolved, payload.Template)
+	result, err := h.extractor.ExtractBatch(ctx, resolved, payload.Template, "")
 	if err != nil {
 		return nil, err
 	}

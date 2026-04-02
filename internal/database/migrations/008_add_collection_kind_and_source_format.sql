@@ -1,0 +1,1 @@
+-- no-op: collection_kind dan source_format sudah ada di schema reset utama

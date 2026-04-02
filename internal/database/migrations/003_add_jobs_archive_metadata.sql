@@ -1,3 +1,1 @@
-ALTER TABLE jobs ADD COLUMN archive_count INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE jobs ADD COLUMN archive_latest DATETIME;
-ALTER TABLE jobs ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;
+-- no-op: metadata archive job sudah ada di schema reset utama

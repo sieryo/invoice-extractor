@@ -1,0 +1,1 @@
+-- no-op: frozen_at dan frozen_by sudah ada di schema reset utama

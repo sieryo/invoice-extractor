@@ -6,13 +6,26 @@ import (
 )
 
 func (s *Server) registerCollectionRoutes(protected fiber.Router) {
-	collectionHandler := handler.NewCollectionHandler(s.appCtx.CollectionService)
+	collectionHandler := handler.NewCollectionHandler(s.appCtx.CollectionService, s.appCtx.ModuleActivationService)
 	fileHandler := handler.NewFileHandler(s.appCtx.FileService)
 
+	protected.Get("/collections/create-spec", collectionHandler.GetCreateSpec)
+	protected.Post("/collections", collectionHandler.CreateNode)
+	protected.Get("/collections", collectionHandler.ListChildren)
+	protected.Get("/collections/:id", collectionHandler.GetCollectionByID)
+	protected.Get("/collections/:id/path", collectionHandler.GetCollectionPath)
+	protected.Patch("/collections/:id", collectionHandler.RenameCollection)
+	protected.Post("/collections/:id/freeze", collectionHandler.FreezeCollection)
+	protected.Delete("/collections/:id", collectionHandler.DeleteCollection)
+
 	protected.Post("/collection/create", collectionHandler.CreateCollection)
+	protected.Get("/collection/create-spec", collectionHandler.GetCreateSpec)
 	protected.Get("/collection/list", collectionHandler.ListUserCollections)
 
 	protected.Get("/collection/:id", collectionHandler.GetCollectionByID)
+	protected.Get("/collection/:id/path", collectionHandler.GetCollectionPath)
+	protected.Patch("/collection/:id", collectionHandler.RenameCollection)
+	protected.Post("/collection/:id/freeze", collectionHandler.FreezeCollection)
 	protected.Delete("/collection/:id", collectionHandler.DeleteCollection)
 	protected.Get("/collection/:id/files", fileHandler.ListByCollection)
 	protected.Post("/collection/:id/files", fileHandler.Upload)

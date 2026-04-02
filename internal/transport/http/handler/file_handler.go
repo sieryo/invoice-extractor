@@ -5,6 +5,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	appFile "github.com/sieryo/invoice-extractor/internal/app/file"
+	dcollection "github.com/sieryo/invoice-extractor/internal/domain/collection"
 	"github.com/sieryo/invoice-extractor/internal/domain/file"
 )
 
@@ -58,6 +59,9 @@ func (h *FileHandler) Upload(c *fiber.Ctx) error {
 
 	uploaded, err := h.fileService.UploadFiles(ctx, collectionID, inputs)
 	if err != nil {
+		if err == dcollection.ErrCollectionFrozen {
+			return SendError(c, fiber.StatusConflict, "collection sudah freeze dan tidak bisa menerima dokumen baru")
+		}
 		return SendError(c, fiber.StatusInternalServerError, err.Error())
 	}
 
@@ -107,6 +111,9 @@ func (h *FileHandler) DeleteFile(c *fiber.Ctx) error {
 	}
 
 	if err := h.fileService.Delete(ctx, id); err != nil {
+		if err == dcollection.ErrCollectionFrozen {
+			return SendError(c, fiber.StatusConflict, "collection sudah freeze dan tidak bisa menghapus dokumen")
+		}
 		return SendError(c, fiber.StatusInternalServerError, err.Error())
 	}
 	return SendSuccess(c, fiber.StatusOK, nil, "file deleted successfully")
@@ -126,6 +133,9 @@ func (h *FileHandler) DeleteFilesBulk(c *fiber.Ctx) error {
 	}
 
 	if err := h.fileService.DeleteBulk(ctx, req.IDs); err != nil {
+		if err == dcollection.ErrCollectionFrozen {
+			return SendError(c, fiber.StatusConflict, "collection sudah freeze dan tidak bisa menghapus dokumen")
+		}
 		return SendError(c, fiber.StatusInternalServerError, err.Error())
 	}
 	return SendSuccess(c, fiber.StatusOK, nil, "files deleted successfully")

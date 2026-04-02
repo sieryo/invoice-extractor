@@ -8,13 +8,13 @@ import (
 func (s *Server) registerAuthRoutes(api fiber.Router) {
 	authHandler := handler.NewAuthHandler(s.appCtx.AuthService)
 
-	// Public auth routes
 	api.Post("/auth/register", authHandler.Register)
 	api.Post("/auth/login", authHandler.Login)
-	api.Post("/auth/login/by-id", authHandler.LoginByID)
-	api.Get("/auth/users", authHandler.ListUsers)
+	api.Post("/auth/login/by-profile-id", authHandler.LoginByProfileID)
+	api.Post("/auth/login/by-id", authHandler.LoginByProfileID)
+	api.Get("/auth/profiles", authHandler.ListProfiles)
+	api.Get("/auth/users", authHandler.ListProfiles)
 
-	// Protected auth routes
 	protected := api.Group("", s.AuthMiddleware())
 	protected.Get("/auth/me", authHandler.Me)
 	protected.Post("/auth/logout", authHandler.Logout)

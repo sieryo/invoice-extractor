@@ -27,7 +27,10 @@ func main() {
 	dbPath := filepath.Join(appDir, "app.db")
 	logPath := filepath.Join(appDir, "app.log")
 
-	cfg := config.Load()
+	if err := config.LoadDotEnvIfExists(); err != nil {
+		log.Printf("failed to load .env: %v", err)
+	}
+	cfg := config.Load(appDir)
 
 	ilogger := logger.Setup(buildinfo.Environment, logPath)
 
@@ -41,7 +44,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	appContainer := app.New(db, ilogger, appDir)
+	appContainer := app.New(db, ilogger, appDir, cfg)
 	server := http.NewServer(appContainer)
 
 	port, err := netutil.FindAvailablePort(cfg.Port, cfg.PortMax)

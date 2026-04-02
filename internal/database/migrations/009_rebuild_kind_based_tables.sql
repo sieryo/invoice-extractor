@@ -1,0 +1,1 @@
+-- no-op: schema reset utama sudah langsung kind-based dan siap untuk cashflow_import

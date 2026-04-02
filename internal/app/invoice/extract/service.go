@@ -4,15 +4,15 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"regexp"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"regexp"
-	"strconv"
-
-	"github.com/sieryo/invoice-extractor/internal/app/buyer"
+	domainbuyer "github.com/sieryo/invoice-extractor/internal/domain/buyer"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/parserhelper"
 	"github.com/sieryo/invoice-extractor/internal/app/invoice/template"
@@ -40,11 +40,15 @@ func extractLeadingNumber(filename string) (int, bool) {
 }
 
 type InvoiceExtractorService struct {
-	buyerRegistry    *buyer.Registry
+	buyerRegistry    BuyerLookupProvider
 	templateRegistry *template.Registry
 }
 
-func NewInvoiceExtractService(t *template.Registry, b *buyer.Registry) *InvoiceExtractorService {
+type BuyerLookupProvider interface {
+	Lookup(profileID string, name string) (domainbuyer.Buyer, bool, error)
+}
+
+func NewInvoiceExtractService(t *template.Registry, b BuyerLookupProvider) *InvoiceExtractorService {
 	return &InvoiceExtractorService{
 		buyerRegistry:    b,
 		templateRegistry: t,
@@ -55,6 +59,7 @@ func (i *InvoiceExtractorService) ExtractBatch(
 	ctx context.Context,
 	inputFiles []file.ResolvedFile,
 	templateID *string,
+	profileID string,
 ) (*BatchExtractResult, error) {
 
 	var wg sync.WaitGroup
@@ -173,8 +178,8 @@ func (i *InvoiceExtractorService) ExtractBatch(
 			}
 
 			// buyer enrichment
-			if inv.Buyer != nil && inv.Buyer.Name != "" {
-				if b, ok := i.buyerRegistry.GetByName(inv.Buyer.Name); ok {
+			if inv.Buyer != nil && inv.Buyer.Name != "" && i.buyerRegistry != nil {
+				if b, ok, lookupErr := i.buyerRegistry.Lookup(profileID, inv.Buyer.Name); lookupErr == nil && ok {
 					rawTaxID := b.PrimaryTaxID()
 					rawTKU := b.TKU()
 
@@ -207,8 +212,12 @@ func (i *InvoiceExtractorService) ExtractBatch(
 					audit.Buyer.TaxIDKind = taxIDKind
 					audit.Buyer.TaxIDValid = taxIDValid
 					audit.Buyer.TKUValid = tkuValid
+				} else if lookupErr != nil {
+					inv.Metadata.Warnings = append(inv.Metadata.Warnings, "buyer registry unavailable")
 				}
 			}
+
+			applyTestWarningHooks(inv, refFile.Name)
 
 			audit.Warnings = inv.Metadata.Warnings
 
@@ -313,4 +322,50 @@ func (i *InvoiceExtractorService) ExtractBatch(
 	}
 
 	return result, nil
+}
+
+func applyTestWarningHooks(inv *invoice.Invoice, sourceFileName string) {
+	if inv == nil || inv.Metadata == nil {
+		return
+	}
+
+	// Force a warning without changing the parsed invoice payload.
+	if isTruthyEnv("INVOICE_TEST_FORCE_WARNING") {
+		appendWarning(inv, "forced warning (test mode)")
+	}
+
+	// Force warning only for selected files (substring match, case-insensitive).
+	pattern := strings.TrimSpace(os.Getenv("INVOICE_TEST_FORCE_WARNING_FILE_CONTAINS"))
+	if pattern != "" && strings.Contains(strings.ToLower(sourceFileName), strings.ToLower(pattern)) {
+		appendWarning(inv, fmt.Sprintf("forced warning for file match: %s", pattern))
+	}
+
+	// Optional test mode: drop parsed items to simulate incomplete extraction.
+	// This changes output intentionally and should only be used in test/local.
+	if isTruthyEnv("INVOICE_TEST_DROP_ITEMS") {
+		inv.Items = nil
+		appendWarning(inv, "no items parsed (forced test mode)")
+	}
+}
+
+func appendWarning(inv *invoice.Invoice, warning string) {
+	if inv == nil || inv.Metadata == nil || warning == "" {
+		return
+	}
+	for _, existing := range inv.Metadata.Warnings {
+		if existing == warning {
+			return
+		}
+	}
+	inv.Metadata.Warnings = append(inv.Metadata.Warnings, warning)
+}
+
+func isTruthyEnv(key string) bool {
+	value := strings.TrimSpace(strings.ToLower(os.Getenv(key)))
+	switch value {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }

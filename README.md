@@ -1,4 +1,4 @@
-# Invoice Extractor
+# Document Workspace
 
 ## Build
 ```

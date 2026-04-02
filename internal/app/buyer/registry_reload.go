@@ -10,7 +10,7 @@ func (r *Registry) ReloadFromCSV(
 	store *storage.BuyerCSVStore,
 	csvPath string,
 ) error {
-	buyers, err := store.Load(csvPath)
+	buyers, err := store.Load()
 	if err != nil {
 		r.loaded = false
 		return err

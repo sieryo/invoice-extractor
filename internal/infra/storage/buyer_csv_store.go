@@ -62,8 +62,8 @@ func (s *BuyerCSVStore) Save(buyers []buyer.Buyer) error {
 	return os.Rename(tmpPath, s.path)
 }
 
-func (s *BuyerCSVStore) Load(path string) ([]buyer.Buyer, error) {
-	f, err := os.Open(path)
+func (s *BuyerCSVStore) Load() ([]buyer.Buyer, error) {
+	f, err := os.Open(s.path)
 	if err != nil {
 		return nil, err
 	}

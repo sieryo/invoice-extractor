@@ -8,10 +8,10 @@
     "#1": {
       "0409": {
         "identity": {
-          "name": "Invoice Extractor",
+          "name": "Document Workspace",
           "version": "0.1.0"
         },
-        "description": "Tools untuk mengekstrak invoice dari PDF",
+        "description": "Local workspace for tax and business documents",
         "minimum-os": "win7",
         "execution-level": "as invoker",
         "ui-access": false,
@@ -38,14 +38,14 @@
         },
         "info": {
           "0409": {
-            "Comments": "Tools untuk mengekstrak invoice dari PDF",
+            "Comments": "Local workspace for tax and business documents",
             "CompanyName": "Sieryo",
-            "FileDescription": "Invoice Extractor",
+            "FileDescription": "Document Workspace",
             "FileVersion": "0.1.0",
-            "InternalName": "InvoiceExtractor",
+            "InternalName": "DocumentWorkspace",
             "LegalCopyright": "© 2025 Sieryo",
-            "OriginalFilename": "invoice-extractor.exe",
-            "ProductName": "Invoice Extractor",
+            "OriginalFilename": "document-workspace.exe",
+            "ProductName": "Document Workspace",
             "ProductVersion": "0.1.0"
           }
         }

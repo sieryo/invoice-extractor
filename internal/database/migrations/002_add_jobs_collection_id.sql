@@ -1,1 +1,1 @@
-ALTER TABLE jobs ADD COLUMN collection_id TEXT;
+-- no-op: collection_id sudah ada di schema reset utama

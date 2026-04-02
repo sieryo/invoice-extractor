@@ -1,0 +1,1 @@
+-- no-op: schema final langsung mendukung collection_kind/source_format termasuk cashflow_import

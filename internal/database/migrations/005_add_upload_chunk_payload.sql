@@ -1,0 +1,1 @@
+-- no-op: payload_json sudah ada di schema reset utama

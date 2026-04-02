@@ -15,6 +15,14 @@ type LocalFileStore struct {
 	baseDir string
 }
 
+func (l *LocalFileStore) actionsDir(collectionID string) string {
+	return filepath.Join(l.baseDir, "actions", collectionID)
+}
+
+func (l *LocalFileStore) legacyArchiveDir(collectionID string) string {
+	return filepath.Join(l.baseDir, "archive", collectionID)
+}
+
 func (l *LocalFileStore) SaveTemp(
 	ctx context.Context,
 	collectionID string,
@@ -130,12 +138,11 @@ func (l *LocalFileStore) SaveArchive(
 	default:
 	}
 
-	archiveDir := filepath.Join(l.baseDir, "archive", collectionID)
-	if err := os.MkdirAll(archiveDir, 0755); err != nil {
+	archivePath := filepath.Join(l.actionsDir(collectionID), name)
+	if err := os.MkdirAll(filepath.Dir(archivePath), 0755); err != nil {
 		return "", err
 	}
 
-	archivePath := filepath.Join(archiveDir, name)
 	if err := os.WriteFile(archivePath, data, 0644); err != nil {
 		return "", err
 	}
@@ -155,8 +162,15 @@ func (l *LocalFileStore) ReadArchive(
 	default:
 	}
 
-	archivePath := filepath.Join(l.baseDir, "archive", collectionID, name)
-	return os.ReadFile(archivePath)
+	primaryPath := filepath.Join(l.actionsDir(collectionID), name)
+	if b, err := os.ReadFile(primaryPath); err == nil {
+		return b, nil
+	} else if !os.IsNotExist(err) {
+		return nil, err
+	}
+
+	legacyPath := filepath.Join(l.legacyArchiveDir(collectionID), name)
+	return os.ReadFile(legacyPath)
 }
 
 func (l *LocalFileStore) ListArchive(
@@ -170,29 +184,29 @@ func (l *LocalFileStore) ListArchive(
 	default:
 	}
 
-	archiveDir := filepath.Join(l.baseDir, "archive", collectionID)
-	entries, err := os.ReadDir(archiveDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return []file.ArchiveInfo{}, nil
+	infos := make([]file.ArchiveInfo, 0)
+	seen := make(map[string]struct{})
+
+	appendFromDir := func(dir string) error {
+		list, err := listArchiveInfosFromDir(dir)
+		if err != nil {
+			return err
 		}
-		return nil, err
+		for _, item := range list {
+			if _, exists := seen[item.Name]; exists {
+				continue
+			}
+			seen[item.Name] = struct{}{}
+			infos = append(infos, item)
+		}
+		return nil
 	}
 
-	infos := make([]file.ArchiveInfo, 0, len(entries))
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		info, err := e.Info()
-		if err != nil {
-			return nil, err
-		}
-		infos = append(infos, file.ArchiveInfo{
-			Name:    e.Name(),
-			Size:    info.Size(),
-			ModTime: info.ModTime(),
-		})
+	if err := appendFromDir(l.actionsDir(collectionID)); err != nil {
+		return nil, err
+	}
+	if err := appendFromDir(l.legacyArchiveDir(collectionID)); err != nil {
+		return nil, err
 	}
 
 	return infos, nil
@@ -348,6 +362,16 @@ func (l *LocalFileStore) Cleanup(
 		return err
 	}
 
+	actionsDir := l.actionsDir(collectionID)
+	if err := os.RemoveAll(actionsDir); err != nil {
+		return err
+	}
+
+	legacyArchiveDir := l.legacyArchiveDir(collectionID)
+	if err := os.RemoveAll(legacyArchiveDir); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -430,4 +454,42 @@ func dirSize(ctx context.Context, dir string) (int64, error) {
 	}
 
 	return size, nil
+}
+
+func listArchiveInfosFromDir(dir string) ([]file.ArchiveInfo, error) {
+	infos := make([]file.ArchiveInfo, 0)
+	if _, err := os.Stat(dir); err != nil {
+		if os.IsNotExist(err) {
+			return infos, nil
+		}
+		return nil, err
+	}
+
+	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+		infos = append(infos, file.ArchiveInfo{
+			Name:    filepath.ToSlash(rel),
+			Size:    info.Size(),
+			ModTime: info.ModTime(),
+		})
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return infos, nil
 }
