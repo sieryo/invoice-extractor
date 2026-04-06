@@ -9,7 +9,7 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $backendDir = Resolve-Path (Join-Path $scriptDir "..")
 Set-Location $backendDir
 
-$appName = "invoice-extractor"
+$appName = "document-workspace"
 $packageName = "document-workspace"
 $exeName = "document-workspace"
 $productName = "Document Workspace"
@@ -32,12 +32,12 @@ if (Test-Path $outDir) {
 New-Item -ItemType Directory -Path $outDir -Force | Out-Null
 
 Write-Host ">> Generating winres"
-go-winres make -in ./winres/winres.json -out ./cmd/invoice-extractor/invoice-extractor
+go-winres make -in ./winres/winres.json -out ./cmd/document-workspace/document-workspace
 
 Write-Host ">> Building exe (version=$Version)"
-go build -tags release -trimpath -ldflags "-s -w -X main.version=$Version" `
+go build -tags release -trimpath -ldflags "-s -w -X github.com/sieryo/invoice-extractor/internal/buildinfo.Version=$Version" `
   -o $exePath `
-  ./cmd/invoice-extractor
+  ./cmd/document-workspace
 
 Write-Host ">> Copying tools/pdftotext/bin (if present)"
 $toolsBinSourceRepo = Join-Path $repoRoot "tools/pdftotext/bin"
@@ -159,3 +159,4 @@ Write-Host ">> Product: $productName"
 Write-Host ">> Package: $packageName"
 Write-Host ">> Executable: $exeName.exe"
 Write-Host ">> Zip package: $zipPath"
+
