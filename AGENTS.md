@@ -6,16 +6,16 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 
 ### Build
 - Build the main binary:
-  - `go build ./cmd/invoice-extractor`
+  - `go build ./cmd/document-workspace`
 - Build a runnable exe into `tmp/` (matches `.air.toml`):
-  - `go build -o ./tmp/app.exe ./cmd/invoice-extractor`
+  - `go build -o ./tmp/app.exe ./cmd/document-workspace`
 
 ### Run
 - Run in dev (runs migrations on startup, listens on `:8080`):
-  - `go run ./cmd/invoice-extractor`
+  - `go run ./cmd/document-workspace`
 
 ### Hot reload (Air)
-This repo includes `.air.toml` configured to build `./cmd/invoice-extractor` into `tmp/app.exe`.
+This repo includes `.air.toml` configured to build `./cmd/document-workspace` into `tmp/app.exe`.
 - Run:
   - `air`
 

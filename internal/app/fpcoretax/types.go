@@ -10,8 +10,9 @@ import (
 type ProfileConfigKey string
 
 const (
-	ProfileConfigFPKeluaranMiscSales    ProfileConfigKey = "fp_keluaran_misc_sales"
-	ProfileConfigFPMasukanMiscPurchases ProfileConfigKey = "fp_masukan_misc_purchases"
+	ProfileConfigFPKeluaranMiscSales      ProfileConfigKey = "fp_keluaran_misc_sales"
+	ProfileConfigFPKeluaranReturMiscSales ProfileConfigKey = "fp_keluaran_retur_misc_sales"
+	ProfileConfigFPMasukanMiscPurchases   ProfileConfigKey = "fp_masukan_misc_purchases"
 )
 
 type RelationRegistryKey string
@@ -26,6 +27,7 @@ type ExportMYOBInput struct {
 
 	OutputFilename string `json:"outputFilename"`
 	AccountNumber  string `json:"accountNumber"`
+	IsReturn       bool   `json:"-"`
 
 	HeaderRowNumber int `json:"headerRowNumber"`
 
@@ -139,7 +141,9 @@ func parseFieldMap(payload map[string]any) map[string]string {
 	keys := []string{
 		"partyName",
 		"documentNumber",
+		"returnDocumentNumber",
 		"date",
+		"returnDate",
 		"taxBase",
 		"tax",
 		"reference",

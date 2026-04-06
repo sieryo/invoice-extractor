@@ -18,9 +18,10 @@ import (
 )
 
 const (
-	fpKeluaranMiscSalesActionType    = "export_fp_keluaran_misc_sales"
-	fpMasukanMiscPurchasesActionType = "export_fp_masukan_misc_purchases"
-	fpCoretaxDefaultOutputName       = "fp-coretax-myob"
+	fpKeluaranMiscSalesActionType      = "export_fp_keluaran_misc_sales"
+	fpKeluaranReturMiscSalesActionType = "export_fp_keluaran_retur_misc_sales"
+	fpMasukanMiscPurchasesActionType   = "export_fp_masukan_misc_purchases"
+	fpCoretaxDefaultOutputName         = "fp-coretax-myob"
 )
 
 type fpCoretaxNormalizedPayload struct {
@@ -42,13 +43,15 @@ type fpCoretaxFieldDefinition struct {
 }
 
 type fpCoretaxRowRecord struct {
-	RowNumber       int
-	PartyName       string
-	DocumentNumber  string
-	Date            time.Time
-	TaxBase         float64
-	Tax             float64
-	Reference       string
+	RowNumber            int
+	PartyName            string
+	DocumentNumber       string
+	ReturnDocumentNumber string
+	Date                 time.Time
+	ReturnDate           time.Time
+	TaxBase              float64
+	Tax                  float64
+	Reference            string
 }
 
 type FPCoretaxRelationProvider interface {
@@ -253,6 +256,9 @@ func (p *XLSXFPCoretaxProcessor) RunAction(ctx context.Context, req ActionReques
 		result.Message = "invalid fp coretax action input"
 		result.FinishedAt = time.Now()
 		return result, err
+	}
+	if p.collectionKind == CollectionKindFPKeluaranReturCoretax {
+		input.IsReturn = true
 	}
 
 	if p.registry == nil {
@@ -471,12 +477,12 @@ func (p *XLSXFPCoretaxProcessor) buildEntry(
 	return appfpcoretax.TransactionEntry{
 		PartyName:     record.PartyName,
 		AccountNumber: accountNumber,
-		Date:          record.Date,
+		Date:          resolveFPCoretaxEntryDate(record),
 		Memo:          memo,
 		Description:   description,
-		Amount:        record.TaxBase,
-		GSTAmount:     record.Tax,
-		IncTaxAmount:  record.TaxBase + record.Tax,
+		Amount:        resolveFPCoretaxAmount(record.TaxBase, input),
+		GSTAmount:     resolveFPCoretaxAmount(record.Tax, input),
+		IncTaxAmount:  resolveFPCoretaxAmount(record.TaxBase+record.Tax, input),
 		TaxCode:       input.TaxCode,
 		Inclusive:     input.Inclusive,
 	}, uniqueStrings(warnings), nil
@@ -486,6 +492,8 @@ func (p *XLSXFPCoretaxProcessor) supportsAction(actionType string) bool {
 	switch strings.TrimSpace(actionType) {
 	case fpKeluaranMiscSalesActionType:
 		return p.collectionKind == CollectionKindFPKeluaranCoretax
+	case fpKeluaranReturMiscSalesActionType:
+		return p.collectionKind == CollectionKindFPKeluaranReturCoretax
 	case fpMasukanMiscPurchasesActionType:
 		return p.collectionKind == CollectionKindFPMasukanCoretax
 	default:
@@ -554,6 +562,7 @@ func parseFPCoretaxRow(row []string, cellRow []SpreadsheetCell, rowNumber int, f
 	record := fpCoretaxRowRecord{RowNumber: rowNumber}
 	record.PartyName = strings.TrimSpace(cashflowCellValue(row, cellRow, fieldIndex, "partyName"))
 	record.DocumentNumber = strings.TrimSpace(cashflowCellValue(row, cellRow, fieldIndex, "documentNumber"))
+	record.ReturnDocumentNumber = strings.TrimSpace(cashflowCellValue(row, cellRow, fieldIndex, "returnDocumentNumber"))
 	record.Reference = strings.TrimSpace(cashflowCellValue(row, cellRow, fieldIndex, "reference"))
 
 	dateCell := cashflowTypedCell(row, cellRow, fieldIndex, "date")
@@ -562,6 +571,14 @@ func parseFPCoretaxRow(row []string, cellRow []SpreadsheetCell, rowNumber int, f
 		return record, nil, fmt.Errorf("tanggal faktur pajak tidak valid (%s)", describeSpreadsheetCellValue(dateCell))
 	}
 	record.Date = date
+
+	if returnDateCell, ok := optionalCashflowTypedCell(row, cellRow, fieldIndex, "returnDate"); ok {
+		returnDate, dateOK := SpreadsheetCellDate(returnDateCell)
+		if !dateOK {
+			return record, nil, fmt.Errorf("tanggal retur tidak valid (%s)", describeSpreadsheetCellValue(returnDateCell))
+		}
+		record.ReturnDate = returnDate
+	}
 
 	taxBaseCell := cashflowTypedCell(row, cellRow, fieldIndex, "taxBase")
 	taxBase, ok := SpreadsheetCellMoney(taxBaseCell)
@@ -587,7 +604,7 @@ func parseFPCoretaxRow(row []string, cellRow []SpreadsheetCell, rowNumber int, f
 }
 
 func fpCoretaxFieldDefinitions(input appfpcoretax.ExportMYOBInput) []fpCoretaxFieldDefinition {
-	return []fpCoretaxFieldDefinition{
+	defs := []fpCoretaxFieldDefinition{
 		{Key: "partyName", Required: true, Aliases: fpCoretaxAliases(input.MappedField("partyName"), "nama", "nama pembeli", "nama penjual")},
 		{Key: "documentNumber", Required: true, Aliases: fpCoretaxAliases(input.MappedField("documentNumber"), "nomor faktur pajak")},
 		{Key: "date", Required: true, Aliases: fpCoretaxAliases(input.MappedField("date"), "tanggal faktur pajak", "tanggal")},
@@ -595,6 +612,15 @@ func fpCoretaxFieldDefinitions(input appfpcoretax.ExportMYOBInput) []fpCoretaxFi
 		{Key: "tax", Required: true, Aliases: fpCoretaxAliases(input.MappedField("tax"), "ppn")},
 		{Key: "reference", Required: false, Aliases: fpCoretaxAliases(input.MappedField("reference"), "referensi", "reference")},
 	}
+
+	if input.IsReturn {
+		defs = append(defs,
+			fpCoretaxFieldDefinition{Key: "returnDocumentNumber", Required: true, Aliases: fpCoretaxAliases(input.MappedField("returnDocumentNumber"), "nomor retur", "return number")},
+			fpCoretaxFieldDefinition{Key: "returnDate", Required: true, Aliases: fpCoretaxAliases(input.MappedField("returnDate"), "tanggal retur", "return date")},
+		)
+	}
+
+	return defs
 }
 
 func fpCoretaxAliases(primary string, aliases ...string) []string {
@@ -657,6 +683,8 @@ func buildFPCoretaxTemplateValues(collectionKind CollectionKind, record fpCoreta
 		"namapihak":          strings.TrimSpace(record.PartyName),
 		"nomorfakturpajak":   strings.TrimSpace(record.DocumentNumber),
 		"tanggalfakturpajak": record.Date.Format("2006-01-02"),
+		"nomorretur":         strings.TrimSpace(record.ReturnDocumentNumber),
+		"tanggalretur":       formatOptionalFPCoretaxDate(record.ReturnDate),
 		"referensi":          strings.TrimSpace(record.Reference),
 		"dpp":                appfpcoretax.FormatMYOBTemplateNumber(record.TaxBase),
 		"ppn":                appfpcoretax.FormatMYOBTemplateNumber(record.Tax),
@@ -692,6 +720,32 @@ func renderFPCoretaxTemplate(template string, values map[string]string) (string,
 		warnings = append(warnings, fmt.Sprintf("unknown template placeholder(s): %s", strings.Join(uniqueStrings(missingTokens), ", ")))
 	}
 	return rendered, warnings
+}
+
+func optionalCashflowTypedCell(row []string, cellRow []SpreadsheetCell, fieldIndex map[string]int, key string) (SpreadsheetCell, bool) {
+	idx, ok := fieldIndex[key]
+	if !ok || idx < 0 {
+		return SpreadsheetCell{}, false
+	}
+	return cashflowTypedCell(row, cellRow, fieldIndex, key), true
+}
+
+func resolveFPCoretaxEntryDate(record fpCoretaxRowRecord) time.Time {
+	return record.Date
+}
+
+func resolveFPCoretaxAmount(value float64, input appfpcoretax.ExportMYOBInput) float64 {
+	if input.IsReturn {
+		return -value
+	}
+	return value
+}
+
+func formatOptionalFPCoretaxDate(value time.Time) string {
+	if value.IsZero() {
+		return ""
+	}
+	return value.Format("2006-01-02")
 }
 
 func sanitizeFPCoretaxOutputFilename(raw string) string {

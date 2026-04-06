@@ -15,6 +15,7 @@ const (
 	CollectionKindInvoiceCompany              = dcollection.CollectionKindInvoiceCompany
 	CollectionKindTaxInvoiceCoretax           = dcollection.CollectionKindTaxInvoiceCoretax
 	CollectionKindFPKeluaranCoretax           = dcollection.CollectionKindFPKeluaranCoretax
+	CollectionKindFPKeluaranReturCoretax      = dcollection.CollectionKindFPKeluaranReturCoretax
 	CollectionKindFPMasukanCoretax            = dcollection.CollectionKindFPMasukanCoretax
 	CollectionKindBukpotBPPU                  = dcollection.CollectionKindBukpotBPPU
 	CollectionKindBukpotBP21                  = dcollection.CollectionKindBukpotBP21

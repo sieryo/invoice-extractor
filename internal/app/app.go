@@ -136,6 +136,7 @@ func New(db *sql.DB, logger *slog.Logger, rootDir string, cfg config.Config) *Ap
 	documentRegistry.MustRegister(document.NewXLSXBukpotRequestProcessor(fs, rootDir, bukpotRequestConfigService))
 	documentRegistry.MustRegister(document.NewXLSXCashflowProcessor(fs, taxAccountService, cashflowBillCategoryService))
 	documentRegistry.MustRegister(document.NewXLSXFPCoretaxProcessor(document.CollectionKindFPKeluaranCoretax, fs, fpCoretaxRelationService))
+	documentRegistry.MustRegister(document.NewXLSXFPCoretaxProcessor(document.CollectionKindFPKeluaranReturCoretax, fs, fpCoretaxRelationService))
 	documentRegistry.MustRegister(document.NewXLSXFPCoretaxProcessor(document.CollectionKindFPMasukanCoretax, fs, fpCoretaxRelationService))
 	ingestService := ingest.NewIngestService(
 		uploadSessionRepo,

@@ -71,20 +71,20 @@ func TestXLSXFPCoretaxProcessor_RunActionMiscSales(t *testing.T) {
 	require.NotEmpty(t, rawRef)
 
 	inputJSON, err := json.Marshal(map[string]any{
-		"sheetName":            "Faktur",
-		"outputFilename":       "misc-sales-test",
-		"headerRowNumber":      1,
-		"accountNumber":        "41001",
-		"memoTemplate":         "{{nomorFakturPajak}}",
-		"descriptionTemplate":  "{{namaPembeli}} - {{nomorFakturPajak}}",
-		"taxCode":              "PPN",
-		"inclusive":            false,
-		"partyName":            "Nama Pembeli",
-		"documentNumber":       "Nomor Faktur Pajak",
-		"date":                 "Tanggal Faktur Pajak",
-		"taxBase":              "Harga Jual/Penggantian/DPP",
-		"tax":                  "PPN",
-		"reference":            "Referensi",
+		"sheetName":           "Faktur",
+		"outputFilename":      "misc-sales-test",
+		"headerRowNumber":     1,
+		"accountNumber":       "41001",
+		"memoTemplate":        "{{nomorFakturPajak}}",
+		"descriptionTemplate": "{{namaPembeli}} - {{nomorFakturPajak}}",
+		"taxCode":             "PPN",
+		"inclusive":           false,
+		"partyName":           "Nama Pembeli",
+		"documentNumber":      "Nomor Faktur Pajak",
+		"date":                "Tanggal Faktur Pajak",
+		"taxBase":             "Harga Jual/Penggantian/DPP",
+		"tax":                 "PPN",
+		"reference":           "Referensi",
 	})
 	require.NoError(t, err)
 
@@ -172,20 +172,20 @@ func TestXLSXFPCoretaxProcessor_RunActionMiscPurchases_UsesSupplierAccount(t *te
 	}
 
 	inputJSON, err := json.Marshal(map[string]any{
-		"sheetName":            "Faktur",
-		"outputFilename":       "misc-purchases-test",
-		"headerRowNumber":      1,
-		"accountNumber":        "41001",
-		"memoTemplate":         "{{nomorFakturPajak}}",
-		"descriptionTemplate":  "{{namaPenjual}} - {{nomorFakturPajak}}",
-		"taxCode":              "PPN",
-		"inclusive":            true,
-		"partyName":            "Nama Penjual",
-		"documentNumber":       "Nomor Faktur Pajak",
-		"date":                 "Tanggal Faktur Pajak",
-		"taxBase":              "Harga Jual/Penggantian/DPP",
-		"tax":                  "PPN",
-		"reference":            "Referensi",
+		"sheetName":           "Faktur",
+		"outputFilename":      "misc-purchases-test",
+		"headerRowNumber":     1,
+		"accountNumber":       "41001",
+		"memoTemplate":        "{{nomorFakturPajak}}",
+		"descriptionTemplate": "{{namaPenjual}} - {{nomorFakturPajak}}",
+		"taxCode":             "PPN",
+		"inclusive":           true,
+		"partyName":           "Nama Penjual",
+		"documentNumber":      "Nomor Faktur Pajak",
+		"date":                "Tanggal Faktur Pajak",
+		"taxBase":             "Harga Jual/Penggantian/DPP",
+		"tax":                 "PPN",
+		"reference":           "Referensi",
 	})
 	require.NoError(t, err)
 
@@ -220,6 +220,107 @@ func TestXLSXFPCoretaxProcessor_RunActionMiscPurchases_UsesSupplierAccount(t *te
 	require.Contains(t, content, "SAGE KONSTRUKSI INDONESIA - 04002500352440493")
 }
 
+func TestXLSXFPCoretaxProcessor_RunActionMiscSales_Return(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	tempDir := t.TempDir()
+	fileStore := filestore.NewLocalFileStore(filepath.Join(tempDir, "storage"))
+	profileID := "user-1"
+
+	customerPath := profilepath.FPCoretaxCustomerCSV(tempDir, profileID)
+	require.NoError(t, os.MkdirAll(filepath.Dir(customerPath), 0o755))
+	require.NoError(t, os.WriteFile(customerPath, []byte(strings.Join([]string{
+		"name,account",
+		"BERKAT JAYA ABADI,",
+	}, "\n")), 0o644))
+
+	registryService := appfpcoretax.NewRelationRegistryService(tempDir)
+	processor := NewXLSXFPCoretaxProcessor(CollectionKindFPKeluaranReturCoretax, fileStore, registryService)
+
+	workbookPath := filepath.Join(tempDir, "fp-keluaran-retur.xlsx")
+	createFPCoretaxReturnWorkbook(t, workbookPath)
+
+	ingestResult, err := processor.Ingest(ctx, IngestRequest{
+		RequestID:      "req-1",
+		UserID:         profileID,
+		CollectionID:   "collection-1",
+		CollectionKind: CollectionKindFPKeluaranReturCoretax,
+		SourceFormat:   SourceFormatXLSX,
+		Sources: []IngestSource{{
+			SourceID:     "source-1",
+			OriginalName: "fp-keluaran-retur.xlsx",
+			TempPath:     workbookPath,
+			UploadedAt:   time.Now(),
+		}},
+		Policy:      IngestPolicy{KeepRaw: true},
+		RequestedAt: time.Now(),
+	})
+	require.NoError(t, err)
+
+	var normalizedRef string
+	var rawRef string
+	for _, artifact := range ingestResult.Items[0].Artifacts {
+		if artifact.Kind == "normalized" {
+			normalizedRef = artifact.ObjectID
+		}
+		if artifact.Kind == "raw" {
+			rawRef = artifact.ObjectID
+		}
+	}
+
+	inputJSON, err := json.Marshal(map[string]any{
+		"sheetName":            "Retur",
+		"outputFilename":       "misc-sales-retur-test",
+		"headerRowNumber":      1,
+		"accountNumber":        "41001",
+		"memoTemplate":         "{{nomorRetur}}",
+		"descriptionTemplate":  "{{tanggalRetur}} - {{nomorRetur}}",
+		"taxCode":              "PPN",
+		"inclusive":            false,
+		"partyName":            "Nama Pembeli",
+		"documentNumber":       "Nomor Faktur Pajak",
+		"returnDocumentNumber": "Nomor Retur",
+		"date":                 "Tanggal Faktur Pajak",
+		"returnDate":           "Tanggal Retur",
+		"taxBase":              "Harga Jual/Penggantian/DPP",
+		"tax":                  "PPN",
+		"reference":            "Referensi",
+	})
+	require.NoError(t, err)
+
+	result, err := processor.RunAction(ctx, ActionRequest{
+		ActionID:       "action-1",
+		UserID:         profileID,
+		CollectionID:   "collection-1",
+		CollectionKind: CollectionKindFPKeluaranReturCoretax,
+		SourceFormat:   SourceFormatXLSX,
+		ActionType:     fpKeluaranReturMiscSalesActionType,
+		SnapshotDocs: []ActionSnapshotDocument{{
+			DocumentID:    "doc-1",
+			SourceName:    "fp-keluaran-retur.xlsx",
+			Status:        "ready",
+			NormalizedRef: normalizedRef,
+			RawRef:        rawRef,
+		}},
+		Input:       inputJSON,
+		RequestedAt: time.Now(),
+	})
+	require.NoError(t, err)
+	require.Equal(t, "success", result.Status)
+	require.Len(t, result.Outputs, 1)
+
+	body, readErr := os.ReadFile(result.Outputs[0].ObjectRef)
+	require.NoError(t, readErr)
+	content := string(body)
+
+	require.Contains(t, content, "BERKAT JAYA ABADI\t\t\t14/10/2025")
+	require.Contains(t, content, "\tR-0001\t")
+	require.Contains(t, content, "2025-10-20 - R-0001")
+	require.Contains(t, content, "\t41001\t-5.331.532,00\t-5.918.000,00")
+	require.Contains(t, content, "\tPPN\t0\t-586.468,00")
+}
+
 func createFPCoretaxWorkbook(t *testing.T, path string, partyHeader string) {
 	t.Helper()
 
@@ -238,6 +339,37 @@ func createFPCoretaxWorkbook(t *testing.T, path string, partyHeader string) {
 		map[bool]string{true: "SAGE KONSTRUKSI INDONESIA", false: "BERKAT JAYA ABADI"}[strings.Contains(strings.ToLower(partyHeader), "penjual")],
 		"04002500352440493",
 		"14/10/2025",
+		5331532,
+		586468,
+		"04002500352440493",
+	}))
+
+	require.NoError(t, file.SaveAs(path))
+	require.NoError(t, file.Close())
+}
+
+func createFPCoretaxReturnWorkbook(t *testing.T, path string) {
+	t.Helper()
+
+	file := excelize.NewFile()
+	file.SetSheetName("Sheet1", "Retur")
+
+	require.NoError(t, file.SetSheetRow("Retur", "A1", &[]string{
+		"Nama Pembeli",
+		"Nomor Faktur Pajak",
+		"Nomor Retur",
+		"Tanggal Faktur Pajak",
+		"Tanggal Retur",
+		"Harga Jual/Penggantian/DPP",
+		"PPN",
+		"Referensi",
+	}))
+	require.NoError(t, file.SetSheetRow("Retur", "A2", &[]any{
+		"BERKAT JAYA ABADI",
+		"04002500352440493",
+		"R-0001",
+		"14/10/2025",
+		"20/10/2025",
 		5331532,
 		586468,
 		"04002500352440493",

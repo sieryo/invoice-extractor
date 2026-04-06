@@ -24,6 +24,7 @@ const (
 	CollectionKindInvoiceCompany              CollectionKind = "invoice_company"
 	CollectionKindTaxInvoiceCoretax           CollectionKind = "tax_invoice_coretax"
 	CollectionKindFPKeluaranCoretax           CollectionKind = "fp_keluaran_coretax"
+	CollectionKindFPKeluaranReturCoretax      CollectionKind = "fp_keluaran_retur_coretax"
 	CollectionKindFPMasukanCoretax            CollectionKind = "fp_masukan_coretax"
 	CollectionKindBukpotBPPU                  CollectionKind = "bukpot_bppu"
 	CollectionKindBukpotBP21                  CollectionKind = "bukpot_bp21"
@@ -37,6 +38,7 @@ func (k CollectionKind) IsValid() bool {
 	case CollectionKindInvoiceCompany,
 		CollectionKindTaxInvoiceCoretax,
 		CollectionKindFPKeluaranCoretax,
+		CollectionKindFPKeluaranReturCoretax,
 		CollectionKindFPMasukanCoretax,
 		CollectionKindBukpotBPPU,
 		CollectionKindBukpotBP21,

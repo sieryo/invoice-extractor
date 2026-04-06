@@ -292,6 +292,8 @@ func (s *PageService) UpdateFormBlock(profileID string, moduleKey string, blockK
 		return s.updateCashflowBillProfile(profileID, appcashflowbill.ProfileConfigReceivePayments, input)
 	case string(appfpcoretax.ProfileConfigFPKeluaranMiscSales):
 		return s.updateFPCoretaxProfile(profileID, appfpcoretax.ProfileConfigFPKeluaranMiscSales, input)
+	case string(appfpcoretax.ProfileConfigFPKeluaranReturMiscSales):
+		return s.updateFPCoretaxProfile(profileID, appfpcoretax.ProfileConfigFPKeluaranReturMiscSales, input)
 	case string(appfpcoretax.ProfileConfigFPMasukanMiscPurchases):
 		return s.updateFPCoretaxProfile(profileID, appfpcoretax.ProfileConfigFPMasukanMiscPurchases, input)
 	default:
@@ -350,6 +352,8 @@ func (s *PageService) buildBlock(profileID string, moduleKey string) (any, error
 		return s.buildCategoryAccountBlock(profileID)
 	case string(appfpcoretax.ProfileConfigFPKeluaranMiscSales):
 		return s.buildFPCoretaxProfileBlock(profileID, appfpcoretax.ProfileConfigFPKeluaranMiscSales)
+	case string(appfpcoretax.ProfileConfigFPKeluaranReturMiscSales):
+		return s.buildFPCoretaxProfileBlock(profileID, appfpcoretax.ProfileConfigFPKeluaranReturMiscSales)
 	case "fp_keluaran_customer_registry":
 		return s.buildFPCoretaxRegistryBlock(profileID, appfpcoretax.RelationRegistryCustomer)
 	case string(appfpcoretax.ProfileConfigFPMasukanMiscPurchases):

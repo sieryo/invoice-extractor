@@ -69,6 +69,10 @@ func FPKeluaranMiscSalesConfigJSON(rootDir string, profileID string) string {
 	return filepath.Join(FPCoretaxConfigDir(rootDir, profileID), "fp_keluaran_misc_sales.json")
 }
 
+func FPKeluaranReturMiscSalesConfigJSON(rootDir string, profileID string) string {
+	return filepath.Join(FPCoretaxConfigDir(rootDir, profileID), "fp_keluaran_retur_misc_sales.json")
+}
+
 func FPMasukanMiscPurchasesConfigJSON(rootDir string, profileID string) string {
 	return filepath.Join(FPCoretaxConfigDir(rootDir, profileID), "fp_masukan_misc_purchases.json")
 }

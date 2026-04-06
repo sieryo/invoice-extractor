@@ -643,7 +643,7 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 			CollectionKind: collectionKind,
 			SourceFormat:   SourceFormatPDF,
 			Label:          "Invoice",
-			Description:    "PDF invoice document for extraction and e-Faktur export.",
+			Description:    "Dokumen PDF invoice internal perusahaan sesuai konfigurasi buyer dan template parser.",
 			Upload: UploadRuleSpec{
 				AcceptExtensions: []string{".pdf"},
 				AcceptMIMETypes:  []string{"application/pdf"},
@@ -724,7 +724,7 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 			CollectionKind: collectionKind,
 			SourceFormat:   SourceFormatPDF,
 			Label:          "Faktur Pajak",
-			Description:    "Dokumen PDF faktur pajak Coretax untuk ekstraksi dan action lanjutan.",
+			Description:    "Dokumen PDF faktur pajak hasil unduhan dari Coretax.",
 			Upload: UploadRuleSpec{
 				AcceptExtensions: []string{".pdf"},
 				AcceptMIMETypes:  []string{"application/pdf"},
@@ -830,15 +830,31 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 		return buildFPCoretaxCollectionSpec(
 			collectionKind,
 			"FP Keluaran Coretax",
-			"Workbook XLSX untuk export MYOB Misc Sales.",
+			"Workbook faktur keluaran hasil tarikan dari Coretax.",
 			fpKeluaranMiscSalesActionType,
-			"Misc Sales",
+			"Export to MYOB Misc Sales",
 			"Export ke MYOB Misc Sales.",
 			"Pengaturan Misc Sales",
 			"Atur parameter action dan mapping header.",
 			"Nama Pembeli",
 			[]ActionRequirementSpec{
-				{Key: "fpCoretaxDefaultProfile", Label: "Default Profil FP Keluaran", Required: true},
+				{Key: "fpCoretaxDefaultProfile", Label: "Default Profil FP Keluaran Misc Sales", Required: true},
+				{Key: "fpCoretaxRegistry", Label: "Customer Registry", Required: true},
+			},
+		), true
+	case CollectionKindFPKeluaranReturCoretax:
+		return buildFPCoretaxCollectionSpec(
+			collectionKind,
+			"FP Keluaran Retur Coretax",
+			"Workbook retur faktur keluaran hasil tarikan dari Coretax.",
+			"export_fp_keluaran_retur_misc_sales",
+			"Export to MYOB Misc Sales Retur",
+			"Export ke MYOB Misc Sales untuk retur.",
+			"Pengaturan Misc Sales Retur",
+			"Atur parameter action dan mapping header retur.",
+			"Nama Pembeli",
+			[]ActionRequirementSpec{
+				{Key: "fpCoretaxDefaultProfile", Label: "Default Profil FP Keluaran Retur Misc Sales", Required: true},
 				{Key: "fpCoretaxRegistry", Label: "Customer Registry", Required: true},
 			},
 		), true
@@ -846,15 +862,15 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 		return buildFPCoretaxCollectionSpec(
 			collectionKind,
 			"FP Masukan Coretax",
-			"Workbook XLSX untuk export MYOB Misc Purchases.",
+			"Workbook faktur masukan hasil tarikan dari Coretax.",
 			fpMasukanMiscPurchasesActionType,
-			"Misc Purchases",
+			"Export to MYOB Misc Purchases",
 			"Export ke MYOB Misc Purchases.",
 			"Pengaturan Misc Purchases",
 			"Atur parameter action dan mapping header.",
 			"Nama Penjual",
 			[]ActionRequirementSpec{
-				{Key: "fpCoretaxDefaultProfile", Label: "Default Profil FP Masukan", Required: true},
+				{Key: "fpCoretaxDefaultProfile", Label: "Default Profil FP Masukan Misc Purchases", Required: true},
 				{Key: "fpCoretaxRegistry", Label: "Supplier Registry", Required: true},
 			},
 		), true
@@ -881,7 +897,7 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 			CollectionKind: collectionKind,
 			SourceFormat:   SourceFormatXLSX,
 			Label:          "Cashflow",
-			Description:    "Spreadsheet XLSX cashflow untuk normalisasi data dan action lanjutan.",
+			Description:    "Workbook cashflow berisi data transaksi yang siap dipetakan ke format MYOB.",
 			Upload: UploadRuleSpec{
 				AcceptExtensions: []string{".xlsx"},
 				AcceptMIMETypes: []string{
@@ -902,7 +918,7 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 				{
 					CollectionKind: string(collectionKind),
 					ActionType:     "export_cashflow_spend_money",
-					Label:          "Spend Money",
+					Label:          "Export to MYOB Spend Money",
 					Description:    "Konversi cashflow ke format MYOB Spend Money.",
 					State: ActionStateSpec{
 						Enabled: true,
@@ -929,7 +945,7 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 						Summary: "Mengubah sheet cashflow menjadi file MYOB Spend Money (.txt).",
 						Bullets: []string{
 							"Hanya row dengan total negatif yang akan diproses.",
-							"Sheet dipilih dari dokumen yang Anda centang saat action dijalankan.",
+							"Sheet dipilih dari dokumen yang Kamu centang saat action dijalankan.",
 							"Komponen pajak akan di-resolve memakai daftar nama tax yang didukung melalui Tax Accounts.",
 							"Jika nomor cheque dikosongkan, MYOB bisa membuat nomor otomatis.",
 						},
@@ -969,7 +985,7 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 				{
 					CollectionKind: string(collectionKind),
 					ActionType:     "export_cashflow_receive_money",
-					Label:          "Receive Money",
+					Label:          "Export to MYOB Receive Money",
 					Description:    "Konversi cashflow ke format MYOB Receive Money.",
 					State: ActionStateSpec{
 						Enabled: true,
@@ -996,7 +1012,7 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 						Summary: "Mengubah sheet cashflow menjadi file MYOB Receive Money (.txt).",
 						Bullets: []string{
 							"Hanya row dengan total positif yang akan diproses.",
-							"Sheet dipilih dari dokumen yang Anda centang saat action dijalankan.",
+							"Sheet dipilih dari dokumen yang Kamu centang saat action dijalankan.",
 							"Komponen pajak akan di-resolve memakai daftar nama tax yang didukung melalui Tax Accounts.",
 							"Kolom akun utama memakai Deposit Account pada template MYOB.",
 						},
@@ -1036,7 +1052,7 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 				{
 					CollectionKind: string(collectionKind),
 					ActionType:     "cashflow_to_pay_bills",
-					Label:          "Pay Bills",
+					Label:          "Export to MYOB Pay Bills",
 					Description:    "Konversi cashflow ke format MYOB Pay Bills.",
 					State:          ActionStateSpec{Enabled: true},
 					Presentation:   ActionPresentationSpec{Mode: "inline", Width: "xl"},
@@ -1101,7 +1117,7 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 				{
 					CollectionKind: string(collectionKind),
 					ActionType:     "cashflow_to_receive_payments",
-					Label:          "Receive Payments",
+					Label:          "Export to MYOB Receive Payments",
 					Description:    "Konversi cashflow ke format MYOB Receive Payments.",
 					State:          ActionStateSpec{Enabled: true},
 					Presentation:   ActionPresentationSpec{Mode: "inline", Width: "xl"},
@@ -1170,7 +1186,7 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 			CollectionKind: collectionKind,
 			SourceFormat:   SourceFormatXLSX,
 			Label:          "Request Bukpot",
-			Description:    "Spreadsheet XLSX GST Deduction MT untuk generate request bukpot Coretax.",
+			Description:    "Workbook GST Deduction MT sebagai sumber data request bukpot Coretax.",
 			Upload: UploadRuleSpec{
 				AcceptExtensions: []string{".xlsx"},
 				AcceptMIMETypes: []string{
@@ -1191,7 +1207,7 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 				{
 					CollectionKind: string(collectionKind),
 					ActionType:     "request_bukpot_gst_deduction_mt",
-					Label:          "Request Bukpot GST Deduction MT",
+					Label:          "Export to Bukpot GST Deduction MT",
 					Description:    "Generate ZIP berisi template Excel dan XML Coretax. Hanya row dengan nilai Entity yang sama dengan Alias profil aktif yang akan diproses.",
 					State:          ActionStateSpec{Enabled: true},
 					Presentation:   ActionPresentationSpec{Mode: "inline", Width: "xl"},
@@ -1249,7 +1265,7 @@ func BuildCollectionSpec(collectionKind CollectionKind) (CollectionSpec, bool) {
 						Summary: "Membangun ZIP berisi template Excel dan XML Coretax dari workbook GST Deduction MT.",
 						Bullets: []string{
 							"Hanya row dengan nilai Entity yang sama dengan Alias profil aktif yang akan diproses.",
-							"Sheet dan baris header dipilih dari dokumen source yang Anda centang.",
+							"Sheet dan baris header dipilih dari dokumen source yang Kamu centang.",
 							"Header source akan memakai Default Profil terlebih dahulu, lalu bisa dioverride untuk eksekusi ini.",
 						},
 					},
@@ -1281,6 +1297,7 @@ func BuildCreateCollectionSpec() CreateCollectionSpec {
 		CollectionKindInvoiceCompany,
 		CollectionKindTaxInvoiceCoretax,
 		CollectionKindFPKeluaranCoretax,
+		CollectionKindFPKeluaranReturCoretax,
 		CollectionKindFPMasukanCoretax,
 		CollectionKindBukpotBPPU,
 		CollectionKindBukpotBP21,
@@ -1520,10 +1537,89 @@ func buildFPCoretaxCollectionSpec(
 	outputDefault := "misc_sales"
 	accountLabel := "Account Number"
 	accountDefault := "41001"
+	partyDefault := "nama pembeli"
+	isReturCollection := collectionKind == CollectionKindFPKeluaranReturCoretax
 	if collectionKind == CollectionKindFPMasukanCoretax {
 		outputDefault = "misc_purchases"
 		accountLabel = "Default Account Number"
 		accountDefault = "51001"
+		partyDefault = "nama penjual"
+	}
+	descriptionTemplateDefault := "{{nomorFakturPajak}}"
+	if isReturCollection {
+		descriptionTemplateDefault = "{{nomorRetur}}"
+	}
+
+	parameterFields := []FormFieldSpec{
+		{
+			Key:          "outputFilename",
+			Kind:         FormFieldKindText,
+			Label:        "Nama Output",
+			Required:     true,
+			DefaultValue: outputDefault,
+			Placeholder:  outputDefault,
+			HelpText:     "Tanpa ekstensi file.",
+			State:        FormFieldStateSpec{Visible: true},
+		},
+		buildMyobAccountField(
+			"accountNumber",
+			accountLabel,
+			true,
+			accountDefault,
+			"Dipakai saat registry tidak menyediakan account number.",
+		),
+		{
+			Key:          "memoTemplate",
+			Kind:         FormFieldKindTemplate,
+			Label:        "Template Memo",
+			Required:     true,
+			DefaultValue: "{{nomorFakturPajak}}",
+			Placeholder:  "{{nomorFakturPajak}}",
+			Suggestions:  buildFPCoretaxTemplateSuggestions(collectionKind),
+			HelpText:     "Gunakan placeholder yang tersedia untuk membentuk memo output MYOB.",
+			State:        FormFieldStateSpec{Visible: true},
+		},
+		{
+			Key:          "descriptionTemplate",
+			Kind:         FormFieldKindTemplate,
+			Label:        "Template Description",
+			Required:     true,
+			DefaultValue: descriptionTemplateDefault,
+			Placeholder:  descriptionTemplateDefault,
+			Suggestions:  buildFPCoretaxTemplateSuggestions(collectionKind),
+			HelpText:     "Gunakan placeholder yang tersedia untuk membentuk description output MYOB.",
+			State:        FormFieldStateSpec{Visible: true},
+		},
+	}
+
+	mappingFields := []FormFieldSpec{
+		{Key: "partyName", Kind: FormFieldKindText, Label: partyFieldLabel, Required: true, DefaultValue: partyDefault, State: FormFieldStateSpec{Visible: true}},
+		{Key: "documentNumber", Kind: FormFieldKindText, Label: "Nomor Faktur Pajak", Required: true, DefaultValue: "nomor faktur pajak", State: FormFieldStateSpec{Visible: true}},
+		{Key: "date", Kind: FormFieldKindText, Label: "Tanggal Faktur Pajak", Required: true, DefaultValue: "tanggal faktur pajak", State: FormFieldStateSpec{Visible: true}},
+		{Key: "taxBase", Kind: FormFieldKindText, Label: "DPP", Required: true, DefaultValue: "harga jual/penggantian/dpp", State: FormFieldStateSpec{Visible: true}},
+		{Key: "tax", Kind: FormFieldKindText, Label: "PPN", Required: true, DefaultValue: "ppn", State: FormFieldStateSpec{Visible: true}},
+		{Key: "reference", Kind: FormFieldKindText, Label: "Referensi", Required: false, DefaultValue: "referensi", State: FormFieldStateSpec{Visible: true}},
+	}
+
+	if isReturCollection {
+		mappingFields = append(mappingFields,
+			FormFieldSpec{
+				Key:          "returnDocumentNumber",
+				Kind:         FormFieldKindText,
+				Label:        "Nomor Retur",
+				Required:     true,
+				DefaultValue: "nomor retur",
+				State:        FormFieldStateSpec{Visible: true},
+			},
+			FormFieldSpec{
+				Key:          "returnDate",
+				Kind:         FormFieldKindText,
+				Label:        "Tanggal Retur",
+				Required:     true,
+				DefaultValue: "tanggal retur",
+				State:        FormFieldStateSpec{Visible: true},
+			},
+		)
 	}
 
 	return CollectionSpec{
@@ -1589,47 +1685,7 @@ func buildFPCoretaxCollectionSpec(
 							Title:       specutil.ParameterActionSectionTitle,
 							Description: "Parameter default untuk export MYOB.",
 							Columns:     2,
-							Fields: []FormFieldSpec{
-								{
-									Key:          "outputFilename",
-									Kind:         FormFieldKindText,
-									Label:        "Nama Output",
-									Required:     true,
-									DefaultValue: outputDefault,
-									Placeholder:  outputDefault,
-									HelpText:     "Tanpa ekstensi file.",
-									State:        FormFieldStateSpec{Visible: true},
-								},
-								buildMyobAccountField(
-									"accountNumber",
-									accountLabel,
-									true,
-									accountDefault,
-									"Dipakai saat registry tidak menyediakan account number.",
-								),
-								{
-									Key:          "memoTemplate",
-									Kind:         FormFieldKindTemplate,
-									Label:        "Template Memo",
-									Required:     true,
-									DefaultValue: "{{nomorFakturPajak}}",
-									Placeholder:  "{{nomorFakturPajak}}",
-									Suggestions:  buildFPCoretaxTemplateSuggestions(collectionKind),
-									HelpText:     "Gunakan placeholder yang tersedia untuk membentuk memo output MYOB.",
-									State:        FormFieldStateSpec{Visible: true},
-								},
-								{
-									Key:          "descriptionTemplate",
-									Kind:         FormFieldKindTemplate,
-									Label:        "Template Description",
-									Required:     true,
-									DefaultValue: "{{nomorFakturPajak}}",
-									Placeholder:  "{{nomorFakturPajak}}",
-									Suggestions:  buildFPCoretaxTemplateSuggestions(collectionKind),
-									HelpText:     "Gunakan placeholder yang tersedia untuk membentuk description output MYOB.",
-									State:        FormFieldStateSpec{Visible: true},
-								},
-							},
+							Fields:      parameterFields,
 						},
 						{
 							Key:         "tax",
@@ -1662,21 +1718,14 @@ func buildFPCoretaxCollectionSpec(
 							Title:       specutil.MappingHeaderSectionTitle,
 							Description: "Nama header source untuk membaca kolom faktur pajak.",
 							Columns:     2,
-							Fields: []FormFieldSpec{
-								{Key: "partyName", Kind: FormFieldKindText, Label: partyFieldLabel, Required: true, DefaultValue: "nama", State: FormFieldStateSpec{Visible: true}},
-								{Key: "documentNumber", Kind: FormFieldKindText, Label: "Nomor Faktur Pajak", Required: true, DefaultValue: "nomor faktur pajak", State: FormFieldStateSpec{Visible: true}},
-								{Key: "date", Kind: FormFieldKindText, Label: "Tanggal Faktur Pajak", Required: true, DefaultValue: "tanggal faktur pajak", State: FormFieldStateSpec{Visible: true}},
-								{Key: "taxBase", Kind: FormFieldKindText, Label: "DPP", Required: true, DefaultValue: "harga jual/penggantian/dpp", State: FormFieldStateSpec{Visible: true}},
-								{Key: "tax", Kind: FormFieldKindText, Label: "PPN", Required: true, DefaultValue: "ppn", State: FormFieldStateSpec{Visible: true}},
-								{Key: "reference", Kind: FormFieldKindText, Label: "Referensi", Required: false, DefaultValue: "referensi", State: FormFieldStateSpec{Visible: true}},
-							},
+							Fields:      mappingFields,
 						},
 					},
 				},
 				Detail: &ActionDetailSpec{
 					Summary: fmt.Sprintf("Mengubah workbook %s menjadi file MYOB %s (.txt).", strings.ToLower(label), actionLabel),
 					Bullets: []string{
-						"Sheet dan baris header dipilih dari dokumen source yang Anda centang.",
+						"Sheet dan baris header dipilih dari dokumen source yang Kamu centang.",
 						"Memo dan Description dibentuk dari template placeholder yang tersedia.",
 						"Registry pihak dipakai untuk validasi nama MYOB, dan pada supplier dapat memberi override account number.",
 					},
@@ -1754,6 +1803,13 @@ func buildFPCoretaxTemplateSuggestions(collectionKind CollectionKind) []FormSugg
 		suggestions = append([]FormSuggestionSpec{
 			{Token: "namaPembeli", Label: "Nama Pembeli", Example: "{{namaPembeli}}"},
 		}, suggestions...)
+	}
+
+	if collectionKind == CollectionKindFPKeluaranReturCoretax {
+		suggestions = append(suggestions,
+			FormSuggestionSpec{Token: "nomorRetur", Label: "Nomor Retur", Example: "{{nomorRetur}}"},
+			FormSuggestionSpec{Token: "tanggalRetur", Label: "Tanggal Retur", Example: "{{tanggalRetur}}"},
+		)
 	}
 
 	return suggestions

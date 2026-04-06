@@ -3,7 +3,7 @@ root = "."
 tmp_dir = "tmp"
 
 [build]
-  cmd = "go build -o ./tmp/app.exe ./cmd/invoice-extractor"
+  cmd = "go build -o ./tmp/app.exe ./cmd/document-workspace"
   bin = "tmp/app.exe"
   delay = 1000
   stop_on_error = true

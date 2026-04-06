@@ -122,12 +122,13 @@ func (s *ProfileConfigService) Update(profileID string, key ProfileConfigKey, cf
 }
 
 func (s *ProfileConfigService) Status(profileID string, key ProfileConfigKey) ProfileConfigStatus {
+	label := s.Spec(key).Label
 	cfg, err := s.Load(profileID, key)
 	if err != nil {
 		return ProfileConfigStatus{
 			Configured:    false,
 			Code:          "CONFIG_ERROR",
-			Message:       "Default profil FP Coretax tidak dapat dibaca saat ini.",
+			Message:       label + " tidak dapat dibaca saat ini.",
 			SchemaVersion: profileConfigSchemaVersion,
 		}
 	}
@@ -147,7 +148,7 @@ func (s *ProfileConfigService) Status(profileID string, key ProfileConfigKey) Pr
 			Configured:    false,
 			MissingFields: missing,
 			Code:          "NOT_READY",
-			Message:       "Default profil FP Coretax belum lengkap.",
+			Message:       label + " belum lengkap.",
 			SchemaVersion: profileConfigSchemaVersion,
 		}
 	}
@@ -155,23 +156,26 @@ func (s *ProfileConfigService) Status(profileID string, key ProfileConfigKey) Pr
 	return ProfileConfigStatus{
 		Configured:    true,
 		Code:          "READY",
-		Message:       "Default profil FP Coretax siap digunakan.",
+		Message:       label + " siap digunakan.",
 		SchemaVersion: profileConfigSchemaVersion,
 	}
 }
 
 func buildProfileConfigSpec(key ProfileConfigKey) ProfileConfigSpec {
-	label := "FP Keluaran"
-	description := "Default parameter action Misc Sales."
+	label := "FP Keluaran Misc Sales"
+	description := "Parameter action Misc Sales."
 	partyLabel := "Nama Pembeli"
-	partyDefault := "nama"
+	partyDefault := "nama pembeli"
 	accountLabel := "Account Number"
 	accountDefault := "41001"
-	if key == ProfileConfigFPMasukanMiscPurchases {
-		label = "FP Masukan"
-		description = "Default parameter action Misc Purchases."
+	if key == ProfileConfigFPKeluaranReturMiscSales {
+		label = "FP Keluaran Retur Misc Sales"
+		description = "Parameter action Misc Sales Retur."
+	} else if key == ProfileConfigFPMasukanMiscPurchases {
+		label = "FP Masukan Misc Purchases"
+		description = "Parameter action Misc Purchases."
 		partyLabel = "Nama Penjual"
-		partyDefault = "nama"
+		partyDefault = "nama penjual"
 		accountLabel = "Default Account Number"
 		accountDefault = "51001"
 	}
@@ -182,27 +186,56 @@ func buildProfileConfigSpec(key ProfileConfigKey) ProfileConfigSpec {
 		Label:         label,
 		Description:   description,
 		Sections: []configlayout.SectionSpec{
-			specutil.ParameterActionSection("Parameter default yang akan dipakai saat action dibuka.", 2, "sheetName", "headerRowNumber", "outputFilename", "accountNumber", "memoTemplate", "descriptionTemplate"),
+			specutil.ParameterActionSection("Parameter default yang akan dipakai saat action dibuka.", 2, fpCoretaxParameterSectionKeys(key)...),
 			specutil.Section("tax", "Tax", "Parameter pajak default untuk output MYOB.", 2, "taxCode", "inclusive"),
-			specutil.MappingHeaderSection("Nama header source untuk membaca kolom faktur pajak.", 2, "partyName", "documentNumber", "date", "taxBase", "tax", "reference"),
+			specutil.MappingHeaderSection("Nama header source untuk membaca kolom faktur pajak.", 2, fpCoretaxMappingSectionKeys(key)...),
 		},
-		Fields: []ProfileConfigFieldSpec{
-			textField("sheetName", "Sheet Default", false, "", "Nilai awal sheet untuk action ini.", "parameter"),
-			selectField("headerRowNumber", "Baris Header Default", true, "1", "Baris header default workbook.", "parameter", buildHeaderRowOptions(10)),
-			textField("outputFilename", "Nama Output", true, defaultOutputFilename(key), "Tanpa ekstensi file.", "parameter"),
-			textField("accountNumber", accountLabel, true, accountDefault, "Dipakai saat registry tidak menyediakan account number.", "parameter"),
-			templateField("memoTemplate", "Template Memo", true, "{{nomorFakturPajak}}", "Template default memo output MYOB.", "parameter", buildTemplateSuggestions(key)),
-			templateField("descriptionTemplate", "Template Description", true, "{{nomorFakturPajak}}", "Template default description output MYOB.", "parameter", buildTemplateSuggestions(key)),
-			textField("taxCode", "Tax Code", true, "PPN", "Tax code default untuk baris MYOB.", "tax"),
-			checkboxField("inclusive", "Inclusive Tax", false, "false", "Aktifkan jika nilai total pada source sudah termasuk pajak.", "tax"),
-			textField("partyName", partyLabel, true, partyDefault, "Header source untuk nama pihak.", "mapping"),
-			textField("documentNumber", "Nomor Faktur Pajak", true, "nomor faktur pajak", "Header source nomor faktur pajak.", "mapping"),
-			textField("date", "Tanggal Faktur Pajak", true, "tanggal faktur pajak", "Header source tanggal faktur pajak.", "mapping"),
-			textField("taxBase", "DPP", true, "harga jual/penggantian/dpp", "Header source nilai DPP.", "mapping"),
-			textField("tax", "PPN", true, "ppn", "Header source nilai PPN.", "mapping"),
-			textField("reference", "Referensi", false, "referensi", "Header source referensi tambahan.", "mapping"),
-		},
+		Fields: buildProfileConfigFields(key, partyLabel, partyDefault, accountLabel, accountDefault),
 	}
+}
+
+func buildProfileConfigFields(
+	key ProfileConfigKey,
+	partyLabel string,
+	partyDefault string,
+	accountLabel string,
+	accountDefault string,
+) []ProfileConfigFieldSpec {
+	suggestions := buildTemplateSuggestions(key)
+	if key == ProfileConfigFPKeluaranReturMiscSales {
+		suggestions = buildReturTemplateSuggestions()
+	}
+	descriptionTemplateDefault := "{{nomorFakturPajak}}"
+	if key == ProfileConfigFPKeluaranReturMiscSales {
+		descriptionTemplateDefault = "{{nomorRetur}}"
+	}
+
+	fields := []ProfileConfigFieldSpec{
+		textField("sheetName", "Sheet Default", false, "", "Nilai awal sheet untuk action ini.", "parameter"),
+		selectField("headerRowNumber", "Baris Header Default", true, "1", "Baris header default workbook.", "parameter", buildHeaderRowOptions(10)),
+		textField("outputFilename", "Nama Output", true, defaultOutputFilename(key), "Tanpa ekstensi file.", "parameter"),
+		accountTextField("accountNumber", accountLabel, true, accountDefault, "Dipakai saat registry tidak menyediakan account number.", "parameter"),
+		templateField("memoTemplate", "Template Memo", true, "{{nomorFakturPajak}}", "Template default memo output MYOB.", "parameter", suggestions),
+		templateField("descriptionTemplate", "Template Description", true, descriptionTemplateDefault, "Template default description output MYOB.", "parameter", suggestions),
+		textField("taxCode", "Tax Code", true, "PPN", "Tax code default untuk baris MYOB.", "tax"),
+		checkboxField("inclusive", "Inclusive Tax", false, "false", "Aktifkan jika nilai total pada source sudah termasuk pajak.", "tax"),
+		textField("partyName", partyLabel, true, partyDefault, "Header source untuk nama pihak.", "mapping"),
+		textField("documentNumber", "Nomor Faktur Pajak", true, "nomor faktur pajak", "Header source nomor faktur pajak.", "mapping"),
+		textField("date", "Tanggal Faktur Pajak", true, "tanggal faktur pajak", "Header source tanggal faktur pajak.", "mapping"),
+		textField("taxBase", "DPP", true, "harga jual/penggantian/dpp", "Header source nilai DPP.", "mapping"),
+		textField("tax", "PPN", true, "ppn", "Header source nilai PPN.", "mapping"),
+		textField("reference", "Referensi", false, "referensi", "Header source referensi tambahan.", "mapping"),
+	}
+
+	if key == ProfileConfigFPKeluaranReturMiscSales {
+		fields = append(
+			fields,
+			textField("returnDocumentNumber", "Nomor Retur", true, "nomor retur", "Header source nomor retur.", "mapping"),
+			textField("returnDate", "Tanggal Retur", true, "tanggal retur", "Header source tanggal retur.", "mapping"),
+		)
+	}
+
+	return fields
 }
 
 func buildTemplateSuggestions(key ProfileConfigKey) []ProfileConfigSuggestion {
@@ -222,6 +255,14 @@ func buildTemplateSuggestions(key ProfileConfigKey) []ProfileConfigSuggestion {
 		{Token: "total", Label: "Total", Example: "{{total}}"},
 		{Token: "sourceName", Label: "Nama File Asal", Example: "{{sourceName}}"},
 	}
+}
+
+func buildReturTemplateSuggestions() []ProfileConfigSuggestion {
+	items := buildTemplateSuggestions(ProfileConfigFPKeluaranMiscSales)
+	return append(items,
+		ProfileConfigSuggestion{Token: "nomorRetur", Label: "Nomor Retur", Example: "{{nomorRetur}}"},
+		ProfileConfigSuggestion{Token: "tanggalRetur", Label: "Tanggal Retur", Example: "{{tanggalRetur}}"},
+	)
 }
 
 func defaultOutputFilename(key ProfileConfigKey) string {
@@ -294,6 +335,8 @@ func (s *ProfileConfigService) normalizeConfig(cfg ProfileConfig, key ProfileCon
 
 func (s *ProfileConfigService) configPath(profileID string, key ProfileConfigKey) string {
 	switch key {
+	case ProfileConfigFPKeluaranReturMiscSales:
+		return profilepath.FPKeluaranReturMiscSalesConfigJSON(s.rootDir, profileID)
 	case ProfileConfigFPMasukanMiscPurchases:
 		return profilepath.FPMasukanMiscPurchasesConfigJSON(s.rootDir, profileID)
 	default:
@@ -317,6 +360,10 @@ func textField(key string, label string, required bool, defaultValue string, des
 		Kind:         "text",
 		Group:        group,
 	}
+}
+
+func accountTextField(key string, label string, required bool, defaultValue string, description string, group string) ProfileConfigFieldSpec {
+	return textField(key, label, required, strings.ReplaceAll(defaultValue, "-", ""), description, group)
 }
 
 func selectField(key string, label string, required bool, defaultValue string, description string, group string, options []ProfileConfigFieldOption) ProfileConfigFieldSpec {
@@ -357,4 +404,18 @@ func templateField(key string, label string, required bool, defaultValue string,
 		HelpText:     "Gunakan placeholder yang tersedia untuk membentuk nilai output.",
 		Suggestions:  suggestions,
 	}
+}
+
+func fpCoretaxParameterSectionKeys(key ProfileConfigKey) []string {
+	keys := []string{"sheetName", "headerRowNumber", "outputFilename", "accountNumber"}
+	keys = append(keys, "memoTemplate", "descriptionTemplate")
+	return keys
+}
+
+func fpCoretaxMappingSectionKeys(key ProfileConfigKey) []string {
+	keys := []string{"partyName", "documentNumber", "date", "taxBase", "tax", "reference"}
+	if key == ProfileConfigFPKeluaranReturMiscSales {
+		keys = append(keys, "returnDocumentNumber", "returnDate")
+	}
+	return keys
 }

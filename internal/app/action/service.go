@@ -17,8 +17,8 @@ import (
 	appbuyer "github.com/sieryo/invoice-extractor/internal/app/buyer"
 	appcashflow "github.com/sieryo/invoice-extractor/internal/app/cashflow"
 	appcashflowbill "github.com/sieryo/invoice-extractor/internal/app/cashflowbill"
-	appfpcoretax "github.com/sieryo/invoice-extractor/internal/app/fpcoretax"
 	"github.com/sieryo/invoice-extractor/internal/app/document"
+	appfpcoretax "github.com/sieryo/invoice-extractor/internal/app/fpcoretax"
 	dcollection "github.com/sieryo/invoice-extractor/internal/domain/collection"
 	"github.com/sieryo/invoice-extractor/internal/domain/file"
 )
@@ -1291,7 +1291,7 @@ func (s *Service) resolveCashflowActionSpec(
 		field.Options = nil
 		field.HelpText = "Pilih minimal satu dokumen cashflow untuk melihat sheet yang tersedia."
 		field.State.Disabled = true
-		field.State.Message = "Sheet akan tersedia setelah Anda memilih dokumen cashflow."
+		field.State.Message = "Sheet akan tersedia setelah Kamu memilih dokumen cashflow."
 		updateFormField(actionSpec.Form, field)
 		return actionSpec, nil
 	}
@@ -1469,7 +1469,7 @@ func (s *Service) resolveCashflowBillActionSpec(
 		field.Options = nil
 		field.HelpText = "Pilih minimal satu dokumen cashflow untuk melihat sheet yang tersedia."
 		field.State.Disabled = true
-		field.State.Message = "Sheet akan tersedia setelah Anda memilih dokumen cashflow."
+		field.State.Message = "Sheet akan tersedia setelah Kamu memilih dokumen cashflow."
 		updateFormField(actionSpec.Form, field)
 		return actionSpec, nil
 	}
@@ -1618,7 +1618,7 @@ func (s *Service) resolveFPCoretaxActionSpec(
 		field.Options = nil
 		field.HelpText = "Pilih minimal satu dokumen FP Coretax untuk melihat sheet yang tersedia."
 		field.State.Disabled = true
-		field.State.Message = "Sheet akan tersedia setelah Anda memilih dokumen."
+		field.State.Message = "Sheet akan tersedia setelah Kamu memilih dokumen."
 		updateFormField(actionSpec.Form, field)
 		return actionSpec, nil
 	}
@@ -1755,13 +1755,17 @@ func isCashflowBillAction(actionType string) bool {
 }
 
 func isFPCoretaxCollection(collectionKind document.CollectionKind) bool {
-	return collectionKind == document.CollectionKindFPKeluaranCoretax || collectionKind == document.CollectionKindFPMasukanCoretax
+	return collectionKind == document.CollectionKindFPKeluaranCoretax ||
+		collectionKind == document.CollectionKindFPKeluaranReturCoretax ||
+		collectionKind == document.CollectionKindFPMasukanCoretax
 }
 
 func fpCoretaxProfileKeyFromCollectionKind(collectionKind document.CollectionKind) (appfpcoretax.ProfileConfigKey, bool) {
 	switch collectionKind {
 	case document.CollectionKindFPMasukanCoretax:
 		return appfpcoretax.ProfileConfigFPMasukanMiscPurchases, true
+	case document.CollectionKindFPKeluaranReturCoretax:
+		return appfpcoretax.ProfileConfigFPKeluaranReturMiscSales, true
 	case document.CollectionKindFPKeluaranCoretax:
 		return appfpcoretax.ProfileConfigFPKeluaranMiscSales, true
 	default:
@@ -1773,7 +1777,7 @@ func fpCoretaxRelationKeyFromCollectionKind(collectionKind document.CollectionKi
 	switch collectionKind {
 	case document.CollectionKindFPMasukanCoretax:
 		return appfpcoretax.RelationRegistrySupplier, true
-	case document.CollectionKindFPKeluaranCoretax:
+	case document.CollectionKindFPKeluaranCoretax, document.CollectionKindFPKeluaranReturCoretax:
 		return appfpcoretax.RelationRegistryCustomer, true
 	default:
 		return "", false
@@ -1784,6 +1788,8 @@ func fpCoretaxActionTypeFromCollectionKind(collectionKind document.CollectionKin
 	switch collectionKind {
 	case document.CollectionKindFPMasukanCoretax:
 		return "export_fp_masukan_misc_purchases"
+	case document.CollectionKindFPKeluaranReturCoretax:
+		return "export_fp_keluaran_retur_misc_sales"
 	default:
 		return "export_fp_keluaran_misc_sales"
 	}
@@ -1843,7 +1849,7 @@ func (s *Service) resolveBukpotRequestActionSpec(
 		field.Options = nil
 		field.HelpText = "Pilih minimal satu dokumen request bukpot untuk melihat sheet yang tersedia."
 		field.State.Disabled = true
-		field.State.Message = "Sheet akan tersedia setelah Anda memilih dokumen source."
+		field.State.Message = "Sheet akan tersedia setelah Kamu memilih dokumen source."
 		updateFormField(actionSpec.Form, field)
 		return actionSpec, nil
 	}
@@ -2664,7 +2670,11 @@ func (s *Service) applyFPCoretaxProfileRequirement(
 	label := "Default Profil FP Keluaran"
 	defaultCode := "FP_KELUARAN_PROFILE_UNAVAILABLE"
 	defaultMessage := "Default profil FP Keluaran belum tersedia."
-	if collectionKind == document.CollectionKindFPMasukanCoretax {
+	if collectionKind == document.CollectionKindFPKeluaranReturCoretax {
+		label = "Default Profil FP Keluaran Retur"
+		defaultCode = "FP_KELUARAN_RETUR_PROFILE_UNAVAILABLE"
+		defaultMessage = "Default profil FP Keluaran Retur belum tersedia."
+	} else if collectionKind == document.CollectionKindFPMasukanCoretax {
 		label = "Default Profil FP Masukan"
 		defaultCode = "FP_MASUKAN_PROFILE_UNAVAILABLE"
 		defaultMessage = "Default profil FP Masukan belum tersedia."
